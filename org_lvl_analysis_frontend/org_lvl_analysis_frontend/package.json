@@ -1,0 +1,31 @@
+{
+  "name": "org-lvl-analysis-frontend",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@dnd-kit/core": "^6.3.1",
+    "@dnd-kit/utilities": "^3.2.2",
+    "axios": "^1.7.0",
+    "d3": "^7.9.0",
+    "plotly.js": "^2.35.0",
+    "pptxgenjs": "^3.12.0",
+    "react": "^18.3.0",
+    "react-dom": "^18.3.0",
+    "react-plotly.js": "^2.6.0",
+    "react-router-dom": "^7.15.1",
+    "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.0",
+    "autoprefixer": "^10.4.0",
+    "postcss": "^8.4.0",
+    "tailwindcss": "^3.4.0",
+    "vite": "^5.4.0"
+  }
+}

@@ -1,0 +1,547 @@
+import React, { useState, useEffect, useLayoutEffect, useRef, useCallback } from "react";
+import { useParams, useNavigate } from "react-router-dom";
+import { useAuth } from "../contexts/AuthContext";
+import { setCurrentProjectId, fetchProjectDetail, cleanup, crosstab, orgchart, spansLayers, acquireLock, lockHeartbeat, releaseLock } from "../api/backend";
+
+import Upload from "../components/Upload";
+import Cleanup from "../components/Cleanup";
+import Validate from "../components/Validate";
+import FilterErrors from "../components/FilterErrors";
+import Hierarchy from "../components/Hierarchy";
+import SpansLayers from "../components/SpansLayers";
+import Crosstab from "../components/Crosstab";
+import OrgChart from "../components/OrgChart";
+import ExportExcel from "../components/ExportExcel";
+
+const MODULES = [
+  {
+    id: "Upload", label: "Upload Data",
+    icon: (<svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" /></svg>)
+  },
+  {
+    id: "Cleanup", label: "Cleanup",
+    icon: (<svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>)
+  },
+  {
+    id: "Validate", label: "Validate",
+    icon: (<svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>)
+  },
+  {
+    id: "Filter Errors", label: "Filter Errors",
+    icon: (<svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" /></svg>)
+  },
+  {
+    id: "Hierarchy", label: "Hierarchy",
+    icon: (<svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" /></svg>)
+  },
+  {
+    id: "Spans & Layers", label: "Spans & Layers",
+    icon: (<svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z" /></svg>)
+  },
+  {
+    id: "Crosstab", label: "Crosstab",
+    icon: (<svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M3 14h18m-9-4v8m-7 0h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>)
+  },
+  {
+    id: "Org Chart", label: "Org Chart",
+    icon: (<svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" /></svg>)
+  }
+];
+
+export default function ProjectWorkspace() {
+  const { projectId } = useParams();
+  const navigate = useNavigate();
+  const { user, handleLogout } = useAuth();
+  const pid = parseInt(projectId, 10);
+
+  // --- Project context ---
+  const [project, setProject] = useState(null);
+  const [projectError, setProjectError] = useState(null);
+
+  // --- DATA (same as old App.jsx) ---
+  const [dfRecords, setDfRecords] = useState(null);
+  const [validatedDf, setValidatedDf] = useState(null);
+  const [columns, setColumns] = useState(null);
+
+  // --- GLOBAL COLUMN CONTROLS ---
+  const [empCol, setEmpCol] = useState("");
+  const [mgrCol, setMgrCol] = useState("");
+  const [fteCol, setFteCol] = useState("");
+  const [flcCol, setFlcCol] = useState("");
+  const [countryCol, setCountryCol] = useState("");
+  const [jobTitleCol, setJobTitleCol] = useState("");
+
+  // --- UI STATE ---
+  const [activeModule, setActiveModule] = useState("Upload");
+  const [filteredRowCount, setFilteredRowCount] = useState(null);
+  const [treeData, setTreeData] = useState(null);
+  const [errorMsg, setErrorMsg] = useState(null);
+
+  // --- OrgSight 2.0 DB state ---
+  const [datasetId, setDatasetId] = useState(null);
+  const [scenarios, setScenarios] = useState([]);
+  const [activeScenarioId, setActiveScenarioId] = useState(null);
+  const [uploadedFileName, setUploadedFileName] = useState("");
+
+  // Set backend project context synchronously before children mount
+  useLayoutEffect(() => {
+    setCurrentProjectId(pid);
+    return () => setCurrentProjectId(null);
+  }, [pid]);
+
+  // --- Lock state ---
+  const [lockHolder, setLockHolder] = useState(null);
+  const [lockAcquired, setLockAcquired] = useState(false);
+  const heartbeatRef = useRef(null);
+
+  // Fetch project details for header display + access check
+  useEffect(() => {
+    setProject(null);
+    setProjectError(null);
+    fetchProjectDetail(pid)
+      .then((data) => setProject(data.project || data))
+      .catch((err) => {
+        const status = err.response?.status;
+        const body = err.response?.data;
+        if (status === 403) {
+          setProjectError({
+            code: body?.error_code || "access_denied",
+            message: body?.message || body?.detail || "Access denied",
+          });
+        } else if (status === 404) {
+          setProjectError({ code: "not_found", message: "Project not found" });
+        } else {
+          setProjectError({ code: "unknown", message: body?.detail || "Failed to load project" });
+        }
+      });
+  }, [pid]);
+
+  // Lock lifecycle: acquire on mount, heartbeat every 20s, release on unmount
+  useEffect(() => {
+    let cancelled = false;
+
+    const tryAcquire = async () => {
+      try {
+        const res = await acquireLock(pid);
+        if (cancelled) return;
+        if (res.acquired) {
+          setLockAcquired(true);
+          setLockHolder(null);
+        } else {
+          setLockAcquired(false);
+          setLockHolder(res.holder);
+        }
+      } catch {
+        if (!cancelled) setLockHolder(null);
+      }
+    };
+
+    tryAcquire();
+
+    heartbeatRef.current = setInterval(async () => {
+      try {
+        await lockHeartbeat(pid);
+      } catch {
+        // Lock lost (expired or force-released); try to reacquire
+        tryAcquire();
+      }
+    }, 20_000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(heartbeatRef.current);
+      releaseLock(pid).catch(() => {});
+    };
+  }, [pid]);
+
+  const handleOrgChart = async () => {
+    if (!empCol || !mgrCol) {
+      alert("Please select Employee & Manager columns first.");
+      return;
+    }
+    try {
+      const res = await orgchart(validatedDf, empCol, mgrCol);
+      setTreeData(res);
+      setErrorMsg(null);
+    } catch (err) {
+      console.error(err);
+      setErrorMsg("Failed to generate org chart.");
+    }
+  };
+
+  const doLogout = async () => {
+    await handleLogout();
+    navigate("/login");
+  };
+
+  // --- Access error screens ---
+  if (projectError) {
+    const isNotAssigned = projectError.code === "not_assigned";
+    const isExpired = projectError.code === "project_deadline_expired";
+    const isInactive = projectError.code === "project_inactive";
+
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex flex-col items-center justify-center p-8">
+        <div className="bg-white rounded-xl shadow-lg border border-gray-200 p-8 max-w-md w-full text-center">
+          <div className={`w-16 h-16 mx-auto mb-4 rounded-full flex items-center justify-center ${
+            isNotAssigned ? "bg-yellow-100" : isExpired ? "bg-red-100" : "bg-gray-100"
+          }`}>
+            <svg className={`w-8 h-8 ${isNotAssigned ? "text-yellow-600" : isExpired ? "text-red-600" : "text-gray-600"}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
+            </svg>
+          </div>
+          <h2 className="text-xl font-bold text-gray-800 mb-2">
+            {isNotAssigned ? "Not Assigned" :
+             isExpired ? "Deadline Expired" :
+             isInactive ? "Project Inactive" :
+             projectError.code === "not_found" ? "Project Not Found" :
+             "Access Denied"}
+          </h2>
+          <p className="text-gray-500 mb-6">{projectError.message}</p>
+          <button
+            onClick={() => navigate("/projects")}
+            className="px-6 py-2.5 bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-lg font-medium hover:shadow-lg transition-all"
+          >
+            Back to Projects
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // --- Loading ---
+  if (!project) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-10 h-10 border-4 border-purple-200 border-t-purple-600 rounded-full animate-spin"></div>
+          <p className="text-gray-500 text-sm">Loading project...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // --- CENTER PANE RENDER (same as old App.jsx) ---
+  const renderActiveModule = () => {
+    if (!dfRecords && activeModule !== "Upload" && activeModule !== "Org Chart") {
+      return (
+        <div className="flex flex-col items-center justify-center h-64 text-gray-400">
+          <svg className="w-16 h-16 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+          </svg>
+          <p className="text-lg font-medium">No Data Loaded</p>
+          <p className="text-sm mt-1">Upload data to begin analysis</p>
+        </div>
+      );
+    }
+
+    switch (activeModule) {
+      case "Upload":
+        return (
+          <Upload
+            setDfRecords={(df) => {
+              setDfRecords(df);
+              setValidatedDf(null);
+              setFilteredRowCount(null);
+              setDatasetId(null);
+              setScenarios([]);
+              setActiveScenarioId(null);
+            }}
+            setColumns={setColumns}
+            setUploadedFileName={setUploadedFileName}
+          />
+        );
+      case "Cleanup":
+        return (
+          <Cleanup
+            df={dfRecords}
+            setDf={(df) => { setValidatedDf(df); setFilteredRowCount(null); }}
+            countryCol={countryCol}
+            backendCall={cleanup}
+          />
+        );
+      case "Validate":
+        return (
+          <Validate
+            dfRecords={validatedDf || dfRecords}
+            columns={columns}
+            empCol={empCol} setEmpCol={setEmpCol}
+            mgrCol={mgrCol} setMgrCol={setMgrCol}
+            jobTitleCol={jobTitleCol}
+            setValidatedDf={setValidatedDf}
+          />
+        );
+      case "Filter Errors":
+        return (
+          <FilterErrors
+            validatedDf={validatedDf}
+            setValidatedDf={setValidatedDf}
+            empCol={empCol}
+            mgrCol={mgrCol}
+          />
+        );
+      case "Hierarchy":
+        return (
+          <Hierarchy
+            validatedDf={validatedDf}
+            setValidatedDf={setValidatedDf}
+            empCol={empCol} mgrCol={mgrCol}
+            fteCol={fteCol} flcCol={flcCol}
+            jobTitleCol={jobTitleCol} countryCol={countryCol}
+            uploadedFileName={uploadedFileName}
+            onBaselineSaved={({ datasetId, scenarios, activeScenarioId }) => {
+              setDatasetId(datasetId);
+              setScenarios(scenarios);
+              setActiveScenarioId(activeScenarioId);
+            }}
+          />
+        );
+      case "Spans & Layers":
+        return (
+          <SpansLayers
+            validatedDf={validatedDf}
+            setValidatedDf={setValidatedDf}
+            fteCol={fteCol} flcCol={flcCol}
+            backendCall={spansLayers}
+          />
+        );
+      case "Crosstab":
+        return <Crosstab df={validatedDf} fteCol={fteCol} flcCol={flcCol} />;
+      case "Org Chart":
+        return (
+          <OrgChart
+            df={validatedDf}
+            empCol={empCol} mgrCol={mgrCol}
+            fteCol={fteCol} flcCol={flcCol}
+            jobTitleCol={jobTitleCol} countryCol={countryCol}
+            datasetId={datasetId}
+            scenarios={scenarios}
+            activeScenarioId={activeScenarioId}
+            setScenarios={setScenarios}
+            setActiveScenarioId={setActiveScenarioId}
+            setDatasetId={setDatasetId}
+            setEmpCol={setEmpCol} setMgrCol={setMgrCol}
+            setFteCol={setFteCol} setFlcCol={setFlcCol}
+            setJobTitleCol={setJobTitleCol} setCountryCol={setCountryCol}
+          />
+        );
+      default:
+        return null;
+    }
+  };
+
+  return (
+    <div className="h-screen flex flex-col bg-gradient-to-br from-gray-50 to-gray-100">
+      {/* HEADER */}
+      <header className="px-8 py-4 bg-white border-b border-gray-200 shadow-sm">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <div className="w-10 h-10 bg-gradient-to-br from-purple-600 to-blue-600 rounded-lg flex items-center justify-center shadow-md">
+              <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+              </svg>
+            </div>
+            <div>
+              <h1 className="text-2xl font-bold bg-gradient-to-r from-purple-600 to-blue-600 bg-clip-text text-transparent leading-tight">
+                ORG ANALYSIS
+              </h1>
+              <div className="flex items-center gap-2 text-sm text-gray-500">
+                <span className="font-medium text-gray-700">{project.name}</span>
+                {project.deadline && (
+                  <>
+                    <span className="text-gray-300">|</span>
+                    <span>Due {new Date(project.deadline).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</span>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => navigate("/projects")}
+              className="flex items-center gap-2 px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm font-medium transition-all"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 9l4-4 4 4m0 6l-4 4-4-4" />
+              </svg>
+              Switch Project
+            </button>
+            <div className="flex items-center gap-2 px-3 py-2 bg-green-50 text-green-700 rounded-full text-sm font-medium">
+              <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+              <span>{user?.username}</span>
+            </div>
+            <button
+              onClick={doLogout}
+              className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white rounded-lg font-medium shadow-md hover:shadow-lg transition-all duration-200"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+              </svg>
+              Logout
+            </button>
+          </div>
+        </div>
+      </header>
+
+      {/* LOCK BANNER */}
+      {lockHolder && !lockAcquired && (
+        <div className="px-8 py-3 bg-amber-50 border-b border-amber-200 flex items-center gap-3">
+          <svg className="w-5 h-5 text-amber-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+          </svg>
+          <p className="text-sm text-amber-800">
+            <span className="font-semibold">{lockHolder}</span> is currently editing this project. Your changes may conflict. The lock will release when they leave or after 90 seconds of inactivity.
+          </p>
+        </div>
+      )}
+
+      {/* DEADLINE WARNING BANNER */}
+      {project?.deadline_warning && (
+        <div className="px-8 py-3 bg-red-50 border-b border-red-200 flex items-center gap-3">
+          <svg className="w-5 h-5 text-red-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          <p className="text-sm text-red-800">
+            <span className="font-semibold">Deadline approaching:</span> This project expires in{" "}
+            {project.hours_until_deadline <= 24
+              ? `${Math.round(project.hours_until_deadline)} hours`
+              : `${Math.round(project.hours_until_deadline / 24)} days`
+            }. Contact your admin to extend the deadline if needed.
+          </p>
+        </div>
+      )}
+
+      {/* TOP PANE (GLOBAL CONTROLS) */}
+      <div
+        className="px-8 py-4 bg-white border-b border-gray-200 shadow-sm"
+        style={{ display: activeModule === "Org Chart" ? "none" : "block" }}
+      >
+        <div className="flex items-center gap-2 mb-2">
+          <svg className="w-5 h-5 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
+          </svg>
+          <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">Column Configuration</h2>
+        </div>
+        {columns ? (
+          <div className="grid grid-cols-6 gap-4">
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1.5">Employee Column</label>
+              <select className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all bg-white hover:border-gray-400" value={empCol} onChange={(e) => setEmpCol(e.target.value)}>
+                <option value="">Select column...</option>
+                {columns.map((c) => <option key={c}>{c}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1.5">Manager Column</label>
+              <select className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all bg-white hover:border-gray-400" value={mgrCol} onChange={(e) => setMgrCol(e.target.value)}>
+                <option value="">Select column...</option>
+                {columns.map((c) => <option key={c}>{c}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1.5">FTE Column</label>
+              <select className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all bg-white hover:border-gray-400" value={fteCol} onChange={(e) => setFteCol(e.target.value)}>
+                <option value="">Select column...</option>
+                {columns.map((c) => <option key={c}>{c}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1.5">FLC Column</label>
+              <select className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all bg-white hover:border-gray-400" value={flcCol} onChange={(e) => setFlcCol(e.target.value)}>
+                <option value="">Select column...</option>
+                {columns.map((c) => <option key={c}>{c}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1.5">Country Column <span className="text-gray-400">(Optional)</span></label>
+              <select className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all bg-white hover:border-gray-400" value={countryCol} onChange={(e) => setCountryCol(e.target.value)}>
+                <option value="">Select column...</option>
+                {columns.map((c) => <option key={c}>{c}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1.5">Job Title Column <span className="text-gray-400">(Optional)</span></label>
+              <select className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all bg-white hover:border-gray-400" value={jobTitleCol} onChange={(e) => setJobTitleCol(e.target.value)}>
+                <option value="">Select column...</option>
+                {columns.map((c) => <option key={c}>{c}</option>)}
+              </select>
+            </div>
+          </div>
+        ) : (
+          <p className="text-sm text-gray-400 italic">Upload data to configure columns</p>
+        )}
+      </div>
+
+      {/* BODY */}
+      <div className="flex flex-1 overflow-hidden">
+        {/* LEFT PANE */}
+        <aside className="w-64 bg-white border-r border-gray-200 shadow-sm">
+          <div className="p-4 border-b border-gray-200">
+            <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Modules</h3>
+          </div>
+          <nav className="p-3 space-y-1">
+            {MODULES.map((m) => (
+              <button
+                key={m.id}
+                onClick={() => setActiveModule(m.id)}
+                className={`group flex items-center gap-3 w-full text-left px-4 py-3 rounded-lg font-medium text-sm transition-all duration-200 ${
+                  activeModule === m.id
+                    ? "bg-gradient-to-r from-purple-600 to-blue-600 text-white shadow-md"
+                    : "text-gray-700 hover:bg-gray-100 hover:text-gray-900"
+                }`}
+              >
+                {m.icon}
+                <span>{m.label}</span>
+                {activeModule === m.id && (
+                  <svg className="w-4 h-4 ml-auto" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
+                  </svg>
+                )}
+              </button>
+            ))}
+          </nav>
+        </aside>
+
+        {/* CENTER PANE */}
+        <main className="flex-1 overflow-auto bg-gradient-to-br from-gray-50 to-gray-100">
+          {activeModule === "Org Chart" ? (
+            <div className="h-full">{renderActiveModule()}</div>
+          ) : (
+            <div className="p-8">
+              <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 min-h-[calc(100vh-280px)]">
+                {renderActiveModule()}
+              </div>
+            </div>
+          )}
+        </main>
+
+        {/* RIGHT PANE */}
+        <aside
+          className="w-72 bg-white border-l border-gray-200 shadow-sm"
+          style={{ display: activeModule === "Org Chart" ? "none" : "block" }}
+        >
+          <div className="p-4 border-b border-gray-200">
+            <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Export & Stats</h3>
+          </div>
+          <div className="p-4 space-y-4">
+            <div className="space-y-3">
+              <ExportExcel df={validatedDf} />
+            </div>
+            {filteredRowCount !== null && (
+              <div className="mt-6 p-4 bg-gradient-to-br from-blue-50 to-purple-50 border border-blue-200 rounded-lg">
+                <div className="flex items-center gap-2 mb-1">
+                  <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                  </svg>
+                  <span className="text-xs font-semibold text-gray-600 uppercase">Row Count</span>
+                </div>
+                <p className="text-2xl font-bold text-blue-600">{filteredRowCount.toLocaleString()}</p>
+                <p className="text-xs text-gray-500 mt-1">rows after filtering</p>
+              </div>
+            )}
+          </div>
+        </aside>
+      </div>
+    </div>
+  );
+}

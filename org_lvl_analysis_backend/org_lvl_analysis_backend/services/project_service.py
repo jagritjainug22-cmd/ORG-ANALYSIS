@@ -1,0 +1,191 @@
+"""
+Project service -- CRUD for projects and project assignments.
+"""
+
+import sqlite3
+from datetime import datetime
+from typing import Any, Dict, List, Optional
+
+from services.db_service import _connect
+
+
+# ---------------------------------------------------------------------------
+# Projects
+# ---------------------------------------------------------------------------
+
+def create_project(
+    name: str,
+    created_by: int,
+    description: Optional[str] = None,
+    deadline: Optional[str] = None,
+) -> Dict[str, Any]:
+    now = datetime.utcnow().isoformat()
+    with _connect() as conn:
+        c = conn.cursor()
+        c.execute(
+            """
+            INSERT INTO projects (name, description, deadline, status, created_by, created_at, updated_at)
+            VALUES (?, ?, ?, 'active', ?, ?, ?)
+            """,
+            (name, description, deadline, created_by, now, now),
+        )
+        conn.commit()
+        return get_project(c.lastrowid)
+
+
+def get_project(project_id: int) -> Optional[Dict[str, Any]]:
+    with _connect() as conn:
+        row = conn.execute("SELECT * FROM projects WHERE id = ?", (project_id,)).fetchone()
+        return dict(row) if row else None
+
+
+def list_all_projects() -> List[Dict[str, Any]]:
+    with _connect() as conn:
+        rows = conn.execute("SELECT * FROM projects ORDER BY created_at DESC").fetchall()
+        return [dict(r) for r in rows]
+
+
+def list_user_projects(user_id: int) -> List[Dict[str, Any]]:
+    with _connect() as conn:
+        rows = conn.execute(
+            """
+            SELECT p.*, pa.role AS assignment_role, pa.assigned_at
+            FROM projects p
+            JOIN project_assignments pa ON p.id = pa.project_id
+            WHERE pa.user_id = ? AND p.status = 'active'
+            ORDER BY p.updated_at DESC
+            """,
+            (user_id,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+
+def update_project(
+    project_id: int,
+    name: Optional[str] = None,
+    description: Optional[str] = None,
+    deadline: Optional[str] = None,
+    status: Optional[str] = None,
+) -> Optional[Dict[str, Any]]:
+    now = datetime.utcnow().isoformat()
+    updates = []
+    params = []
+
+    if name is not None:
+        updates.append("name = ?")
+        params.append(name)
+    if description is not None:
+        updates.append("description = ?")
+        params.append(description)
+    if deadline is not None:
+        updates.append("deadline = ?")
+        params.append(deadline if deadline != "" else None)
+    if status is not None:
+        updates.append("status = ?")
+        params.append(status)
+
+    if not updates:
+        return get_project(project_id)
+
+    updates.append("updated_at = ?")
+    params.append(now)
+    params.append(project_id)
+
+    with _connect() as conn:
+        conn.execute(
+            f"UPDATE projects SET {', '.join(updates)} WHERE id = ?",
+            params,
+        )
+        conn.commit()
+    return get_project(project_id)
+
+
+def delete_project(project_id: int) -> bool:
+    """Soft-delete: set status to 'archived'."""
+    return update_project(project_id, status="archived") is not None
+
+
+def hard_delete_project(project_id: int) -> bool:
+    """Permanently delete a project and all related data (assignments, datasets, scenarios, change_log)."""
+    with _connect() as conn:
+        conn.execute("DELETE FROM project_assignments WHERE project_id = ?", (project_id,))
+        dataset_ids = [r["id"] for r in conn.execute("SELECT id FROM datasets WHERE project_id = ?", (project_id,)).fetchall()]
+        for did in dataset_ids:
+            conn.execute("DELETE FROM change_log WHERE scenario_id IN (SELECT id FROM scenarios WHERE dataset_id = ?)", (did,))
+            conn.execute("DELETE FROM scenarios WHERE dataset_id = ?", (did,))
+        conn.execute("DELETE FROM datasets WHERE project_id = ?", (project_id,))
+        result = conn.execute("DELETE FROM projects WHERE id = ?", (project_id,))
+        conn.commit()
+        return result.rowcount > 0
+
+
+def cleanup_stale_archived(days: int = 30) -> List[int]:
+    """Hard-delete projects archived more than `days` ago. Returns list of deleted project IDs."""
+    from datetime import timedelta
+    cutoff = (datetime.utcnow() - timedelta(days=days)).isoformat()
+    with _connect() as conn:
+        rows = conn.execute(
+            "SELECT id FROM projects WHERE status = 'archived' AND updated_at <= ?", (cutoff,)
+        ).fetchall()
+    deleted = []
+    for row in rows:
+        if hard_delete_project(row["id"]):
+            deleted.append(row["id"])
+    return deleted
+
+
+# ---------------------------------------------------------------------------
+# Project assignments
+# ---------------------------------------------------------------------------
+
+def get_assignment(project_id: int, user_id: int) -> Optional[Dict[str, Any]]:
+    with _connect() as conn:
+        row = conn.execute(
+            "SELECT * FROM project_assignments WHERE project_id = ? AND user_id = ?",
+            (project_id, user_id),
+        ).fetchone()
+        return dict(row) if row else None
+
+
+def list_project_assignments(project_id: int) -> List[Dict[str, Any]]:
+    with _connect() as conn:
+        rows = conn.execute(
+            """
+            SELECT pa.*, u.username, u.display_name, u.role AS user_role, u.is_active
+            FROM project_assignments pa
+            JOIN users u ON pa.user_id = u.id
+            WHERE pa.project_id = ?
+            ORDER BY pa.assigned_at
+            """,
+            (project_id,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+
+def assign_user(
+    project_id: int,
+    user_id: int,
+    assigned_by: int,
+    role: str = "member",
+) -> Dict[str, Any]:
+    now = datetime.utcnow().isoformat()
+    with _connect() as conn:
+        conn.execute(
+            """
+            INSERT INTO project_assignments (project_id, user_id, role, assigned_at, assigned_by)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (project_id, user_id, role, now, assigned_by),
+        )
+        conn.commit()
+    return get_assignment(project_id, user_id)
+
+
+def remove_assignment(project_id: int, user_id: int) -> bool:
+    with _connect() as conn:
+        result = conn.execute(
+            "DELETE FROM project_assignments WHERE project_id = ? AND user_id = ?",
+            (project_id, user_id),
+        )
+        conn.commit()
+        return result.rowcount > 0

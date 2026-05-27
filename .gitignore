@@ -1,0 +1,82 @@
+# ========================
+# Python
+# ========================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+*.egg
+dist/
+build/
+.eggs/
+*.whl
+venv/
+.venv/
+env/
+.ipynb_checkpoints/
+
+# ========================
+# Node.js / Frontend
+# ========================
+node_modules/
+.vite/
+*.tsbuildinfo
+.eslintcache
+
+# ========================
+# Environment & Secrets
+# ========================
+.env
+.env.*
+!.env.example
+
+# ========================
+# Database files
+# ========================
+*.db
+*.sqlite
+*.sqlite3
+db/backups/
+
+# ========================
+# Logs
+# ========================
+*.log
+**/logs/*.csv
+
+# ========================
+# IDE / Editor
+# ========================
+.cursor/
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ========================
+# OS generated
+# ========================
+.DS_Store
+Thumbs.db
+desktop.ini
+ehthumbs.db
+
+# ========================
+# Email / Docs attachments (not code)
+# ========================
+Fw_*/
+Fw_ */
+
+# ========================
+# Build output
+# ========================
+org_lvl_analysis_frontend/org_lvl_analysis_frontend/dist/
+
+# ========================
+# Misc
+# ========================
+*.bak
+*.tmp
+*.temp

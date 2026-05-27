@@ -1,0 +1,10 @@
+org chart for census data for HR data
+(who reports to whom - employee specific)
+
+- x marked as red - cost updated
+
+- last changes stored
+
+- summary to be provided
+
+- export in ppt ( export updated chart)

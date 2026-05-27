@@ -80,3 +80,13 @@ org_lvl_analysis_frontend/org_lvl_analysis_frontend/dist/
 *.bak
 *.tmp
 *.temp
+~$*
+
+# ========================
+# Python test / lint caches
+# ========================
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/

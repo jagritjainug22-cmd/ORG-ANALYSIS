@@ -985,7 +985,9 @@ export default function OrgChart({
           gap: 12,
           flexShrink: 0,
           flexWrap: "nowrap",
-          overflowX: "auto",
+          overflow: "visible",
+          position: "relative",
+          zIndex: 10,
           minHeight: 44,
         }}
       >

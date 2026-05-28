@@ -61,32 +61,32 @@ function UserFormModal({ open, onClose, onSave, editUser }) {
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Username</label>
             <input type="text" value={username} onChange={(e) => setUsername(e.target.value)}
-              disabled={!!editUser} className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-purple-500 focus:border-transparent disabled:bg-gray-100 disabled:text-gray-500" required />
+              disabled={!!editUser} className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-am-500 focus:border-am-500 outline-none disabled:bg-gray-100 disabled:text-gray-500" required />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Display Name</label>
             <input type="text" value={displayName} onChange={(e) => setDisplayName(e.target.value)}
-              className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-purple-500 focus:border-transparent" placeholder="Optional" />
+              className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-am-500 focus:border-am-500 outline-none" placeholder="Optional" />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
               {editUser ? "Reset Password (leave blank to keep)" : "Password"}
             </label>
             <input type="password" value={password} onChange={(e) => setPassword(e.target.value)}
-              className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+              className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-am-500 focus:border-am-500 outline-none"
               minLength={editUser ? 0 : 8} required={!editUser} placeholder={editUser ? "Leave blank to keep current" : "Min 8 characters"} />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Role</label>
             <select value={role} onChange={(e) => setRole(e.target.value)}
-              className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-purple-500 focus:border-transparent bg-white">
+              className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-am-500 focus:border-am-500 outline-none bg-white">
               <option value="member">Member</option>
               <option value="admin">Admin</option>
             </select>
           </div>
           <div className="flex justify-end gap-3 pt-2">
             <button type="button" onClick={onClose} className="px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50">Cancel</button>
-            <button type="submit" disabled={saving} className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-sm font-medium disabled:opacity-50">
+            <button type="submit" disabled={saving} className="px-4 py-2 bg-am-500 hover:bg-am-600 text-white rounded-lg text-sm font-medium disabled:opacity-50">
               {saving ? "Saving..." : editUser ? "Update" : "Create"}
             </button>
           </div>
@@ -142,7 +142,7 @@ export default function UserManagement() {
           <p className="text-sm text-gray-500 mt-1">{users.length} user{users.length !== 1 ? "s" : ""} total</p>
         </div>
         <button onClick={() => { setEditUser(null); setShowForm(true); }}
-          className="flex items-center gap-2 px-4 py-2.5 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-sm font-medium shadow-md transition-all">
+          className="flex items-center gap-2 px-4 py-2.5 bg-am-500 hover:bg-am-600 text-white rounded-lg text-sm font-medium shadow-md transition-all">
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
           Create User
         </button>
@@ -159,7 +159,7 @@ export default function UserManagement() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search by username or display name..."
-            className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-purple-500 focus:border-transparent bg-white"
+            className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-am-500 focus:border-am-500 outline-none bg-white"
           />
           {search && (
             <button onClick={() => setSearch("")} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
@@ -174,7 +174,7 @@ export default function UserManagement() {
 
       {loading ? (
         <div className="flex justify-center py-12">
-          <div className="w-8 h-8 border-4 border-purple-200 border-t-purple-600 rounded-full animate-spin"></div>
+          <div className="w-8 h-8 border-4 border-am-100 border-t-am-500 rounded-full animate-spin"></div>
         </div>
       ) : (
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">

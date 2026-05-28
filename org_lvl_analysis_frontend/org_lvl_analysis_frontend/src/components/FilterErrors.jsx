@@ -136,9 +136,9 @@ const run = async () => {
   return (
     <div className="space-y-6">
       {/* Header Section */}
-      <div className="bg-gradient-to-r from-purple-50 to-blue-50 border border-purple-200 rounded-lg p-6">
+      <div className="bg-am-50 border border-am-200 rounded-lg p-6">
         <div className="flex items-start gap-4">
-          <div className="w-12 h-12 bg-gradient-to-br from-purple-600 to-blue-600 rounded-lg flex items-center justify-center flex-shrink-0">
+          <div className="w-12 h-12 bg-am-500 rounded-lg flex items-center justify-center flex-shrink-0">
             <svg
               className="w-7 h-7 text-white"
               fill="none"
@@ -223,7 +223,7 @@ const run = async () => {
           <div className="bg-white border border-gray-200 rounded-lg p-6">
             <h4 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
               <svg
-                className="w-5 h-5 text-purple-600"
+                className="w-5 h-5 text-am-500"
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
@@ -286,10 +286,10 @@ const run = async () => {
                 </p>
               </div>
 
-              <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
+              <div className="bg-am-50 border border-am-200 rounded-lg p-4">
                 <div className="flex items-center gap-2 mb-1">
                   <svg
-                    className="w-4 h-4 text-purple-600"
+                    className="w-4 h-4 text-am-500"
                     fill="none"
                     stroke="currentColor"
                     viewBox="0 0 24 24"
@@ -303,10 +303,10 @@ const run = async () => {
                   </svg>
                   <span className="text-xs font-medium text-gray-600">Will Remove</span>
                 </div>
-                <p className="text-2xl font-bold text-purple-900">
+                <p className="text-2xl font-bold text-am-800">
                   {selectedCount.toLocaleString()}
                 </p>
-                <p className="text-xs text-purple-700 mt-1">
+                <p className="text-xs text-am-700 mt-1">
                   {((selectedCount / validatedDf.length) * 100).toFixed(1)}% of total
                 </p>
               </div>
@@ -320,7 +320,7 @@ const run = async () => {
                   <div className="flex gap-2">
                     <button
                       onClick={handleSelectAll}
-                      className="text-xs px-3 py-1 bg-purple-100 text-purple-700 rounded-md hover:bg-purple-200 transition-colors font-medium"
+                      className="text-xs px-3 py-1 bg-am-100 text-am-700 rounded-md hover:bg-am-200 transition-colors font-medium"
                     >
                       Select All
                     </button>
@@ -339,7 +339,7 @@ const run = async () => {
                         key={flag}
                         className={`flex items-center justify-between rounded-lg px-4 py-3 cursor-pointer transition-all ${
                           selectedFlags[flag]
-                            ? 'bg-purple-50 border-2 border-purple-300'
+                            ? 'bg-am-50 border-2 border-am-300'
                             : 'bg-gray-50 border-2 border-gray-200 hover:border-gray-300'
                         }`}
                       >
@@ -348,11 +348,11 @@ const run = async () => {
                             type="checkbox"
                             checked={selectedFlags[flag] || false}
                             onChange={() => handleFlagToggle(flag)}
-                            className="w-5 h-5 text-purple-600 border-gray-300 rounded focus:ring-2 focus:ring-purple-500 cursor-pointer"
+                            className="w-5 h-5 text-am-500 border-gray-300 rounded focus:ring-2 focus:ring-am-500 cursor-pointer"
                           />
                           <div className="flex items-center gap-2">
                             <svg
-                              className={`w-4 h-4 ${selectedFlags[flag] ? 'text-purple-600' : 'text-red-600'}`}
+                              className={`w-4 h-4 ${selectedFlags[flag] ? 'text-am-500' : 'text-red-600'}`}
                               fill="currentColor"
                               viewBox="0 0 20 20"
                             >
@@ -362,12 +362,12 @@ const run = async () => {
                                 clipRule="evenodd"
                               />
                             </svg>
-                            <span className={`text-sm font-medium ${selectedFlags[flag] ? 'text-purple-900' : 'text-gray-700'}`}>
+                            <span className={`text-sm font-medium ${selectedFlags[flag] ? 'text-am-800' : 'text-gray-700'}`}>
                               {flag.replace("FLAG_", "").replace(/_/g, " ")}
                             </span>
                           </div>
                         </div>
-                        <span className={`text-sm font-bold ${selectedFlags[flag] ? 'text-purple-600' : 'text-red-600'}`}>
+                        <span className={`text-sm font-bold ${selectedFlags[flag] ? 'text-am-500' : 'text-red-600'}`}>
                           {count.toLocaleString()}
                         </span>
                       </label>
@@ -383,7 +383,7 @@ const run = async () => {
             <button
               onClick={run}
               disabled={isProcessing || !empCol || !mgrCol || selectedCount === 0}
-              className="w-full px-6 py-4 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white rounded-lg font-semibold shadow-lg hover:shadow-xl transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3"
+              className="w-full px-6 py-4 bg-am-500 hover:bg-am-600 text-white rounded-lg font-semibold shadow-lg hover:shadow-xl transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3"
             >
               {isProcessing ? (
                 <>

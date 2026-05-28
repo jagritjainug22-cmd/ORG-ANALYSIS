@@ -48,33 +48,14 @@ export default function SavedDatasetPicker({ onPick, onUploadInstead }) {
         background: AM.bg,
         borderRadius: 12,
         border: `1px solid ${AM.border}`,
-        padding: 40,
+        padding: 24,
         fontFamily: "'IBM Plex Sans', system-ui, sans-serif",
         display: "flex",
         flexDirection: "column",
         alignItems: "center",
-        gap: 16,
+        gap: 12,
       }}
     >
-      <div
-        style={{
-          width: 56,
-          height: 56,
-          borderRadius: 12,
-          background: AM.navy,
-          color: AM.gold,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          fontWeight: 800,
-          fontSize: 22,
-        }}
-      >
-        A
-      </div>
-      <h3 style={{ fontSize: 22, fontWeight: 700, color: AM.navy, margin: 0 }}>
-        Welcome to OrgSight 2.0
-      </h3>
       <p style={{ fontSize: 13, color: AM.textMuted, margin: 0, textAlign: "center", maxWidth: 520 }}>
         Reopen a baseline you saved earlier, or run a fresh dataset through the
         pipeline (Upload → Cleanup → Validate → Filter Errors → Hierarchy).
@@ -176,9 +157,32 @@ export default function SavedDatasetPicker({ onPick, onUploadInstead }) {
                     color: AM.textMuted,
                     marginTop: 2,
                     fontFamily: "'IBM Plex Mono', monospace",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 6,
                   }}
                 >
-                  #{d.id} · {fmtNumber(d.row_count)} rows · {d.username || "unknown user"} · {formatUploadTime(d.upload_time)}
+                  <span>#{d.id} · {fmtNumber(d.row_count)} rows · {d.username || "unknown user"} · {formatUploadTime(d.upload_time)}</span>
+                  {d.locked_by && (
+                    <span
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 3,
+                        background: "#fef3c7",
+                        color: "#92400e",
+                        padding: "1px 8px",
+                        borderRadius: 10,
+                        fontSize: 10,
+                        fontWeight: 700,
+                        fontFamily: "'IBM Plex Sans', system-ui, sans-serif",
+                        border: "1px solid #f59e0b",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      &#128274; {d.locked_by}
+                    </span>
+                  )}
                 </div>
               </div>
               <span
@@ -192,7 +196,7 @@ export default function SavedDatasetPicker({ onPick, onUploadInstead }) {
                   letterSpacing: "0.4px",
                 }}
               >
-                {loadingId === d.id ? "Loading…" : "Open"}
+                {loadingId === d.id ? "Loading…" : d.locked_by ? "Open (read-only)" : "Open"}
               </span>
             </button>
           ))

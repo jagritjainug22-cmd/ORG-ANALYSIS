@@ -181,16 +181,16 @@ export default function ProjectWorkspace() {
     const isInactive = projectError.code === "project_inactive";
 
     return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex flex-col items-center justify-center p-8">
-        <div className="bg-white rounded-xl shadow-lg border border-gray-200 p-8 max-w-md w-full text-center">
+      <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-8">
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-8 max-w-md w-full text-center">
           <div className={`w-16 h-16 mx-auto mb-4 rounded-full flex items-center justify-center ${
-            isNotAssigned ? "bg-yellow-100" : isExpired ? "bg-red-100" : "bg-gray-100"
+            isNotAssigned ? "bg-amber-100" : isExpired ? "bg-red-100" : "bg-gray-100"
           }`}>
-            <svg className={`w-8 h-8 ${isNotAssigned ? "text-yellow-600" : isExpired ? "text-red-600" : "text-gray-600"}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className={`w-8 h-8 ${isNotAssigned ? "text-amber-600" : isExpired ? "text-red-600" : "text-gray-600"}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
             </svg>
           </div>
-          <h2 className="text-xl font-bold text-gray-800 mb-2">
+          <h2 className="text-xl font-semibold text-gray-900 mb-2">
             {isNotAssigned ? "Not Assigned" :
              isExpired ? "Deadline Expired" :
              isInactive ? "Project Inactive" :
@@ -200,7 +200,7 @@ export default function ProjectWorkspace() {
           <p className="text-gray-500 mb-6">{projectError.message}</p>
           <button
             onClick={() => navigate("/projects")}
-            className="px-6 py-2.5 bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-lg font-medium hover:shadow-lg transition-all"
+            className="px-6 py-2.5 bg-am-500 hover:bg-am-600 text-white rounded-md font-medium transition shadow-sm"
           >
             Back to Projects
           </button>
@@ -212,9 +212,9 @@ export default function ProjectWorkspace() {
   // --- Loading ---
   if (!project) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center">
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="flex flex-col items-center gap-3">
-          <div className="w-10 h-10 border-4 border-purple-200 border-t-purple-600 rounded-full animate-spin"></div>
+          <div className="w-10 h-10 border-4 border-am-100 border-t-am-500 rounded-full animate-spin"></div>
           <p className="text-gray-500 text-sm">Loading project...</p>
         </div>
       </div>
@@ -331,48 +331,64 @@ export default function ProjectWorkspace() {
   };
 
   return (
-    <div className="h-screen flex flex-col bg-gradient-to-br from-gray-50 to-gray-100">
+    <div className="h-screen flex flex-col bg-gray-50">
       {/* HEADER */}
-      <header className="px-8 py-4 bg-white border-b border-gray-200 shadow-sm">
+      <header className="px-8 py-3 bg-white border-b border-gray-200">
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <div className="w-10 h-10 bg-gradient-to-br from-purple-600 to-blue-600 rounded-lg flex items-center justify-center shadow-md">
-              <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-              </svg>
-            </div>
-            <div>
-              <h1 className="text-2xl font-bold bg-gradient-to-r from-purple-600 to-blue-600 bg-clip-text text-transparent leading-tight">
-                ORG ANALYSIS
-              </h1>
-              <div className="flex items-center gap-2 text-sm text-gray-500">
-                <span className="font-medium text-gray-700">{project.name}</span>
-                {project.deadline && (
-                  <>
-                    <span className="text-gray-300">|</span>
-                    <span>Due {new Date(project.deadline).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</span>
-                  </>
-                )}
-              </div>
-            </div>
-          </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 min-w-0">
+            <span className="text-am-500 font-bold text-xl tracking-tight">A&amp;M</span>
+            <span className="h-5 w-px bg-gray-300" />
             <button
               onClick={() => navigate("/projects")}
-              className="flex items-center gap-2 px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm font-medium transition-all"
+              className="text-gray-500 hover:text-am-600 text-sm font-medium transition"
+            >
+              Org Analysis
+            </button>
+            <svg className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+            </svg>
+            <span className="text-gray-900 font-semibold text-sm truncate" title={project.name}>
+              {project.name}
+            </span>
+            {project.deadline && (
+              <span className="hidden md:inline-flex items-center gap-1.5 ml-3 px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-600">
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+                Due {new Date(project.deadline).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            {user?.role === "admin" && (
+              <button
+                onClick={() => navigate("/admin")}
+                className="inline-flex items-center gap-2 px-3 py-1.5 border border-am-500 text-am-600 hover:bg-am-50 rounded-md text-sm font-medium transition"
+                title="Open Admin Panel"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+                Admin Panel
+              </button>
+            )}
+            <button
+              onClick={() => navigate("/projects")}
+              className="inline-flex items-center gap-2 px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-md text-sm font-medium transition"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 9l4-4 4 4m0 6l-4 4-4-4" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
               </svg>
               Switch Project
             </button>
-            <div className="flex items-center gap-2 px-3 py-2 bg-green-50 text-green-700 rounded-full text-sm font-medium">
-              <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-              <span>{user?.username}</span>
+            <div className="flex items-center gap-2 px-3 py-1.5 bg-gray-100 rounded-full text-sm font-medium text-gray-700">
+              <div className="w-2 h-2 bg-emerald-500 rounded-full"></div>
+              <span>{user?.username}{user?.role === "admin" ? " (Admin)" : ""}</span>
             </div>
             <button
               onClick={doLogout}
-              className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white rounded-lg font-medium shadow-md hover:shadow-lg transition-all duration-200"
+              className="inline-flex items-center gap-2 px-3 py-1.5 text-gray-600 hover:text-red-600 hover:bg-red-50 rounded-md text-sm font-medium transition"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
@@ -413,11 +429,11 @@ export default function ProjectWorkspace() {
 
       {/* TOP PANE (GLOBAL CONTROLS) */}
       <div
-        className="px-8 py-4 bg-white border-b border-gray-200 shadow-sm"
+        className="px-8 py-4 bg-white border-b border-gray-200"
         style={{ display: activeModule === "Org Chart" ? "none" : "block" }}
       >
         <div className="flex items-center gap-2 mb-2">
-          <svg className="w-5 h-5 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg className="w-5 h-5 text-am-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
           </svg>
           <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">Column Configuration</h2>
@@ -426,42 +442,42 @@ export default function ProjectWorkspace() {
           <div className="grid grid-cols-6 gap-4">
             <div>
               <label className="block text-xs font-medium text-gray-600 mb-1.5">Employee Column</label>
-              <select className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all bg-white hover:border-gray-400" value={empCol} onChange={(e) => setEmpCol(e.target.value)}>
+              <select className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-am-500 focus:border-am-500 outline-none transition-all bg-white hover:border-gray-400" value={empCol} onChange={(e) => setEmpCol(e.target.value)}>
                 <option value="">Select column...</option>
                 {columns.map((c) => <option key={c}>{c}</option>)}
               </select>
             </div>
             <div>
               <label className="block text-xs font-medium text-gray-600 mb-1.5">Manager Column</label>
-              <select className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all bg-white hover:border-gray-400" value={mgrCol} onChange={(e) => setMgrCol(e.target.value)}>
+              <select className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-am-500 focus:border-am-500 outline-none transition-all bg-white hover:border-gray-400" value={mgrCol} onChange={(e) => setMgrCol(e.target.value)}>
                 <option value="">Select column...</option>
                 {columns.map((c) => <option key={c}>{c}</option>)}
               </select>
             </div>
             <div>
               <label className="block text-xs font-medium text-gray-600 mb-1.5">FTE Column</label>
-              <select className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all bg-white hover:border-gray-400" value={fteCol} onChange={(e) => setFteCol(e.target.value)}>
+              <select className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-am-500 focus:border-am-500 outline-none transition-all bg-white hover:border-gray-400" value={fteCol} onChange={(e) => setFteCol(e.target.value)}>
                 <option value="">Select column...</option>
                 {columns.map((c) => <option key={c}>{c}</option>)}
               </select>
             </div>
             <div>
               <label className="block text-xs font-medium text-gray-600 mb-1.5">FLC Column</label>
-              <select className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all bg-white hover:border-gray-400" value={flcCol} onChange={(e) => setFlcCol(e.target.value)}>
+              <select className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-am-500 focus:border-am-500 outline-none transition-all bg-white hover:border-gray-400" value={flcCol} onChange={(e) => setFlcCol(e.target.value)}>
                 <option value="">Select column...</option>
                 {columns.map((c) => <option key={c}>{c}</option>)}
               </select>
             </div>
             <div>
               <label className="block text-xs font-medium text-gray-600 mb-1.5">Country Column <span className="text-gray-400">(Optional)</span></label>
-              <select className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all bg-white hover:border-gray-400" value={countryCol} onChange={(e) => setCountryCol(e.target.value)}>
+              <select className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-am-500 focus:border-am-500 outline-none transition-all bg-white hover:border-gray-400" value={countryCol} onChange={(e) => setCountryCol(e.target.value)}>
                 <option value="">Select column...</option>
                 {columns.map((c) => <option key={c}>{c}</option>)}
               </select>
             </div>
             <div>
               <label className="block text-xs font-medium text-gray-600 mb-1.5">Job Title Column <span className="text-gray-400">(Optional)</span></label>
-              <select className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all bg-white hover:border-gray-400" value={jobTitleCol} onChange={(e) => setJobTitleCol(e.target.value)}>
+              <select className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-am-500 focus:border-am-500 outline-none transition-all bg-white hover:border-gray-400" value={jobTitleCol} onChange={(e) => setJobTitleCol(e.target.value)}>
                 <option value="">Select column...</option>
                 {columns.map((c) => <option key={c}>{c}</option>)}
               </select>
@@ -484,9 +500,9 @@ export default function ProjectWorkspace() {
               <button
                 key={m.id}
                 onClick={() => setActiveModule(m.id)}
-                className={`group flex items-center gap-3 w-full text-left px-4 py-3 rounded-lg font-medium text-sm transition-all duration-200 ${
+                className={`group flex items-center gap-3 w-full text-left px-4 py-2.5 rounded-md font-medium text-sm transition ${
                   activeModule === m.id
-                    ? "bg-gradient-to-r from-purple-600 to-blue-600 text-white shadow-md"
+                    ? "bg-am-500 text-white shadow-sm"
                     : "text-gray-700 hover:bg-gray-100 hover:text-gray-900"
                 }`}
               >
@@ -503,12 +519,12 @@ export default function ProjectWorkspace() {
         </aside>
 
         {/* CENTER PANE */}
-        <main className="flex-1 overflow-auto bg-gradient-to-br from-gray-50 to-gray-100">
+        <main className="flex-1 overflow-auto bg-gray-50">
           {activeModule === "Org Chart" ? (
             <div className="h-full">{renderActiveModule()}</div>
           ) : (
             <div className="p-8">
-              <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 min-h-[calc(100vh-280px)]">
+              <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 min-h-[calc(100vh-280px)]">
                 {renderActiveModule()}
               </div>
             </div>
@@ -528,14 +544,14 @@ export default function ProjectWorkspace() {
               <ExportExcel df={validatedDf} />
             </div>
             {filteredRowCount !== null && (
-              <div className="mt-6 p-4 bg-gradient-to-br from-blue-50 to-purple-50 border border-blue-200 rounded-lg">
+              <div className="mt-6 p-4 bg-am-50 border border-am-200 rounded-md">
                 <div className="flex items-center gap-2 mb-1">
-                  <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-4 h-4 text-am-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
                   </svg>
                   <span className="text-xs font-semibold text-gray-600 uppercase">Row Count</span>
                 </div>
-                <p className="text-2xl font-bold text-blue-600">{filteredRowCount.toLocaleString()}</p>
+                <p className="text-2xl font-bold text-am-600">{filteredRowCount.toLocaleString()}</p>
                 <p className="text-xs text-gray-500 mt-1">rows after filtering</p>
               </div>
             )}

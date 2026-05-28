@@ -109,9 +109,9 @@ export default function Hierarchy({
   return (
     <div className="space-y-6">
       {/* Header Section */}
-      <div className="bg-gradient-to-r from-purple-50 to-blue-50 border border-purple-200 rounded-lg p-6">
+      <div className="bg-am-50 border border-am-200 rounded-lg p-6">
         <div className="flex items-start gap-4">
-          <div className="w-12 h-12 bg-gradient-to-br from-purple-600 to-blue-600 rounded-lg flex items-center justify-center flex-shrink-0">
+          <div className="w-12 h-12 bg-am-500 rounded-lg flex items-center justify-center flex-shrink-0">
             <svg
               className="w-7 h-7 text-white"
               fill="none"
@@ -142,7 +142,7 @@ export default function Hierarchy({
         <button
           onClick={runPreview}
           disabled={!canRun || loading}
-          className="flex-1 px-6 py-4 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white rounded-lg font-semibold shadow-lg hover:shadow-xl transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3"
+          className="flex-1 px-6 py-4 bg-am-500 hover:bg-am-600 text-white rounded-lg font-semibold shadow-lg hover:shadow-xl transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3"
         >
           {loading ? (
             <>
@@ -330,7 +330,7 @@ export default function Hierarchy({
           <div className="bg-gray-50 px-6 py-4 border-b border-gray-200">
             <h4 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
               <svg
-                className="w-5 h-5 text-purple-600"
+                className="w-5 h-5 text-am-500"
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"

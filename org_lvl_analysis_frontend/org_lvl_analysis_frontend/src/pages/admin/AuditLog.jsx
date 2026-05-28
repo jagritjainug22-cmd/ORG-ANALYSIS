@@ -8,12 +8,28 @@ const ACTION_COLORS = {
   "project.create": "bg-green-100 text-green-700",
   "project.update": "bg-blue-100 text-blue-700",
   "project.archive": "bg-red-100 text-red-700",
-  "project.assign": "bg-purple-100 text-purple-700",
+  "project.assign": "bg-am-100 text-am-700",
   "project.unassign": "bg-orange-100 text-orange-700",
   "admin_override": "bg-amber-100 text-amber-700",
 };
 
 const PAGE_SIZE = 50;
+
+// Backend stores timestamps as UTC ISO strings WITHOUT a 'Z' suffix
+// (datetime.utcnow().isoformat()). JavaScript would otherwise parse them as
+// local time, so we explicitly mark them as UTC before formatting in IST.
+const formatIST = (iso) => {
+  if (!iso) return "—";
+  const utc = /Z|[+-]\d{2}:?\d{2}$/.test(iso) ? iso : iso + "Z";
+  const d = new Date(utc);
+  if (isNaN(d.getTime())) return iso;
+  return d.toLocaleString("en-IN", {
+    timeZone: "Asia/Kolkata",
+    year: "numeric", month: "short", day: "numeric",
+    hour: "2-digit", minute: "2-digit", second: "2-digit",
+    hour12: false,
+  }) + " IST";
+};
 
 export default function AuditLog() {
   const [entries, setEntries] = useState([]);
@@ -85,14 +101,14 @@ export default function AuditLog() {
           </svg>
           <span className="text-sm font-semibold text-gray-700">Filters</span>
           {hasFilters && (
-            <button onClick={clearFilters} className="ml-auto text-xs text-purple-600 hover:underline">Clear all</button>
+            <button onClick={clearFilters} className="ml-auto text-xs text-am-600 hover:underline">Clear all</button>
           )}
         </div>
         <div className="grid grid-cols-4 gap-4">
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">User</label>
             <select value={filterUser} onChange={(e) => setFilterUser(e.target.value)}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-purple-500 focus:border-transparent bg-white">
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-am-500 focus:border-am-500 outline-none bg-white">
               <option value="">All users</option>
               {users.map((u) => <option key={u.id} value={u.id}>{u.username}</option>)}
             </select>
@@ -100,7 +116,7 @@ export default function AuditLog() {
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">Action</label>
             <select value={filterAction} onChange={(e) => setFilterAction(e.target.value)}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-purple-500 focus:border-transparent bg-white">
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-am-500 focus:border-am-500 outline-none bg-white">
               <option value="">All actions</option>
               {knownActions.map((a) => <option key={a} value={a}>{a}</option>)}
             </select>
@@ -108,12 +124,12 @@ export default function AuditLog() {
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">From</label>
             <input type="date" value={filterDateFrom} onChange={(e) => setFilterDateFrom(e.target.value)}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-purple-500 focus:border-transparent" />
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-am-500 focus:border-am-500 outline-none" />
           </div>
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">To</label>
             <input type="date" value={filterDateTo} onChange={(e) => setFilterDateTo(e.target.value)}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-purple-500 focus:border-transparent" />
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-am-500 focus:border-am-500 outline-none" />
           </div>
         </div>
       </div>
@@ -121,7 +137,7 @@ export default function AuditLog() {
       {/* Table */}
       {loading ? (
         <div className="flex justify-center py-12">
-          <div className="w-8 h-8 border-4 border-purple-200 border-t-purple-600 rounded-full animate-spin"></div>
+          <div className="w-8 h-8 border-4 border-am-100 border-t-am-500 rounded-full animate-spin"></div>
         </div>
       ) : entries.length === 0 ? (
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-12 text-center">
@@ -136,7 +152,7 @@ export default function AuditLog() {
             <table className="w-full">
               <thead>
                 <tr className="bg-gray-50 border-b border-gray-200">
-                  <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider w-40">Time</th>
+                  <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider w-56">Time (IST)</th>
                   <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider w-28">User</th>
                   <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider w-36">Action</th>
                   <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Details</th>
@@ -145,10 +161,8 @@ export default function AuditLog() {
               <tbody className="divide-y divide-gray-100">
                 {entries.map((e) => (
                   <tr key={e.id} className="hover:bg-gray-50 transition-colors">
-                    <td className="px-5 py-3 text-xs text-gray-500 font-mono whitespace-nowrap">
-                      {new Date(e.created_at).toLocaleString("en-US", {
-                        month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit"
-                      })}
+                    <td className="px-5 py-3 text-xs text-gray-500 font-mono whitespace-nowrap" title={e.created_at + " UTC"}>
+                      {formatIST(e.created_at)}
                     </td>
                     <td className="px-5 py-3 text-sm text-gray-700 font-medium">{e.username || "—"}</td>
                     <td className="px-5 py-3">

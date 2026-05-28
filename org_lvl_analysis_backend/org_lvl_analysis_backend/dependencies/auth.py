@@ -16,6 +16,7 @@ from fastapi import Depends, HTTPException, Request
 from services import db_service
 from services.token_service import decode_access_token
 from services import project_service
+from services import dataset_lock_service
 from services.audit_service import write_audit_log
 
 
@@ -130,6 +131,95 @@ def require_project_access(permission: str = "member"):
             )
 
         request.state.project = project
+        return user
+
+    return dependency
+
+
+def require_dataset_lock_holder():
+    """Factory returning a dependency that blocks scenario mutations unless the
+    caller holds the parent dataset's edit lock.
+
+    Admins bypass with an admin_override audit log entry.
+    Returns 423 Locked with discriminated error_code: "dataset_locked".
+    """
+    async def dependency(
+        scenario_id: int,
+        project_id: int,
+        request: Request,
+        user: Dict[str, Any] = Depends(get_current_user),
+    ) -> Dict[str, Any]:
+        scenario = db_service.get_scenario(scenario_id)
+        if not scenario:
+            raise HTTPException(status_code=404, detail="Scenario not found")
+        dataset_id = scenario["dataset_id"]
+
+        if user["role"] == "admin":
+            holder_info = dataset_lock_service.check_holder(dataset_id, user["id"])
+            if holder_info:
+                write_audit_log(
+                    user_id=user["id"],
+                    action="admin_override",
+                    resource_type="dataset_lock",
+                    resource_id=dataset_id,
+                    details={"admin_override": True, "holder": holder_info["holder"]},
+                    ip_address=request.client.host if request.client else None,
+                )
+            return user
+
+        holder_info = dataset_lock_service.check_holder(dataset_id, user["id"])
+        if holder_info:
+            raise HTTPException(
+                status_code=423,
+                detail={
+                    "error_code": "dataset_locked",
+                    "message": "Dataset is currently being edited by another user.",
+                    "holder": holder_info["holder"],
+                    "holder_id": holder_info["holder_id"],
+                    "acquired_at": holder_info["acquired_at"],
+                    "last_heartbeat": holder_info["last_heartbeat"],
+                },
+            )
+        return user
+
+    return dependency
+
+
+def require_dataset_lock_holder_for_dataset():
+    """Same as require_dataset_lock_holder but for endpoints that take
+    dataset_id directly instead of scenario_id (e.g., create scenario)."""
+    async def dependency(
+        dataset_id: int,
+        project_id: int,
+        request: Request,
+        user: Dict[str, Any] = Depends(get_current_user),
+    ) -> Dict[str, Any]:
+        if user["role"] == "admin":
+            holder_info = dataset_lock_service.check_holder(dataset_id, user["id"])
+            if holder_info:
+                write_audit_log(
+                    user_id=user["id"],
+                    action="admin_override",
+                    resource_type="dataset_lock",
+                    resource_id=dataset_id,
+                    details={"admin_override": True, "holder": holder_info["holder"]},
+                    ip_address=request.client.host if request.client else None,
+                )
+            return user
+
+        holder_info = dataset_lock_service.check_holder(dataset_id, user["id"])
+        if holder_info:
+            raise HTTPException(
+                status_code=423,
+                detail={
+                    "error_code": "dataset_locked",
+                    "message": "Dataset is currently being edited by another user.",
+                    "holder": holder_info["holder"],
+                    "holder_id": holder_info["holder_id"],
+                    "acquired_at": holder_info["acquired_at"],
+                    "last_heartbeat": holder_info["last_heartbeat"],
+                },
+            )
         return user
 
     return dependency

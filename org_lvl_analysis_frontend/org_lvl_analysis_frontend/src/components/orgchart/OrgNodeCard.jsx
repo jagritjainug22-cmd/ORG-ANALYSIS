@@ -213,20 +213,18 @@ function OrgNodeCardImpl({
       </div>
 
       {/* White body */}
-      <div style={{ padding: "10px 12px 8px", position: "relative" }}>
+      <div style={{ padding: "8px 12px 6px", position: "relative" }}>
         <div
           title={title}
           style={{
             color: AM.textPrimary,
             fontSize: 13,
             fontWeight: 700,
-            lineHeight: 1.25,
+            lineHeight: 1.3,
             textDecoration: flagged ? "line-through" : "none",
-            display: "-webkit-box",
-            WebkitLineClamp: 2,
-            WebkitBoxOrient: "vertical",
+            whiteSpace: "nowrap",
             overflow: "hidden",
-            minHeight: 32,
+            textOverflow: "ellipsis",
           }}
         >
           {title}
@@ -235,22 +233,23 @@ function OrgNodeCardImpl({
         <div
           style={{
             fontFamily: "'IBM Plex Mono', monospace",
-            fontSize: 10,
-            color: AM.textMuted,
+            fontSize: 11.5,
+            color: AM.textSecondary,
+            fontWeight: 500,
             marginTop: 2,
           }}
         >
           {empId}
         </div>
 
-        <div style={{ display: "flex", gap: 6, marginTop: 6, flexWrap: "wrap" }}>
+        <div style={{ display: "flex", gap: 5, marginTop: 7, flexWrap: "wrap" }}>
           <span
             style={{
               background: AM.navy,
               color: AM.white,
-              fontSize: 10,
+              fontSize: 11,
               fontWeight: 600,
-              padding: "2px 7px",
+              padding: "2px 8px",
               borderRadius: 4,
               fontFamily: "'IBM Plex Mono', monospace",
             }}
@@ -262,9 +261,9 @@ function OrgNodeCardImpl({
               style={{
                 background: AM.gold,
                 color: AM.navy,
-                fontSize: 10,
+                fontSize: 11,
                 fontWeight: 700,
-                padding: "2px 7px",
+                padding: "2px 8px",
                 borderRadius: 4,
                 fontFamily: "'IBM Plex Mono', monospace",
               }}
@@ -276,13 +275,13 @@ function OrgNodeCardImpl({
 
         <div
           style={{
-            fontSize: 10,
+            fontSize: 11.5,
             color: AM.textSecondary,
+            fontWeight: 500,
             marginTop: 6,
             display: "flex",
-            gap: 6,
+            gap: 8,
             alignItems: "center",
-            flexWrap: "wrap",
           }}
         >
           {fte != null && <span>{fmtNumber(fte)} FTE</span>}

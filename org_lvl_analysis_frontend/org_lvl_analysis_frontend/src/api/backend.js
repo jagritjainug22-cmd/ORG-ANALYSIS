@@ -148,6 +148,54 @@ export const getLockStatus = async (projectId) => {
   return res.data;
 };
 
+// ---------------------- DATASET LOCKS (Phase 6b) ----------------------
+export const acquireDatasetLock = async (datasetId) => {
+  const res = await axios.post(`${getProjectUrl()}/db/datasets/${datasetId}/lock`, {}, { headers: getHeaders() });
+  return res.data;
+};
+
+export const datasetLockHeartbeat = async (datasetId) => {
+  const res = await axios.post(`${getProjectUrl()}/db/datasets/${datasetId}/lock/heartbeat`, {}, { headers: getHeaders() });
+  return res.data;
+};
+
+export const releaseDatasetLock = async (datasetId) => {
+  const res = await axios.delete(`${getProjectUrl()}/db/datasets/${datasetId}/lock`, { headers: getHeaders() });
+  return res.data;
+};
+
+export const getDatasetLockStatus = async (datasetId) => {
+  const res = await axios.get(`${getProjectUrl()}/db/datasets/${datasetId}/lock`, { headers: getHeaders() });
+  return res.data;
+};
+
+/**
+ * Shared three-state handler for 423 (dataset_locked) errors.
+ * Used by both OrgChart mutation handler and heartbeat logic.
+ *
+ * @param {Error} err - axios error
+ * @param {number} datasetId - dataset to re-acquire lock on
+ * @returns {Object} { state: "reacquired"|"lost", holder?, holderId? }
+ * @throws if the error is not a 423 dataset_locked
+ */
+export const handleLockConflict = async (err, datasetId) => {
+  const status = err?.response?.status;
+  const data = err?.response?.data?.detail || err?.response?.data;
+  if (status !== 423 || data?.error_code !== "dataset_locked") {
+    throw err;
+  }
+  // Someone else holds the lock -- try to re-acquire in case it expired
+  try {
+    const result = await acquireDatasetLock(datasetId);
+    if (result.acquired) {
+      return { state: "reacquired" };
+    }
+    return { state: "lost", holder: result.holder, holderId: result.holder_id };
+  } catch {
+    return { state: "lost", holder: data.holder, holderId: data.holder_id };
+  }
+};
+
 // ---------------------- FILE UPLOAD ----------------------
 export const uploadFile = (file) => {
   const fd = new FormData();

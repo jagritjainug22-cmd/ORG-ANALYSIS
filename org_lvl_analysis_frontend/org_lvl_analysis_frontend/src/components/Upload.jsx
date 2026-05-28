@@ -95,9 +95,9 @@ export default function Upload({ setDfRecords, setColumns, setUploadedFileName }
   return (
     <div className="space-y-6">
       {/* Header Section */}
-      <div className="bg-gradient-to-r from-purple-50 to-blue-50 border border-purple-200 rounded-lg p-6">
+      <div className="bg-am-50 border border-am-200 rounded-lg p-6">
         <div className="flex items-start gap-4">
-          <div className="w-12 h-12 bg-gradient-to-br from-purple-600 to-blue-600 rounded-lg flex items-center justify-center flex-shrink-0">
+          <div className="w-12 h-12 bg-am-500 rounded-lg flex items-center justify-center flex-shrink-0">
             <svg
               className="w-7 h-7 text-white"
               fill="none"
@@ -130,18 +130,18 @@ export default function Upload({ setDfRecords, setColumns, setUploadedFileName }
         onDragLeave={handleDragLeave}
         className={`relative border-2 border-dashed rounded-xl p-12 transition-all duration-200 ${
           isDragging
-            ? "border-purple-500 bg-purple-50"
+            ? "border-am-500 bg-am-50"
             : uploadedFile
             ? "border-green-300 bg-green-50"
-            : "border-gray-300 bg-gray-50 hover:border-purple-400 hover:bg-purple-50"
+            : "border-gray-300 bg-gray-50 hover:border-am-400 hover:bg-am-50"
         }`}
       >
         <div className="flex flex-col items-center justify-center text-center">
           {/* Icon */}
           {!uploadedFile ? (
-            <div className="w-20 h-20 bg-gradient-to-br from-purple-100 to-blue-100 rounded-full flex items-center justify-center mb-4">
+            <div className="w-20 h-20 bg-am-100 rounded-full flex items-center justify-center mb-4">
               <svg
-                className="w-10 h-10 text-purple-600"
+                className="w-10 h-10 text-am-500"
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
@@ -202,7 +202,7 @@ export default function Upload({ setDfRecords, setColumns, setUploadedFileName }
                   ? "bg-gray-400 cursor-not-allowed"
                   : uploadedFile
                   ? "bg-green-600 hover:bg-green-700 text-white shadow-md hover:shadow-lg"
-                  : "bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white shadow-md hover:shadow-lg"
+                  : "bg-am-500 hover:bg-am-600 text-white shadow-md hover:shadow-lg"
               }`}
             >
               {isUploading ? (

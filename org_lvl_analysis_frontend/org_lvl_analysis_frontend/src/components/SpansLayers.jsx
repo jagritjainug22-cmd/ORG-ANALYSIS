@@ -185,9 +185,9 @@ export default function SpansLayers({ validatedDf }) {
   return (
     <div className="space-y-6">
       {/* Header Section */}
-      <div className="bg-gradient-to-r from-purple-50 to-blue-50 border border-purple-200 rounded-lg p-6">
+      <div className="bg-am-50 border border-am-200 rounded-lg p-6">
         <div className="flex items-start gap-4">
-          <div className="w-12 h-12 bg-gradient-to-br from-purple-600 to-blue-600 rounded-lg flex items-center justify-center flex-shrink-0">
+          <div className="w-12 h-12 bg-am-500 rounded-lg flex items-center justify-center flex-shrink-0">
             <svg
               className="w-7 h-7 text-white"
               fill="none"
@@ -218,7 +218,7 @@ export default function SpansLayers({ validatedDf }) {
         <div className="flex items-center justify-between mb-4">
           <h4 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
             <svg
-              className="w-5 h-5 text-purple-600"
+              className="w-5 h-5 text-am-500"
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -263,7 +263,7 @@ export default function SpansLayers({ validatedDf }) {
               <div className="flex items-start gap-4">
                 {/* Filter Label */}
                 <div className="flex-shrink-0 w-16">
-                  <div className="flex items-center justify-center w-12 h-12 bg-purple-600 text-white rounded-lg font-bold text-lg">
+                  <div className="flex items-center justify-center w-12 h-12 bg-am-500 text-white rounded-lg font-bold text-lg">
                     {getFilterLabel(index)}
                   </div>
                 </div>
@@ -278,7 +278,7 @@ export default function SpansLayers({ validatedDf }) {
                     <select
                       value={filter.column}
                       onChange={(e) => updateFilterColumn(filter.id, e.target.value)}
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all bg-white"
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-am-500 focus:border-am-500 outline-none transition-all bg-white"
                     >
                       <option value="">Select column...</option>
                       {availableColumns.map((col) => (
@@ -297,8 +297,8 @@ export default function SpansLayers({ validatedDf }) {
                             onClick={() => updateFilterMode(filter.id, mode)}
                             className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
                               filter.mode === mode
-                                ? "bg-gradient-to-r from-purple-600 to-blue-600 text-white shadow-md"
-                                : "bg-white border-2 border-gray-300 text-gray-700 hover:border-purple-400 hover:text-purple-600"
+                                ? "bg-am-500 text-white shadow-sm"
+                                : "bg-white border-2 border-gray-300 text-gray-700 hover:border-am-400 hover:text-am-600"
                             }`}
                           >
                             {mode}
@@ -319,7 +319,7 @@ export default function SpansLayers({ validatedDf }) {
                               const selected = Array.from(e.target.selectedOptions, option => option.value);
                               updateFilterValues(filter.id, selected);
                             }}
-                            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all bg-white min-h-[100px]"
+                            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-am-500 focus:border-am-500 outline-none transition-all bg-white min-h-[100px]"
                           >
                             {getUniqueValues(filter.column).map((val) => (
                               <option key={val} value={val}>{val}</option>
@@ -374,7 +374,7 @@ export default function SpansLayers({ validatedDf }) {
       <div className="bg-white border border-gray-200 rounded-lg p-6">
         <h4 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
           <svg
-            className="w-5 h-5 text-purple-600"
+            className="w-5 h-5 text-am-500"
             fill="none"
             stroke="currentColor"
             viewBox="0 0 24 24"
@@ -399,7 +399,7 @@ export default function SpansLayers({ validatedDf }) {
               step="0.1"
               value={threshold}
               onChange={(e) => setThreshold(Number(e.target.value))}
-              className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all"
+              className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-am-500 focus:border-am-500 outline-none transition-all"
               placeholder="Enter threshold (e.g., 5.0)"
             />
             <p className="text-xs text-gray-500 mt-1">
@@ -458,7 +458,7 @@ export default function SpansLayers({ validatedDf }) {
         <button
           onClick={() => runSpansLayers(false)}
           disabled={!canRun || loading}
-          className="flex-1 px-6 py-4 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white rounded-lg font-semibold shadow-lg hover:shadow-xl transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3"
+          className="flex-1 px-6 py-4 bg-am-500 hover:bg-am-600 text-white rounded-lg font-semibold shadow-lg hover:shadow-xl transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3"
         >
           {loading ? (
             <>
@@ -508,7 +508,7 @@ export default function SpansLayers({ validatedDf }) {
           <button
             onClick={downloadSummary}
             disabled={loading}
-            className="px-6 py-4 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-white rounded-lg font-semibold shadow-lg hover:shadow-xl transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-3"
+            className="px-6 py-4 bg-white border-2 border-am-500 text-am-600 hover:bg-am-50 rounded-lg font-semibold transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-3"
           >
             <svg
               className="w-6 h-6"
@@ -578,7 +578,7 @@ export default function SpansLayers({ validatedDf }) {
           <div className="bg-gray-50 px-6 py-4 border-b border-gray-200">
             <h4 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
               <svg
-                className="w-5 h-5 text-purple-600"
+                className="w-5 h-5 text-am-500"
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"

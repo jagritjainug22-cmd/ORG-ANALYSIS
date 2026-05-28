@@ -449,10 +449,29 @@ def _migrate_v3(conn: sqlite3.Connection) -> None:
     c.execute("CREATE INDEX IF NOT EXISTS idx_locks_heartbeat ON project_locks(last_heartbeat)")
 
 
+def _migrate_v4(conn: sqlite3.Connection) -> None:
+    """v4: dataset_locks table for dataset-level edit locking."""
+    c = conn.cursor()
+    c.execute(
+        """
+        CREATE TABLE IF NOT EXISTS dataset_locks (
+            dataset_id     INTEGER PRIMARY KEY REFERENCES datasets(id) ON DELETE CASCADE,
+            project_id     INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+            user_id        INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            username       TEXT NOT NULL,
+            acquired_at    TEXT NOT NULL,
+            last_heartbeat TEXT NOT NULL
+        )
+        """
+    )
+    c.execute("CREATE INDEX IF NOT EXISTS idx_dslocks_heartbeat ON dataset_locks(last_heartbeat)")
+
+
 _MIGRATIONS = [
     (1, "projects + assignments + audit_log tables", _migrate_v1),
     (2, "project_id on datasets + Legacy project backfill", _migrate_v2),
     (3, "project_locks table", _migrate_v3),
+    (4, "dataset_locks table", _migrate_v4),
 ]
 
 

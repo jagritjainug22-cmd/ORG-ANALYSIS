@@ -87,9 +87,9 @@ export default function Validate({
   return (
     <div className="space-y-6">
       {/* Header Section */}
-      <div className="bg-gradient-to-r from-purple-50 to-blue-50 border border-purple-200 rounded-lg p-6">
+      <div className="bg-am-50 border border-am-200 rounded-lg p-6">
         <div className="flex items-start gap-4">
-          <div className="w-12 h-12 bg-gradient-to-br from-purple-600 to-blue-600 rounded-lg flex items-center justify-center flex-shrink-0">
+          <div className="w-12 h-12 bg-am-500 rounded-lg flex items-center justify-center flex-shrink-0">
             <svg
               className="w-7 h-7 text-white"
               fill="none"
@@ -119,7 +119,7 @@ export default function Validate({
       <div className="bg-white border border-gray-200 rounded-lg p-6">
         <h4 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
           <svg
-            className="w-5 h-5 text-purple-600"
+            className="w-5 h-5 text-am-500"
             fill="none"
             stroke="currentColor"
             viewBox="0 0 24 24"
@@ -157,7 +157,7 @@ export default function Validate({
                 </svg>
               </div>
               <select
-                className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all text-gray-900 bg-white"
+                className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-am-500 focus:border-am-500 outline-none transition-all text-gray-900 bg-white"
                 value={empCol}
                 onChange={(e) => setEmpCol(e.target.value)}
                 disabled={loading}
@@ -194,7 +194,7 @@ export default function Validate({
                 </svg>
               </div>
               <select
-                className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all text-gray-900 bg-white"
+                className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-am-500 focus:border-am-500 outline-none transition-all text-gray-900 bg-white"
                 value={mgrCol}
                 onChange={(e) => setMgrCol(e.target.value)}
                 disabled={loading}
@@ -216,7 +216,7 @@ export default function Validate({
         <button
           onClick={() => runValidation(false)}
           disabled={loading || !empCol || !mgrCol}
-          className="flex-1 px-6 py-4 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white rounded-lg font-semibold shadow-lg hover:shadow-xl transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3"
+          className="flex-1 px-6 py-4 bg-am-500 hover:bg-am-600 text-white rounded-lg font-semibold shadow-lg hover:shadow-xl transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3"
         >
           {loading ? (
             <>

@@ -55,23 +55,23 @@ function ProjectFormModal({ open, onClose, onSave, editProject }) {
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
             <input type="text" value={name} onChange={(e) => setName(e.target.value)}
-              className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-purple-500 focus:border-transparent" required />
+              className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-am-500 focus:border-am-500 outline-none" required />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
             <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={2}
-              className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-purple-500 focus:border-transparent resize-none" placeholder="Optional" />
+              className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-am-500 focus:border-am-500 outline-none resize-none" placeholder="Optional" />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Deadline</label>
             <input type="date" value={deadline} onChange={(e) => setDeadline(e.target.value)}
-              className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-purple-500 focus:border-transparent" />
+              className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-am-500 focus:border-am-500 outline-none" />
           </div>
           {editProject && (
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
               <select value={status} onChange={(e) => setStatus(e.target.value)}
-                className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-purple-500 focus:border-transparent bg-white">
+                className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-am-500 focus:border-am-500 outline-none bg-white">
                 <option value="active">Active</option>
                 <option value="archived">Archived</option>
                 <option value="closed">Closed</option>
@@ -80,7 +80,7 @@ function ProjectFormModal({ open, onClose, onSave, editProject }) {
           )}
           <div className="flex justify-end gap-3 pt-2">
             <button type="button" onClick={onClose} className="px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50">Cancel</button>
-            <button type="submit" disabled={saving} className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-sm font-medium disabled:opacity-50">
+            <button type="submit" disabled={saving} className="px-4 py-2 bg-am-500 hover:bg-am-600 text-white rounded-lg text-sm font-medium disabled:opacity-50">
               {saving ? "Saving..." : editProject ? "Update" : "Create"}
             </button>
           </div>
@@ -159,14 +159,14 @@ function AssignmentPanel({ project, onClose }) {
           {/* Assign new user */}
           <div className="flex gap-2">
             <select value={selectedUserId} onChange={(e) => setSelectedUserId(e.target.value)}
-              className="flex-1 border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-purple-500 focus:border-transparent bg-white">
+              className="flex-1 border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-am-500 focus:border-am-500 outline-none bg-white">
               <option value="">Select a user to assign...</option>
               {unassigned.map((u) => (
                 <option key={u.id} value={u.id}>{u.username}{u.display_name ? ` (${u.display_name})` : ""}</option>
               ))}
             </select>
             <button onClick={handleAssign} disabled={!selectedUserId}
-              className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-sm font-medium disabled:opacity-40 transition-all">
+              className="px-4 py-2 bg-am-500 hover:bg-am-600 text-white rounded-lg text-sm font-medium disabled:opacity-40 transition-all">
               Assign
             </button>
           </div>
@@ -174,7 +174,7 @@ function AssignmentPanel({ project, onClose }) {
           {/* Current assignments */}
           {loading ? (
             <div className="flex justify-center py-8">
-              <div className="w-6 h-6 border-4 border-purple-200 border-t-purple-600 rounded-full animate-spin"></div>
+              <div className="w-6 h-6 border-4 border-am-100 border-t-am-500 rounded-full animate-spin"></div>
             </div>
           ) : assignments.length === 0 ? (
             <p className="text-sm text-gray-400 text-center py-4">No users assigned yet.</p>
@@ -269,7 +269,7 @@ export default function ProjectManagement() {
           <p className="text-sm text-gray-500 mt-1">{projects.length} project{projects.length !== 1 ? "s" : ""}</p>
         </div>
         <button onClick={() => { setEditProject(null); setShowForm(true); }}
-          className="flex items-center gap-2 px-4 py-2.5 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-sm font-medium shadow-md transition-all">
+          className="flex items-center gap-2 px-4 py-2.5 bg-am-500 hover:bg-am-600 text-white rounded-lg text-sm font-medium shadow-md transition-all">
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
           Create Project
         </button>
@@ -277,7 +277,7 @@ export default function ProjectManagement() {
 
       {loading ? (
         <div className="flex justify-center py-12">
-          <div className="w-8 h-8 border-4 border-purple-200 border-t-purple-600 rounded-full animate-spin"></div>
+          <div className="w-8 h-8 border-4 border-am-100 border-t-am-500 rounded-full animate-spin"></div>
         </div>
       ) : (
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
@@ -323,7 +323,7 @@ export default function ProjectManagement() {
                     <td className="px-6 py-4 text-right">
                       <div className="flex items-center justify-end gap-2">
                         <button onClick={() => setAssignProject(p)}
-                          className="px-3 py-1.5 text-xs font-medium text-purple-600 bg-purple-50 hover:bg-purple-100 rounded-lg transition-all">
+                          className="px-3 py-1.5 text-xs font-medium text-am-600 bg-am-50 hover:bg-am-100 rounded-lg transition-all">
                           Members
                         </button>
                         <button onClick={() => { setEditProject(p); setShowForm(true); }}

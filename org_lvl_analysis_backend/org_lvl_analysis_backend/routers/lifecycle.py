@@ -26,7 +26,14 @@ from pptx import Presentation
 from pptx.util import Inches
 from pydantic import BaseModel
 
-from dependencies.auth import get_current_user, require_project_access
+from dependencies.auth import (
+    get_current_user,
+    require_project_access,
+    require_dataset_lock_holder,
+    require_dataset_lock_holder_for_dataset,
+)
+from services import dataset_lock_service
+from services.audit_service import write_audit_log
 from services import db_service
 from services.cleanup_service import apply_exclusion_filter, build_country_flag
 from services.crosstab_service import apply_others_grouping, generate_crosstab, generate_preview_data
@@ -952,12 +959,20 @@ def db_list_datasets(
     user: dict = Depends(require_project_access()),
 ):
     username = user["username"]
-    return {
-        "datasets": db_service.list_datasets(
-            username=username if mine_only else None,
-            project_id=project_id,
-        )
-    }
+    datasets = db_service.list_datasets(
+        username=username if mine_only else None,
+        project_id=project_id,
+    )
+    locks = dataset_lock_service.get_locks_for_project(project_id)
+    for ds in datasets:
+        lock = locks.get(ds["id"])
+        if lock:
+            ds["locked_by"] = lock["username"]
+            ds["locked_by_id"] = lock["user_id"]
+        else:
+            ds["locked_by"] = None
+            ds["locked_by_id"] = None
+    return {"datasets": datasets}
 
 
 @router.get("/db/datasets/{dataset_id}")
@@ -991,12 +1006,98 @@ def db_get_baseline(
     return {"records": db_service.get_baseline_records(dataset_id)}
 
 
+# ---------------------------------------------------------------------------
+# Dataset locks -- edit-mode concurrency control
+# ---------------------------------------------------------------------------
+
+@router.post("/db/datasets/{dataset_id}/lock")
+def db_dataset_acquire_lock(
+    dataset_id: int,
+    project_id: int,
+    request: Request,
+    user: dict = Depends(require_project_access()),
+):
+    _require_dataset_in_project(dataset_id, project_id)
+    result = dataset_lock_service.acquire_lock(dataset_id, project_id, user["id"], user["username"])
+    if result["acquired"]:
+        write_audit_log(
+            user_id=user["id"],
+            action="dataset_lock_acquired",
+            resource_type="dataset",
+            resource_id=dataset_id,
+            details={"project_id": project_id},
+            ip_address=request.client.host if request.client else None,
+        )
+    return result
+
+
+@router.post("/db/datasets/{dataset_id}/lock/heartbeat")
+def db_dataset_lock_heartbeat(
+    dataset_id: int,
+    project_id: int,
+    user: dict = Depends(require_project_access()),
+):
+    """Refresh heartbeat. No audit logging -- high frequency."""
+    result = dataset_lock_service.heartbeat(
+        dataset_id, user["id"], username=user["username"], project_id=project_id,
+    )
+    if result is None:
+        raise HTTPException(404, detail="No active lock held by you for this dataset")
+    return result
+
+
+@router.delete("/db/datasets/{dataset_id}/lock")
+def db_dataset_release_lock(
+    dataset_id: int,
+    project_id: int,
+    request: Request,
+    user: dict = Depends(require_project_access()),
+):
+    _require_dataset_in_project(dataset_id, project_id)
+    released = dataset_lock_service.release_lock(dataset_id, user["id"])
+    if released:
+        write_audit_log(
+            user_id=user["id"],
+            action="dataset_lock_released",
+            resource_type="dataset",
+            resource_id=dataset_id,
+            details={"project_id": project_id},
+            ip_address=request.client.host if request.client else None,
+        )
+    return {"status": "released" if released else "no_lock"}
+
+
+@router.get("/db/datasets/{dataset_id}/lock")
+def db_dataset_lock_status(
+    dataset_id: int,
+    project_id: int,
+    user: dict = Depends(require_project_access()),
+):
+    _require_dataset_in_project(dataset_id, project_id)
+    lock = dataset_lock_service.get_lock(dataset_id)
+    if not lock:
+        return {"locked": False}
+    return {
+        "locked": True,
+        "holder": lock["username"],
+        "holder_id": lock["user_id"],
+        "acquired_at": lock["acquired_at"],
+        "last_heartbeat": lock["last_heartbeat"],
+        "is_mine": lock["user_id"] == user["id"],
+    }
+
+
+# ---------------------------------------------------------------------------
+# Scenario CRUD -- create is gated by dataset lock
+# ---------------------------------------------------------------------------
+
 @router.post("/db/datasets/{dataset_id}/scenarios")
 def db_create_scenario(
     dataset_id: int,
     body: ScenarioBody,
     project_id: int,
     user: dict = Depends(require_project_access()),
+    _lock: dict = Depends(require_dataset_lock_holder_for_dataset()),
 ):
     _require_dataset_in_project(dataset_id, project_id)
     username = user["username"]
@@ -1050,6 +1151,7 @@ def db_rename_scenario(
     body: ScenarioBody,
     project_id: int,
     _user: dict = Depends(require_project_access()),
+    _lock: dict = Depends(require_dataset_lock_holder()),
 ):
     _require_scenario_in_project(scenario_id, project_id)
     db_service.rename_scenario(scenario_id, body.name, body.description)
@@ -1061,6 +1163,7 @@ def db_delete_scenario(
     scenario_id: int,
     project_id: int,
     _user: dict = Depends(require_project_access()),
+    _lock: dict = Depends(require_dataset_lock_holder()),
 ):
     _require_scenario_in_project(scenario_id, project_id)
     db_service.delete_scenario(scenario_id)
@@ -1073,6 +1176,7 @@ def db_scenario_move(
     body: MoveBody,
     project_id: int,
     user: dict = Depends(require_project_access()),
+    _lock: dict = Depends(require_dataset_lock_holder()),
 ):
     _require_scenario_in_project(scenario_id, project_id)
     username = user["username"]
@@ -1092,6 +1196,7 @@ def db_scenario_edit(
     body: EditBody,
     project_id: int,
     user: dict = Depends(require_project_access()),
+    _lock: dict = Depends(require_dataset_lock_holder()),
 ):
     _require_scenario_in_project(scenario_id, project_id)
     username = user["username"]
@@ -1111,6 +1216,7 @@ def db_scenario_add(
     body: AddBody,
     project_id: int,
     user: dict = Depends(require_project_access()),
+    _lock: dict = Depends(require_dataset_lock_holder()),
 ):
     _require_scenario_in_project(scenario_id, project_id)
     username = user["username"]
@@ -1131,6 +1237,7 @@ def db_scenario_flag(
     body: FlagBody,
     project_id: int,
     user: dict = Depends(require_project_access()),
+    _lock: dict = Depends(require_dataset_lock_holder()),
 ):
     _require_scenario_in_project(scenario_id, project_id)
     username = user["username"]
@@ -1149,6 +1256,7 @@ def db_scenario_promote(
     scenario_id: int,
     project_id: int,
     user: dict = Depends(require_project_access()),
+    _lock: dict = Depends(require_dataset_lock_holder()),
 ):
     _require_scenario_in_project(scenario_id, project_id)
     username = user["username"]
@@ -1181,6 +1289,7 @@ def db_scenario_reset(
     scenario_id: int,
     project_id: int,
     user: dict = Depends(require_project_access()),
+    _lock: dict = Depends(require_dataset_lock_holder()),
 ):
     _require_scenario_in_project(scenario_id, project_id)
     username = user["username"]
@@ -1200,6 +1309,7 @@ def db_scenario_undo(
     scenario_id: int,
     project_id: int,
     user: dict = Depends(require_project_access()),
+    _lock: dict = Depends(require_dataset_lock_holder()),
 ):
     _require_scenario_in_project(scenario_id, project_id)
     username = user["username"]

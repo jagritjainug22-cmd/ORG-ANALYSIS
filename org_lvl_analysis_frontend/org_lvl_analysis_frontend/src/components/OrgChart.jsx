@@ -26,6 +26,11 @@ import {
   dbExportPpt,
   dbExportPdf,
   dbExportSvg,
+  acquireDatasetLock,
+  datasetLockHeartbeat,
+  releaseDatasetLock,
+  getDatasetLockStatus,
+  handleLockConflict,
 } from "../api/backend";
 import {
   CARD_WIDTH,
@@ -89,6 +94,12 @@ export default function OrgChart({
   const [error, setError] = useState(null);
   const [summary, setSummary] = useState(null);
   const [changeLog, setChangeLog] = useState([]);
+
+  // Dataset lock state
+  const [lockInfo, setLockInfo] = useState(null); // { holder, holder_id, last_heartbeat } when locked by other
+  const [lockAcquired, setLockAcquired] = useState(false);
+  const lockHeartbeatRef = useRef(null);
+  const [lockToast, setLockToast] = useState(null); // transient toast message
 
   // UI state
   const [editMode, setEditMode] = useState(false);
@@ -197,6 +208,117 @@ export default function OrgChart({
       setSummary(null);
     }
   }, [inDbMode, reloadScenario, df, empCol, mgrCol, fteCol, flcCol]);
+
+  // --------------------------------------------------------------------
+  // Dataset lock: check status on dataset load, cleanup on unmount
+  // --------------------------------------------------------------------
+
+  const checkLockStatus = useCallback(async () => {
+    if (!datasetId) return;
+    try {
+      const status = await getDatasetLockStatus(datasetId);
+      if (status.locked && !status.is_mine) {
+        setLockInfo({ holder: status.holder, holder_id: status.holder_id, last_heartbeat: status.last_heartbeat });
+        setLockAcquired(false);
+        setEditMode(false);
+      } else if (status.locked && status.is_mine) {
+        setLockInfo(null);
+        setLockAcquired(true);
+      } else {
+        setLockInfo(null);
+        setLockAcquired(false);
+      }
+    } catch {
+      setLockInfo(null);
+    }
+  }, [datasetId]);
+
+  useEffect(() => {
+    if (inDbMode && datasetId) {
+      checkLockStatus();
+    }
+    return () => {
+      // Release lock and stop heartbeat on unmount
+      if (lockHeartbeatRef.current) clearInterval(lockHeartbeatRef.current);
+      if (datasetId && lockAcquired) {
+        releaseDatasetLock(datasetId).catch(() => {});
+      }
+    };
+  }, [datasetId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const startHeartbeat = useCallback(() => {
+    if (lockHeartbeatRef.current) clearInterval(lockHeartbeatRef.current);
+    lockHeartbeatRef.current = setInterval(async () => {
+      if (!datasetId) return;
+      try {
+        const result = await datasetLockHeartbeat(datasetId);
+        if (result.status === "lost") {
+          clearInterval(lockHeartbeatRef.current);
+          lockHeartbeatRef.current = null;
+          setLockAcquired(false);
+          setEditMode(false);
+          setLockInfo({ holder: result.holder, holder_id: result.holder_id, last_heartbeat: null });
+          setLockToast(`${result.holder} took the lock. Switched to read-only.`);
+          setTimeout(() => setLockToast(null), 5000);
+        }
+      } catch {
+        // heartbeat failed -- try re-acquire via handleLockConflict pattern
+        try {
+          const reacquire = await acquireDatasetLock(datasetId);
+          if (!reacquire.acquired) {
+            clearInterval(lockHeartbeatRef.current);
+            lockHeartbeatRef.current = null;
+            setLockAcquired(false);
+            setEditMode(false);
+            setLockInfo({ holder: reacquire.holder, holder_id: reacquire.holder_id, last_heartbeat: reacquire.last_heartbeat });
+            setLockToast(`${reacquire.holder} took the lock. Switched to read-only.`);
+            setTimeout(() => setLockToast(null), 5000);
+          }
+        } catch {
+          // silently ignore -- next heartbeat will retry
+        }
+      }
+    }, 20_000);
+  }, [datasetId]);
+
+  const toggleEditMode = useCallback(async () => {
+    if (!inDbMode) {
+      setEditMode((v) => !v);
+      return;
+    }
+
+    if (editMode) {
+      // Exiting edit mode -- release the lock
+      setEditMode(false);
+      setLockAcquired(false);
+      if (lockHeartbeatRef.current) {
+        clearInterval(lockHeartbeatRef.current);
+        lockHeartbeatRef.current = null;
+      }
+      await releaseDatasetLock(datasetId).catch(() => {});
+      return;
+    }
+
+    // Entering edit mode -- acquire the lock
+    try {
+      const result = await acquireDatasetLock(datasetId);
+      if (result.acquired) {
+        setEditMode(true);
+        setLockAcquired(true);
+        setLockInfo(null);
+        startHeartbeat();
+      } else {
+        setLockInfo({ holder: result.holder, holder_id: result.holder_id, last_heartbeat: result.last_heartbeat });
+        setLockToast(`${result.holder} is currently editing this dataset.`);
+        setTimeout(() => setLockToast(null), 5000);
+      }
+    } catch {
+      setLockToast("Failed to acquire edit lock.");
+      setTimeout(() => setLockToast(null), 5000);
+    }
+  }, [inDbMode, editMode, datasetId, startHeartbeat]);
+
+  const isLockedByOther = !!(lockInfo && !lockAcquired);
 
   // --------------------------------------------------------------------
   // Derived: index, stats, layout
@@ -336,8 +458,10 @@ export default function OrgChart({
   // Mutations
   // --------------------------------------------------------------------
 
-  // Optimistic local apply. If DB write fails, reload to roll back.
+  // Optimistic local apply with 423 lock-conflict handling.
   const applyAndPersist = async (localUpdater, dbCall) => {
+    if (isLockedByOther) return; // client-side guard
+
     const snapshot = records;
     const next = localUpdater(snapshot);
     setRecords(next);
@@ -349,8 +473,41 @@ export default function OrgChart({
       const log = await dbGetChangeLog(activeScenarioId);
       setChangeLog(log.changes || []);
     } catch (e) {
-      console.error("DB write failed; rolling back.", e);
-      setError(e.message || "Failed to persist change.");
+      // Three-state 423 handler: reacquire / lost / generic error
+      if (e?.response?.status === 423) {
+        try {
+          const conflict = await handleLockConflict(e, datasetId);
+          if (conflict.state === "reacquired") {
+            // Re-acquired successfully -- retry the mutation transparently
+            startHeartbeat();
+            setLockAcquired(true);
+            try {
+              const resp = await dbCall();
+              if (resp?.summary) setSummary(resp.summary);
+              const log = await dbGetChangeLog(activeScenarioId);
+              setChangeLog(log.changes || []);
+              return;
+            } catch (retryErr) {
+              console.error("Retry after re-acquire failed.", retryErr);
+            }
+          }
+          // Lost the lock
+          if (lockHeartbeatRef.current) {
+            clearInterval(lockHeartbeatRef.current);
+            lockHeartbeatRef.current = null;
+          }
+          setLockAcquired(false);
+          setEditMode(false);
+          setLockInfo({ holder: conflict.holder, holder_id: conflict.holderId, last_heartbeat: null });
+          setLockToast(`${conflict.holder} took the lock while you were away. Switched to read-only.`);
+          setTimeout(() => setLockToast(null), 6000);
+        } catch {
+          // handleLockConflict re-threw -- not a 423 after all
+        }
+      } else {
+        console.error("DB write failed; rolling back.", e);
+        setError(e.message || "Failed to persist change.");
+      }
       setRecords(snapshot);
       setSummary(buildLocalSummary(snapshot, fteCol, flcCol));
     }
@@ -536,36 +693,37 @@ export default function OrgChart({
     setZoom((z) => z * factor);
   };
 
-  // Auto-center on first root the first time layout finishes computing for a
-  // dataset. We also fit-zoom for very wide trees so the user actually sees
-  // something on initial load.
-  useEffect(() => {
-    if (!records || !records.length || !layout.nodes.size) return;
-    if (!viewportRef.current) return;
-    if (hasAutoCenteredRef.current) return;
-    hasAutoCenteredRef.current = true;
-
+  const centerOnRoot = useCallback(() => {
     const firstRootId = index.roots[0];
     if (!firstRootId) return;
     const rootPos = layout.nodes.get(firstRootId);
-    if (!rootPos) return;
+    if (!rootPos || !viewportRef.current) return;
 
     const vw = viewportRef.current.clientWidth || 1200;
-    // Pick a zoom that comfortably shows the root + ~2 levels. Treat 3 cards
-    // wide as the minimum useful screen.
+    const DEFAULT_ZOOM = 0.75;
     const widthToFit = Math.max(layout.width, 800);
-    const fitZoom = Math.min(1, (vw - 80) / widthToFit);
-    const initialZoom = Math.max(0.35, Math.min(1, fitZoom));
+    const fitZoom = (vw - 80) / widthToFit;
+    const initialZoom = Math.max(0.3, Math.min(DEFAULT_ZOOM, fitZoom));
 
     zoomRef.current = initialZoom;
-    // Centre root horizontally; show top 40px of margin
     panRef.current = {
       x: vw / 2 - (rootPos.x + CARD_WIDTH / 2 + 40) * initialZoom,
       y: 20,
     };
     setZoomLabel(initialZoom);
     applyTransform();
-  }, [records, layout, index.roots, applyTransform]);
+  }, [index.roots, layout, applyTransform]);
+
+  // Auto-center on root whenever layout is computed for a new dataset/scenario.
+  // Uses rAF to ensure the viewport has been painted and clientWidth is accurate.
+  useEffect(() => {
+    if (!records || !records.length || !layout.nodes.size) return;
+    if (!viewportRef.current) return;
+    if (hasAutoCenteredRef.current) return;
+    hasAutoCenteredRef.current = true;
+
+    requestAnimationFrame(() => centerOnRoot());
+  }, [records, layout, centerOnRoot]);
 
   // Reset hasAutoCentered when scenario / dataset changes so the new dataset
   // gets auto-centered too.
@@ -754,49 +912,109 @@ export default function OrgChart({
         ...(fullscreen ? { inset: 0, zIndex: 100 } : {}),
       }}
     >
-      {/* Header bar -- wraps gracefully on narrow viewports */}
+      {/* Lock banner -- shown when another user holds the edit lock */}
+      {isLockedByOther && (
+        <div
+          style={{
+            background: "#fef3c7",
+            borderBottom: "1px solid #f59e0b",
+            padding: "10px 20px",
+            display: "flex",
+            alignItems: "center",
+            gap: 12,
+            fontSize: 13,
+            color: "#92400e",
+            flexShrink: 0,
+          }}
+        >
+          <span style={{ fontSize: 16 }}>&#128274;</span>
+          <span style={{ flex: 1 }}>
+            <strong>{lockInfo.holder}</strong> is editing this dataset.
+            {lockInfo.last_heartbeat && (
+              <span style={{ marginLeft: 6, color: "#b45309" }}>
+                Last activity: {formatTimeSince(lockInfo.last_heartbeat)}
+              </span>
+            )}
+            <span style={{ marginLeft: 4 }}> You have read-only access.</span>
+          </span>
+          <button
+            onClick={checkLockStatus}
+            style={{
+              background: "#f59e0b",
+              color: "#78350f",
+              border: "none",
+              borderRadius: 10,
+              padding: "4px 12px",
+              fontSize: 11,
+              fontWeight: 700,
+              cursor: "pointer",
+              letterSpacing: "0.3px",
+              textTransform: "uppercase",
+            }}
+          >
+            Refresh Status
+          </button>
+        </div>
+      )}
+
+      {/* Toast notification for lock events */}
+      {lockToast && (
+        <div
+          style={{
+            background: "#dc2626",
+            color: "#fff",
+            padding: "8px 20px",
+            fontSize: 12,
+            fontWeight: 600,
+            textAlign: "center",
+            flexShrink: 0,
+          }}
+        >
+          {lockToast}
+        </div>
+      )}
+
+      {/* Header bar -- single compact line */}
       <div
         style={{
           background: AM.navy,
           color: AM.white,
-          padding: "12px 20px",
+          padding: "8px 16px",
           display: "flex",
           alignItems: "center",
-          gap: 16,
+          gap: 12,
           flexShrink: 0,
-          flexWrap: "wrap",
-          rowGap: 8,
+          flexWrap: "nowrap",
+          overflowX: "auto",
+          minHeight: 44,
         }}
       >
         <div
           style={{
-            width: 30,
-            height: 30,
-            borderRadius: 6,
+            width: 26,
+            height: 26,
+            borderRadius: 5,
             background: AM.gold,
             color: AM.navy,
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
             fontWeight: 800,
-            fontSize: 14,
+            fontSize: 12,
             letterSpacing: "-0.5px",
+            flexShrink: 0,
           }}
         >
           A
         </div>
-        <div>
-          <div style={{ fontSize: 14, fontWeight: 700, letterSpacing: "0.2px" }}>
-            OrgSight 2.0
-          </div>
-          <div style={{ fontSize: 10, color: "#a8c0d8" }}>Interactive Org Modelling</div>
+
+        <div style={{ display: "flex", gap: 14, marginLeft: 8, flexShrink: 0, alignItems: "center" }}>
+          <Stat label="Headcount" value={fmtNumber(totalHeadcount)} />
+          <Stat label="FTE" value={fmtNumber(Number(totalFte).toFixed(1))} />
+          <Stat label="Cost" value={fmtCompactCurrency(totalCost)} />
         </div>
 
-        <div style={{ flex: 1, display: "flex", gap: 18, marginLeft: 24, flexWrap: "wrap" }}>
-          <Stat label="Headcount" value={fmtNumber(totalHeadcount)} />
-          <Stat label="Total FTE" value={fmtNumber(Number(totalFte).toFixed(1))} />
-          <Stat label="Total Cost" value={fmtCompactCurrency(totalCost)} />
-        </div>
+        <div style={{ flex: 1 }} />
 
         <input
           value={search}
@@ -865,20 +1083,8 @@ export default function OrgChart({
           <ZoomBtn onClick={() => setZoom((z) => z * 1.15)} title="Zoom in">+</ZoomBtn>
           <ZoomBtn onClick={fitToView} title="Fit tree to view">⤢</ZoomBtn>
           <ZoomBtn
-            onClick={() => {
-              hasAutoCenteredRef.current = false;
-              // re-trigger the auto-center effect on next layout pass
-              const firstRootId = index.roots[0];
-              const rootPos = firstRootId ? layout.nodes.get(firstRootId) : null;
-              if (rootPos && viewportRef.current) {
-                const vw = viewportRef.current.clientWidth;
-                zoomRef.current = 1;
-                panRef.current = { x: vw / 2 - (rootPos.x + CARD_WIDTH / 2 + 40), y: 20 };
-                setZoomLabel(1);
-                applyTransform();
-              }
-            }}
-            title="Center on root"
+            onClick={centerOnRoot}
+            title="Center on root (75%)"
           >
             ⌂
           </ZoomBtn>
@@ -992,21 +1198,24 @@ export default function OrgChart({
         </div>
 
         <button
-          onClick={() => setEditMode((v) => !v)}
+          onClick={toggleEditMode}
+          disabled={isLockedByOther}
+          title={isLockedByOther ? `Locked by ${lockInfo?.holder}` : editMode ? "Exit edit mode" : "Enter edit mode"}
           style={{
-            background: editMode ? AM.gold : "transparent",
-            color: editMode ? AM.navy : AM.white,
-            border: `1px solid ${editMode ? AM.gold : "#1a4d7a"}`,
+            background: editMode ? AM.gold : isLockedByOther ? "#374151" : "transparent",
+            color: editMode ? AM.navy : isLockedByOther ? "#6b7280" : AM.white,
+            border: `1px solid ${editMode ? AM.gold : isLockedByOther ? "#4b5563" : "#1a4d7a"}`,
             borderRadius: 14,
             padding: "5px 14px",
             fontSize: 11,
             fontWeight: 700,
             letterSpacing: "0.4px",
-            cursor: "pointer",
+            cursor: isLockedByOther ? "not-allowed" : "pointer",
             textTransform: "uppercase",
+            opacity: isLockedByOther ? 0.6 : 1,
           }}
         >
-          {editMode ? "Edit Mode On" : "Edit Mode"}
+          {isLockedByOther ? `Locked by ${lockInfo?.holder}` : editMode ? "Edit Mode On" : "Edit Mode"}
         </button>
         <button
           onClick={() => setFullscreen((v) => !v)}
@@ -1305,21 +1514,21 @@ export default function OrgChart({
 
 function Stat({ label, value }) {
   return (
-    <div>
-      <div
+    <div style={{ display: "flex", alignItems: "baseline", gap: 6, whiteSpace: "nowrap" }}>
+      <span
         style={{
           fontSize: 9,
           color: "#a8c0d8",
           textTransform: "uppercase",
-          letterSpacing: "0.8px",
+          letterSpacing: "0.6px",
           fontWeight: 600,
         }}
       >
         {label}
-      </div>
-      <div style={{ fontSize: 14, fontWeight: 700, fontFamily: "'IBM Plex Mono', monospace" }}>
+      </span>
+      <span style={{ fontSize: 13, fontWeight: 700, fontFamily: "'IBM Plex Mono', monospace" }}>
         {value}
-      </div>
+      </span>
     </div>
   );
 }
@@ -1445,6 +1654,26 @@ function emptyStyle() {
     padding: 40,
     textAlign: "center",
   };
+}
+
+/**
+ * Format an ISO timestamp as a relative "time since" string.
+ */
+function formatTimeSince(isoTimestamp) {
+  if (!isoTimestamp) return "";
+  try {
+    const then = new Date(isoTimestamp + (isoTimestamp.endsWith("Z") ? "" : "Z"));
+    const now = new Date();
+    const diffMs = now - then;
+    const diffSec = Math.max(0, Math.round(diffMs / 1000));
+    if (diffSec < 60) return `${diffSec}s ago`;
+    const diffMin = Math.round(diffSec / 60);
+    if (diffMin < 60) return `${diffMin}m ago`;
+    const diffHr = Math.round(diffMin / 60);
+    return `${diffHr}h ago`;
+  } catch {
+    return "";
+  }
 }
 
 /**

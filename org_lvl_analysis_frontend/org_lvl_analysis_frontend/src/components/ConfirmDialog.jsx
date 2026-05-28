@@ -70,10 +70,10 @@ export default function ConfirmDialog({
           <button
             onClick={handleConfirm}
             disabled={!canConfirm}
-            className={`px-4 py-2 rounded-lg text-sm font-medium text-white transition-all disabled:opacity-40 disabled:cursor-not-allowed ${
+            className={`px-4 py-2 rounded-md text-sm font-medium text-white transition disabled:opacity-40 disabled:cursor-not-allowed ${
               destructive
                 ? "bg-red-600 hover:bg-red-700"
-                : "bg-purple-600 hover:bg-purple-700"
+                : "bg-am-500 hover:bg-am-600"
             }`}
           >
             {confirmLabel}

@@ -151,6 +151,11 @@ async def logout(
         release_all_user_locks(user["id"])
     except Exception:
         pass  # best-effort; 90s expiry is the safety net
+    try:
+        from services.dataset_lock_service import release_all_user_locks as release_all_ds_locks
+        release_all_ds_locks(user["id"])
+    except Exception:
+        pass
 
     raw_token = request.cookies.get(REFRESH_COOKIE_NAME)
     if raw_token:

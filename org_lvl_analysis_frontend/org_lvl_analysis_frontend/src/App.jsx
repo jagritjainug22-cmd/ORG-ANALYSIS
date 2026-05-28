@@ -18,8 +18,91 @@ function LoginPage() {
   if (isAuthenticated) return <Navigate to="/projects" replace />;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center p-6">
-      <div className="w-full max-w-md">
+    <div className="min-h-screen grid lg:grid-cols-2 grid-cols-1 bg-white">
+      {/* LEFT: Branding panel */}
+      <div
+        className="hidden lg:flex relative flex-col justify-between p-12 text-white overflow-hidden"
+        style={{
+          background:
+            "linear-gradient(135deg, #0A3D4F 0%, #0D6B5F 55%, #1a8a7d 100%)",
+        }}
+      >
+        {/* subtle decorative grid */}
+        <div
+          className="absolute inset-0 opacity-[0.07] pointer-events-none"
+          style={{
+            backgroundImage:
+              "radial-gradient(circle at 1px 1px, white 1px, transparent 0)",
+            backgroundSize: "28px 28px",
+          }}
+        />
+
+        {/* Logo */}
+        <div className="relative z-10 flex items-center gap-3">
+          <div className="text-2xl font-bold tracking-tight">A&amp;M</div>
+          <div className="h-6 w-px bg-white/30" />
+          <div className="text-sm font-medium text-white/80 tracking-wide">
+            Org Analysis
+          </div>
+        </div>
+
+        {/* Headline */}
+        <div className="relative z-10 max-w-md">
+          <h1 className="text-4xl xl:text-5xl font-bold leading-tight mb-4">
+            Organizational
+            <br />
+            Analysis Platform
+          </h1>
+          <p className="text-white/80 text-base leading-relaxed mb-10">
+            Streamline your organizational insights with data-driven analysis,
+            scenario modelling, and automated reporting.
+          </p>
+
+          <div className="space-y-4">
+            <FeatureLine
+              icon={
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                    d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                </svg>
+              }
+              label="Org Chart Visualization"
+            />
+            <FeatureLine
+              icon={
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                    d="M3 12l3-3 3 3 5-5 4 4 3-3M3 12v8h18v-8" />
+                </svg>
+              }
+              label="Spans & Layers Analysis"
+            />
+            <FeatureLine
+              icon={
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                    d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+              }
+              label="Export & Reporting"
+            />
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="relative z-10 text-xs text-white/50">
+          &copy; {new Date().getFullYear()} Alvarez &amp; Marsal. All rights reserved.
+        </div>
+      </div>
+
+      {/* RIGHT: Login form */}
+      <div className="flex items-center justify-center p-6 sm:p-12 bg-gray-50">
+        {/* Mobile brand header */}
+        <div className="absolute top-6 left-6 lg:hidden flex items-center gap-2">
+          <span className="text-am-500 font-bold text-lg">A&amp;M</span>
+          <span className="text-gray-500 text-sm">Org Analysis</span>
+        </div>
+
         <Login
           setToken={() => {}}
           setUsername={() => {}}
@@ -28,6 +111,17 @@ function LoginPage() {
           }}
         />
       </div>
+    </div>
+  );
+}
+
+function FeatureLine({ icon, label }) {
+  return (
+    <div className="flex items-center gap-3">
+      <div className="w-10 h-10 rounded-md bg-white/10 border border-white/15 flex items-center justify-center text-white">
+        {icon}
+      </div>
+      <span className="text-sm font-medium text-white/90">{label}</span>
     </div>
   );
 }
@@ -45,9 +139,9 @@ export default function App() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center">
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="flex flex-col items-center gap-3">
-          <div className="w-10 h-10 border-4 border-purple-200 border-t-purple-600 rounded-full animate-spin"></div>
+          <div className="w-10 h-10 border-4 border-am-100 border-t-am-500 rounded-full animate-spin"></div>
           <p className="text-gray-500 text-sm">Restoring session...</p>
         </div>
       </div>

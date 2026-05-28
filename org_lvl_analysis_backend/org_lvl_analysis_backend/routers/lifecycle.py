@@ -41,7 +41,7 @@ from services.export_service import export_excel
 from services.filter_error_service import filter_errors
 from services.hierarchy_service import compute_avg_flc, compute_chains, compute_levels, compute_total_reports
 from services.logging_service import get_activity_logs, get_user_stats, write_activity_log
-from services.orgchart_render_service import render_scenario_svg
+from services.orgchart_render_service import render_scenario_svg, get_tree_structure
 from services.orgchart_service import build_org_tree, build_tree_preserve_ancestors, make_json_serializable
 from services.spans_layers_service import span_threshold, spans_and_layers
 from services.upload_service import read_excel_file
@@ -219,103 +219,451 @@ def _render_scenario_summary_pdf(scenario, dataset, records) -> bytes:
     return buf.getvalue()
 
 
-def _populate_scenario_summary_pptx(prs, scenario, dataset, records) -> None:
-    from pptx.util import Inches as I, Pt
+def _svg_to_png(svg_content: str, max_width: int = 3840) -> bytes:
+    """Convert an SVG string to high-res PNG bytes.
+
+    Pipeline: SVG → svglib Drawing → reportlab PDF → pypdfium2 PNG.
+    This avoids a hard dependency on the native Cairo DLL (libcairo-2.dll)
+    which is difficult to provision on Windows.
+    """
+    import tempfile, os
+    from svglib.svglib import svg2rlg
+    from reportlab.graphics import renderPDF
+    import pypdfium2 as pdfium
+
+    with tempfile.NamedTemporaryFile(
+        suffix=".svg", delete=False, mode="w", encoding="utf-8",
+    ) as f:
+        f.write(svg_content)
+        svg_path = f.name
+
+    try:
+        drawing = svg2rlg(svg_path)
+        if drawing is None:
+            raise ValueError("svglib failed to parse SVG")
+
+        pdf_buf = BytesIO()
+        renderPDF.drawToFile(drawing, pdf_buf)
+        pdf_buf.seek(0)
+
+        pdf_doc = pdfium.PdfDocument(pdf_buf.getvalue())
+        page = pdf_doc[0]
+        scale = max_width / max(drawing.width, 1)
+        bitmap = page.render(scale=scale)
+        pil_image = bitmap.to_pil()
+
+        png_buf = BytesIO()
+        pil_image.save(png_buf, format="PNG")
+        return png_buf.getvalue()
+    finally:
+        os.unlink(svg_path)
+
+
+def _svg_to_pdf_bytes(svg_content: str) -> bytes:
+    """Convert an SVG string to PDF bytes via svglib + reportlab."""
+    import tempfile, os
+    from svglib.svglib import svg2rlg
+    from reportlab.graphics import renderPDF
+
+    with tempfile.NamedTemporaryFile(
+        suffix=".svg", delete=False, mode="w", encoding="utf-8",
+    ) as f:
+        f.write(svg_content)
+        svg_path = f.name
+
+    try:
+        drawing = svg2rlg(svg_path)
+        if drawing is None:
+            raise ValueError("svglib failed to parse SVG")
+        pdf_buf = BytesIO()
+        renderPDF.drawToFile(drawing, pdf_buf)
+        return pdf_buf.getvalue()
+    finally:
+        os.unlink(svg_path)
+
+
+def _add_pptx_title_slide(prs, dataset, scenario) -> None:
+    from pptx.util import Inches as I, Pt, Emu
     from pptx.dml.color import RGBColor
+    from pptx.enum.text import PP_ALIGN
+    from datetime import datetime
 
-    NAVY = RGBColor(0x0B, 0x23, 0x4B)
-    GOLD = RGBColor(0xC8, 0xA0, 0x4E)
-    WHITE = RGBColor(0xFF, 0xFF, 0xFF)
-    GREY = RGBColor(0x4F, 0x60, 0x77)
-
-    data = _scenario_summary_rows(scenario, dataset, records)
-    s = data["summary"]
-    cur = s.get("current", {})
-    base = s.get("baseline", {})
-    delta = s.get("delta", {})
+    C_NAVY = RGBColor(0x01, 0x24, 0x4A)
+    C_GOLD = RGBColor(0xC5, 0x96, 0x0C)
+    C_WHITE = RGBColor(0xFF, 0xFF, 0xFF)
 
     slide = prs.slides.add_slide(prs.slide_layouts[6])
-    band = slide.shapes.add_shape(1, I(0), I(0), I(10), I(1.2))
-    band.fill.solid(); band.fill.fore_color.rgb = NAVY
-    band.line.fill.background()
-    title_box = slide.shapes.add_textbox(I(0.4), I(0.25), I(9.2), I(0.7))
-    p = title_box.text_frame.paragraphs[0]
-    p.text = data["title"]
-    p.runs[0].font.size = Pt(22); p.runs[0].font.bold = True; p.runs[0].font.color.rgb = WHITE
+    bg = slide.shapes.add_shape(1, Emu(0), Emu(0), prs.slide_width, prs.slide_height)
+    bg.fill.solid()
+    bg.fill.fore_color.rgb = C_NAVY
+    bg.line.fill.background()
 
-    sub = slide.shapes.add_textbox(I(0.4), I(0.85), I(9.2), I(0.35))
-    sub.text_frame.text = f"Dataset #{dataset['id']} - {data['record_count']:,} records"
-    for r in sub.text_frame.paragraphs[0].runs:
-        r.font.size = Pt(11); r.font.color.rgb = GOLD
+    tb = slide.shapes.add_textbox(I(1), I(2.0), I(11.3), I(1.2))
+    p = tb.text_frame.paragraphs[0]
+    p.text = "OrgSight 2.0"
+    p.alignment = PP_ALIGN.CENTER
+    run = p.runs[0]
+    run.font.size = Pt(44)
+    run.font.bold = True
+    run.font.color.rgb = C_WHITE
+
+    sub = slide.shapes.add_textbox(I(1), I(3.2), I(11.3), I(0.6))
+    p2 = sub.text_frame.paragraphs[0]
+    p2.text = "Organizational Structure Analysis"
+    p2.alignment = PP_ALIGN.CENTER
+    run2 = p2.runs[0]
+    run2.font.size = Pt(22)
+    run2.font.color.rgb = C_GOLD
+
+    line = slide.shapes.add_shape(1, I(5), I(4.0), I(3.3), Pt(2))
+    line.fill.solid()
+    line.fill.fore_color.rgb = C_GOLD
+    line.line.fill.background()
+
+    info = slide.shapes.add_textbox(I(1), I(4.4), I(11.3), I(1.6))
+    tf = info.text_frame
+    for txt in [
+        f"Scenario: {scenario['name']}",
+        f"Dataset: {dataset['name']}",
+        f"Exported: {datetime.now().strftime('%d %b %Y')}",
+    ]:
+        p = tf.add_paragraph() if tf.paragraphs[0].text else tf.paragraphs[0]
+        p.text = txt
+        p.alignment = PP_ALIGN.CENTER
+        for r in p.runs:
+            r.font.size = Pt(14)
+            r.font.color.rgb = C_WHITE
+
+    foot = slide.shapes.add_textbox(I(7), I(6.8), I(6), I(0.4))
+    fp = foot.text_frame.paragraphs[0]
+    fp.text = "Confidential — Alvarez & Marsal"
+    fp.alignment = PP_ALIGN.RIGHT
+    for r in fp.runs:
+        r.font.size = Pt(10)
+        r.font.color.rgb = RGBColor(0x8A, 0x9A, 0xB4)
+
+
+def _add_pptx_summary_slide(prs, summary, dataset, scenario, page_num: int = 2) -> None:
+    from pptx.util import Inches as I, Pt, Emu
+    from pptx.dml.color import RGBColor
+    from pptx.enum.text import PP_ALIGN
+
+    C_NAVY = RGBColor(0x01, 0x24, 0x4A)
+    C_WHITE = RGBColor(0xFF, 0xFF, 0xFF)
+    C_GREY = RGBColor(0x4F, 0x60, 0x77)
+    C_GREEN = RGBColor(0x27, 0xAE, 0x60)
+    C_RED = RGBColor(0xC0, 0x39, 0x2B)
+
+    cur = summary.get("current", {})
+    base = summary.get("baseline", {})
+    delta = summary.get("delta", {})
+
+    slide = prs.slides.add_slide(prs.slide_layouts[6])
+    band = slide.shapes.add_shape(1, Emu(0), Emu(0), prs.slide_width, I(0.7))
+    band.fill.solid()
+    band.fill.fore_color.rgb = C_NAVY
+    band.line.fill.background()
+    ttl = slide.shapes.add_textbox(I(0.5), I(0.12), I(12), I(0.5))
+    tp = ttl.text_frame.paragraphs[0]
+    tp.text = f"Executive Summary — {scenario['name']}"
+    for r in tp.runs:
+        r.font.size = Pt(20)
+        r.font.bold = True
+        r.font.color.rgb = C_WHITE
 
     metrics = [
-        ("Headcount", f"{cur.get('headcount', 0):,}", f"vs {base.get('headcount', 0):,} baseline"),
-        ("Total FTE", f"{cur.get('total_fte', 0):,.1f}", f"{delta.get('fte', 0):+,.1f} delta"),
-        ("Total Cost", f"${cur.get('total_cost', 0):,.0f}", f"{delta.get('cost', 0):+,.0f} delta"),
-        ("Changes", f"{s.get('change_count', 0)}", "logged mutations"),
+        ("HEADCOUNT", f"{cur.get('headcount', 0):,}", delta.get("headcount", 0), ""),
+        ("TOTAL FTE", f"{cur.get('total_fte', 0):,.1f}", delta.get("fte", 0), ""),
+        ("TOTAL COST", f"${cur.get('total_cost', 0):,.0f}", delta.get("cost", 0), "$"),
+        ("CHANGES", f"{summary.get('change_count', 0)}", None, ""),
     ]
-    card_w = 2.2
-    for i, (label, value, sub_text) in enumerate(metrics):
-        left = I(0.4 + i * (card_w + 0.15))
-        card = slide.shapes.add_shape(1, left, I(1.6), I(card_w), I(1.5))
-        card.fill.solid(); card.fill.fore_color.rgb = WHITE
-        card.line.color.rgb = NAVY
-        tb = slide.shapes.add_textbox(left, I(1.7), I(card_w), I(0.4))
-        tb.text_frame.text = label.upper()
-        for r in tb.text_frame.paragraphs[0].runs:
-            r.font.size = Pt(9); r.font.bold = True; r.font.color.rgb = GREY
-        vb = slide.shapes.add_textbox(left, I(2.05), I(card_w), I(0.6))
-        vb.text_frame.text = value
-        for r in vb.text_frame.paragraphs[0].runs:
-            r.font.size = Pt(20); r.font.bold = True; r.font.color.rgb = NAVY
-        sb = slide.shapes.add_textbox(left, I(2.65), I(card_w), I(0.4))
-        sb.text_frame.text = sub_text
-        for r in sb.text_frame.paragraphs[0].runs:
-            r.font.size = Pt(9); r.font.color.rgb = GREY
+    card_w = 2.9
+    gap = 0.25
+    start_x = (13.333 - (4 * card_w + 3 * gap)) / 2
+    for i, (label, value, dval, prefix) in enumerate(metrics):
+        left = I(start_x + i * (card_w + gap))
+        card = slide.shapes.add_shape(1, left, I(1.5), I(card_w), I(2.2))
+        card.fill.solid()
+        card.fill.fore_color.rgb = C_WHITE
+        card.line.color.rgb = RGBColor(0xDC, 0xE4, 0xEE)
+        card.shadow.inherit = False
 
-    slide2 = prs.slides.add_slide(prs.slide_layouts[6])
-    th = slide2.shapes.add_textbox(I(0.4), I(0.3), I(9.2), I(0.5))
-    th.text_frame.text = "Change log"
-    for r in th.text_frame.paragraphs[0].runs:
-        r.font.size = Pt(22); r.font.bold = True; r.font.color.rgb = NAVY
+        hdr_band = slide.shapes.add_shape(1, left, I(1.5), I(card_w), I(0.45))
+        hdr_band.fill.solid()
+        hdr_band.fill.fore_color.rgb = C_NAVY
+        hdr_band.line.fill.background()
+        hdr = slide.shapes.add_textbox(left, I(1.55), I(card_w), I(0.4))
+        hp = hdr.text_frame.paragraphs[0]
+        hp.text = label
+        hp.alignment = PP_ALIGN.CENTER
+        for r in hp.runs:
+            r.font.size = Pt(11)
+            r.font.bold = True
+            r.font.color.rgb = C_WHITE
 
-    log_rows = data["change_log"][:30]
-    if not log_rows:
-        nb = slide2.shapes.add_textbox(I(0.4), I(1.0), I(9.2), I(0.5))
-        nb.text_frame.text = "No changes recorded for this scenario yet."
-        for r in nb.text_frame.paragraphs[0].runs:
-            r.font.size = Pt(13); r.font.color.rgb = GREY
-    else:
-        table_shape = slide2.shapes.add_table(
-            len(log_rows) + 1, 4, I(0.4), I(1.0), I(9.2), I(min(6.0, 0.35 * (len(log_rows) + 1)))
+        vb = slide.shapes.add_textbox(left, I(2.2), I(card_w), I(0.8))
+        vp = vb.text_frame.paragraphs[0]
+        vp.text = value
+        vp.alignment = PP_ALIGN.CENTER
+        for r in vp.runs:
+            r.font.size = Pt(32)
+            r.font.bold = True
+            r.font.color.rgb = C_NAVY
+
+        if dval is not None:
+            db = slide.shapes.add_textbox(left, I(3.0), I(card_w), I(0.4))
+            dp = db.text_frame.paragraphs[0]
+            dp.text = f"{prefix}{dval:+,.0f} from baseline" if dval != 0 else "no change"
+            dp.alignment = PP_ALIGN.CENTER
+            color = C_GREEN if dval > 0 else C_RED if dval < 0 else C_GREY
+            for r in dp.runs:
+                r.font.size = Pt(11)
+                r.font.color.rgb = color
+
+    _add_pptx_footer(slide, prs, scenario["name"], page_num)
+
+
+def _add_pptx_chart_slide(prs, png_bytes: bytes, title: str, scenario_name: str, page_num: int) -> None:
+    from pptx.util import Inches as I, Pt, Emu
+    from pptx.dml.color import RGBColor
+    from PIL import Image as PILImage
+
+    C_NAVY = RGBColor(0x01, 0x24, 0x4A)
+    C_WHITE = RGBColor(0xFF, 0xFF, 0xFF)
+
+    slide = prs.slides.add_slide(prs.slide_layouts[6])
+    band = slide.shapes.add_shape(1, Emu(0), Emu(0), prs.slide_width, I(0.7))
+    band.fill.solid()
+    band.fill.fore_color.rgb = C_NAVY
+    band.line.fill.background()
+    ttl = slide.shapes.add_textbox(I(0.5), I(0.12), I(12), I(0.5))
+    tp = ttl.text_frame.paragraphs[0]
+    tp.text = title
+    for r in tp.runs:
+        r.font.size = Pt(18)
+        r.font.bold = True
+        r.font.color.rgb = C_WHITE
+
+    img_stream = BytesIO(png_bytes)
+    img = PILImage.open(img_stream)
+    img_w, img_h = img.size
+    img_stream.seek(0)
+
+    avail_w = 12.5
+    avail_h = 6.0
+    scale = min(avail_w / (img_w / 96.0), avail_h / (img_h / 96.0), 1.0)
+    disp_w = (img_w / 96.0) * scale
+    disp_h = (img_h / 96.0) * scale
+    left = (13.333 - disp_w) / 2
+    top = 0.9 + (6.0 - disp_h) / 2
+
+    slide.shapes.add_picture(img_stream, I(left), I(top), I(disp_w), I(disp_h))
+    _add_pptx_footer(slide, prs, scenario_name, page_num)
+
+
+def _add_pptx_changelog_slides(prs, change_log: list, scenario_name: str, page_start: int) -> int:
+    from pptx.util import Inches as I, Pt, Emu
+    from pptx.dml.color import RGBColor
+
+    C_NAVY = RGBColor(0x01, 0x24, 0x4A)
+    C_WHITE = RGBColor(0xFF, 0xFF, 0xFF)
+    C_GREY = RGBColor(0x4F, 0x60, 0x77)
+    ROWS_PER_SLIDE = 20
+    page = page_start
+
+    if not change_log:
+        return page
+
+    chunks = [change_log[i:i + ROWS_PER_SLIDE] for i in range(0, len(change_log), ROWS_PER_SLIDE)]
+    for chunk_idx, chunk in enumerate(chunks):
+        slide = prs.slides.add_slide(prs.slide_layouts[6])
+        band = slide.shapes.add_shape(1, Emu(0), Emu(0), prs.slide_width, I(0.7))
+        band.fill.solid()
+        band.fill.fore_color.rgb = C_NAVY
+        band.line.fill.background()
+        ttl = slide.shapes.add_textbox(I(0.5), I(0.12), I(12), I(0.5))
+        tp = ttl.text_frame.paragraphs[0]
+        suffix = f" ({chunk_idx + 1}/{len(chunks)})" if len(chunks) > 1 else ""
+        tp.text = f"Change Log{suffix}"
+        for r in tp.runs:
+            r.font.size = Pt(18)
+            r.font.bold = True
+            r.font.color.rgb = C_WHITE
+
+        headers = ["Action", "Employee", "From", "To", "Field", "Timestamp"]
+        table_shape = slide.shapes.add_table(
+            len(chunk) + 1, len(headers),
+            I(0.4), I(1.0), I(12.5), I(min(6.0, 0.3 * (len(chunk) + 1))),
         )
         tbl = table_shape.table
-        headers = ["When", "Action", "Employee", "User"]
         for c, h in enumerate(headers):
             cell = tbl.cell(0, c)
             cell.text = h
+            cell.fill.solid()
+            cell.fill.fore_color.rgb = C_NAVY
             for p in cell.text_frame.paragraphs:
                 for r in p.runs:
-                    r.font.bold = True; r.font.size = Pt(10); r.font.color.rgb = WHITE
-            cell.fill.solid(); cell.fill.fore_color.rgb = NAVY
-        for i, entry in enumerate(log_rows, start=1):
-            when = (entry.get("created_at") or "")[:19].replace("T", " ")
-            tbl.cell(i, 0).text = when
-            tbl.cell(i, 1).text = str(entry.get("action", "") or "")
-            tbl.cell(i, 2).text = str(entry.get("emp_id", "") or "")
-            tbl.cell(i, 3).text = str(entry.get("username", "") or "")
-            for c in range(4):
-                for p in tbl.cell(i, c).text_frame.paragraphs:
+                    r.font.bold = True
+                    r.font.size = Pt(10)
+                    r.font.color.rgb = C_WHITE
+
+        for i, entry in enumerate(chunk, start=1):
+            action = str(entry.get("action", ""))
+            emp = str(entry.get("emp_id", "") or "")
+            old_mgr = str(entry.get("old_mgr_id", "") or "")
+            new_mgr = str(entry.get("new_mgr_id", "") or "")
+            field = str(entry.get("field", "") or action)
+            when = (entry.get("created_at") or entry.get("timestamp") or "")[:19].replace("T", " ")
+            vals = [action, emp, old_mgr, new_mgr, field, when]
+            for c, v in enumerate(vals):
+                cell = tbl.cell(i, c)
+                cell.text = v
+                if i % 2 == 0:
+                    cell.fill.solid()
+                    cell.fill.fore_color.rgb = RGBColor(0xF5, 0xF7, 0xFA)
+                for p in cell.text_frame.paragraphs:
                     for r in p.runs:
                         r.font.size = Pt(9)
 
-    fb = slide.shapes.add_textbox(I(0.4), I(6.6), I(9.2), I(0.4))
-    fb.text_frame.text = (
-        "Visual org chart requires Inkscape on the server. This deck shows the "
-        "metrics + change log so it stays editable in PowerPoint."
+        _add_pptx_footer(slide, prs, scenario_name, page)
+        page += 1
+
+    return page
+
+
+def _add_pptx_footer(slide, prs, scenario_name: str, page_num: int) -> None:
+    from pptx.util import Inches as I, Pt, Emu
+    from pptx.dml.color import RGBColor
+    from pptx.enum.text import PP_ALIGN
+
+    line = slide.shapes.add_shape(
+        1, I(0.5), I(7.05), I(12.3), Pt(1.5),
     )
-    for r in fb.text_frame.paragraphs[0].runs:
-        r.font.size = Pt(9); r.font.color.rgb = GREY
+    line.fill.solid()
+    line.fill.fore_color.rgb = RGBColor(0x01, 0x24, 0x4A)
+    line.line.fill.background()
+
+    foot = slide.shapes.add_textbox(I(0.5), I(7.1), I(12.3), I(0.3))
+    fp = foot.text_frame.paragraphs[0]
+    fp.text = f"OrgSight 2.0  |  {scenario_name}  |  Page {page_num}"
+    fp.alignment = PP_ALIGN.CENTER
+    for r in fp.runs:
+        r.font.size = Pt(9)
+        r.font.color.rgb = RGBColor(0x8A, 0x9A, 0xB4)
+
+
+def _build_scenario_pptx(
+    records: list,
+    dataset: dict,
+    scenario: dict,
+    detail: str = "summary",
+) -> bytes:
+    """Build a multi-slide PPTX with title, summary, org chart pages, and
+    change log.  *detail* controls depth:
+      - ``overview``: title + summary + L1-L2 overview only
+      - ``summary``: + one subtree slide per L1 direct report (3 levels deep)
+      - ``full``: + recursive drill-down for subtrees with >20 headcount
+    """
+    from pptx.util import Emu
+
+    emp_col = dataset["emp_col"]
+    mgr_col = dataset["mgr_col"]
+    jtc = dataset.get("job_title_col")
+    ftc = dataset.get("fte_col")
+    flc = dataset.get("flc_col")
+    ctc = dataset.get("country_col")
+
+    summary_data = db_service.get_scenario_summary(scenario["id"])
+    change_log = db_service.get_change_log(scenario["id"])
+    tree = get_tree_structure(records, emp_col, mgr_col)
+
+    prs = Presentation()
+    prs.slide_width = Emu(12192000)   # 13.333 in
+    prs.slide_height = Emu(6858000)   # 7.5 in
+
+    svg_kwargs = dict(
+        emp_col=emp_col, mgr_col=mgr_col,
+        job_title_col=jtc, fte_col=ftc, flc_col=flc, country_col=ctc,
+    )
+
+    _add_pptx_title_slide(prs, dataset, scenario)
+
+    _add_pptx_summary_slide(prs, summary_data, dataset, scenario, page_num=2)
+
+    page = 3
+
+    overview_svg = render_scenario_svg(
+        records, **svg_kwargs,
+        title=f"Organization Chart — Overview (L1–L2)",
+        subtitle=f"{dataset['name']}  ·  {scenario['name']}",
+        max_depth=2,
+    )
+    try:
+        overview_png = _svg_to_png(overview_svg, max_width=3840)
+        _add_pptx_chart_slide(prs, overview_png, "Organization Chart — Overview (L1–L2)", scenario["name"], page)
+        page += 1
+    except Exception:
+        pass
+
+    if detail in ("summary", "full"):
+        for root_id in tree["roots"]:
+            l1_kids = tree["children"].get(root_id, [])
+            for kid_id in l1_kids:
+                rec = tree["by_id"].get(kid_id, {})
+                kid_title = str(rec.get(jtc) or rec.get("Job Title") or kid_id) if jtc else str(rec.get("Job Title") or kid_id)
+                kid_hc = tree["headcount"].get(kid_id, 0)
+                if kid_hc < 1:
+                    continue
+                subtree_svg = render_scenario_svg(
+                    records, **svg_kwargs,
+                    title=f"{kid_title} — Team Structure",
+                    subtitle=f"{kid_hc} headcount",
+                    root_id=kid_id,
+                    max_depth=3,
+                )
+                try:
+                    subtree_png = _svg_to_png(subtree_svg, max_width=3840)
+                    _add_pptx_chart_slide(
+                        prs, subtree_png,
+                        f"{kid_title} — Team Structure",
+                        scenario["name"], page,
+                    )
+                    page += 1
+                except Exception:
+                    pass
+
+                if detail == "full" and kid_hc > 20:
+                    l2_kids = tree["children"].get(kid_id, [])
+                    for gk_id in l2_kids:
+                        gk_rec = tree["by_id"].get(gk_id, {})
+                        gk_title = str(gk_rec.get(jtc) or gk_rec.get("Job Title") or gk_id) if jtc else str(gk_rec.get("Job Title") or gk_id)
+                        gk_hc = tree["headcount"].get(gk_id, 0)
+                        if gk_hc < 5:
+                            continue
+                        deep_svg = render_scenario_svg(
+                            records, **svg_kwargs,
+                            title=f"{gk_title} — Detail",
+                            subtitle=f"{gk_hc} headcount",
+                            root_id=gk_id,
+                            max_depth=4,
+                        )
+                        try:
+                            deep_png = _svg_to_png(deep_svg, max_width=3840)
+                            _add_pptx_chart_slide(
+                                prs, deep_png,
+                                f"{gk_title} — Detail",
+                                scenario["name"], page,
+                            )
+                            page += 1
+                        except Exception:
+                            pass
+
+    if change_log:
+        page = _add_pptx_changelog_slides(prs, change_log, scenario["name"], page)
+
+    out = BytesIO()
+    prs.save(out)
+    return out.getvalue()
 
 
 # ===================================================================
@@ -1404,44 +1752,17 @@ def db_export_scenario_svg(
 def db_export_scenario_ppt(
     scenario_id: int,
     project_id: int,
+    detail: str = Query("summary", regex="^(overview|summary|full)$"),
     _user: dict = Depends(require_project_access()),
 ):
     scenario, dataset = _require_scenario_in_project(scenario_id, project_id)
     records = db_service.get_scenario_records(scenario_id)
-    svg_content = render_scenario_svg(
-        records, emp_col=dataset["emp_col"], mgr_col=dataset["mgr_col"],
-        job_title_col=dataset.get("job_title_col"), fte_col=dataset.get("fte_col"),
-        flc_col=dataset.get("flc_col"), country_col=dataset.get("country_col"),
-        title=f"OrgSight 2.0  -  {scenario['name']}",
-    )
 
-    inkscape_exe_path = r"C:\Program Files\Inkscape\bin\inkscape.exe"
-    image_bytes: Optional[bytes] = None
-    if os.path.exists(inkscape_exe_path):
-        with tempfile.TemporaryDirectory() as temp_dir:
-            svg_path = os.path.join(temp_dir, "scenario.svg")
-            emf_path = svg_path.replace(".svg", ".emf")
-            with open(svg_path, "w", encoding="utf-8") as f:
-                f.write(svg_content)
-            cmd = f'"{inkscape_exe_path}" "{svg_path}" --export-type=emf --export-filename="{emf_path}"'
-            result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
-            if result.returncode == 0 and os.path.exists(emf_path):
-                with open(emf_path, "rb") as fh:
-                    image_bytes = fh.read()
+    pptx_bytes = _build_scenario_pptx(records, dataset, scenario, detail=detail)
 
-    prs = Presentation()
-    if image_bytes is not None:
-        slide = prs.slides.add_slide(prs.slide_layouts[6])
-        slide.shapes.add_picture(BytesIO(image_bytes), Inches(0.25), Inches(0.25), width=Inches(9.5))
-    else:
-        _populate_scenario_summary_pptx(prs, scenario, dataset, records)
-
-    out = BytesIO()
-    prs.save(out)
-    out.seek(0)
     safe_name = "".join(c for c in scenario["name"] if c.isalnum() or c in "-_") or "scenario"
     return StreamingResponse(
-        out,
+        BytesIO(pptx_bytes),
         media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
         headers={"Content-Disposition": f'attachment; filename="orgsight_{safe_name}.pptx"'},
     )
@@ -1451,46 +1772,65 @@ def db_export_scenario_ppt(
 def db_export_scenario_pdf(
     scenario_id: int,
     project_id: int,
+    detail: str = Query("summary", regex="^(overview|summary|full)$"),
     _user: dict = Depends(require_project_access()),
 ):
     scenario, dataset = _require_scenario_in_project(scenario_id, project_id)
     records = db_service.get_scenario_records(scenario_id)
-    svg_content = render_scenario_svg(
-        records, emp_col=dataset["emp_col"], mgr_col=dataset["mgr_col"],
-        job_title_col=dataset.get("job_title_col"), fte_col=dataset.get("fte_col"),
-        flc_col=dataset.get("flc_col"), country_col=dataset.get("country_col"),
-        title=f"OrgSight 2.0  -  {scenario['name']}",
+
+    emp_col = dataset["emp_col"]
+    mgr_col = dataset["mgr_col"]
+    svg_kwargs = dict(
+        emp_col=emp_col, mgr_col=mgr_col,
+        job_title_col=dataset.get("job_title_col"),
+        fte_col=dataset.get("fte_col"),
+        flc_col=dataset.get("flc_col"),
+        country_col=dataset.get("country_col"),
     )
 
-    inkscape_exe_path = r"C:\Program Files\Inkscape\bin\inkscape.exe"
-    pdf_bytes: Optional[bytes] = None
-    if os.path.exists(inkscape_exe_path):
-        with tempfile.TemporaryDirectory() as temp_dir:
-            svg_path = os.path.join(temp_dir, "scenario.svg")
-            pdf_path = svg_path.replace(".svg", ".pdf")
-            with open(svg_path, "w", encoding="utf-8") as f:
-                f.write(svg_content)
-            cmd = f'"{inkscape_exe_path}" "{svg_path}" --export-type=pdf --export-filename="{pdf_path}"'
-            result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
-            if result.returncode == 0 and os.path.exists(pdf_path):
-                with open(pdf_path, "rb") as fh:
-                    pdf_bytes = fh.read()
+    svg_pages: List[str] = []
 
-    if pdf_bytes is None:
-        try:
-            pdf_bytes = _render_scenario_summary_pdf(scenario, dataset, records)
-        except Exception as svglib_err:
-            try:
-                import cairosvg
-                pdf_bytes = cairosvg.svg2pdf(bytestring=svg_content.encode("utf-8"))
-            except Exception as cairo_err:
-                raise HTTPException(
-                    status_code=500,
-                    detail=(
-                        f"PDF export failed. Tried Inkscape ({inkscape_exe_path}, not found), "
-                        f"summary PDF ({svglib_err}), and cairosvg ({cairo_err})."
-                    ),
+    overview_svg = render_scenario_svg(
+        records, **svg_kwargs,
+        title=f"OrgSight 2.0  —  {scenario['name']}",
+        subtitle=f"{dataset['name']}  ·  Overview (L1–L2)",
+        max_depth=2,
+    )
+    svg_pages.append(overview_svg)
+
+    if detail in ("summary", "full"):
+        tree = get_tree_structure(records, emp_col, mgr_col)
+        for root_id in tree["roots"]:
+            for kid_id in tree["children"].get(root_id, []):
+                rec = tree["by_id"].get(kid_id, {})
+                jtc = dataset.get("job_title_col")
+                kid_title = str(rec.get(jtc) or rec.get("Job Title") or kid_id) if jtc else str(rec.get("Job Title") or kid_id)
+                kid_hc = tree["headcount"].get(kid_id, 0)
+                if kid_hc < 1:
+                    continue
+                subtree_svg = render_scenario_svg(
+                    records, **svg_kwargs,
+                    title=f"{kid_title} — Team Structure",
+                    subtitle=f"{kid_hc} headcount",
+                    root_id=kid_id, max_depth=3,
                 )
+                svg_pages.append(subtree_svg)
+
+    pdf_parts = []
+    for svg_str in svg_pages:
+        pdf_parts.append(_svg_to_pdf_bytes(svg_str))
+
+    if len(pdf_parts) == 1:
+        pdf_bytes = pdf_parts[0]
+    else:
+        from pypdf import PdfMerger
+        merger = PdfMerger()
+        for part in pdf_parts:
+            merger.append(BytesIO(part))
+        merged = BytesIO()
+        merger.write(merged)
+        merger.close()
+        pdf_bytes = merged.getvalue()
 
     safe_name = "".join(c for c in scenario["name"] if c.isalnum() or c in "-_") or "scenario"
     return StreamingResponse(

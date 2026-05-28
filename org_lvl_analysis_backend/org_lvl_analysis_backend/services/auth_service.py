@@ -18,8 +18,10 @@ VALID_USERS = {
     "rraj": "rhlrj",
     "ashish.mehta": "shshmht",
     "hmakkar": "hmkkr",
-    "gbhatia": "gbht"
-    
+    "gbhatia": "gbht",
+    "abhay.nigam": "bhyngm",
+    "sherry.shaju": "shrryshj",
+    "singh.vani": "snghn",
 }
 
 def authenticate_user(username: str, password: str) -> bool:

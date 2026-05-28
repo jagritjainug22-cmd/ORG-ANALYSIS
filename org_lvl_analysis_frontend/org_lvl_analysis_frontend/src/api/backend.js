@@ -449,13 +449,17 @@ export const dbExportRecords = async (scenarioId, scenarioName = "scenario") => 
   downloadBlobAs(res.data, `orgsight_records_${scenarioName.replace(/[^a-z0-9-_]/gi, "") || "scenario"}.xlsx`);
 };
 
-export const dbExportPpt = async (scenarioId, scenarioName = "scenario") => {
-  const res = await axios.get(`${getProjectUrl()}/db/scenarios/${scenarioId}/export/ppt`, { headers: getHeaders(), responseType: "blob" });
+export const dbExportPpt = async (scenarioId, scenarioName = "scenario", detail = "summary") => {
+  const res = await axios.get(`${getProjectUrl()}/db/scenarios/${scenarioId}/export/ppt`, {
+    headers: getHeaders(), responseType: "blob", params: { detail },
+  });
   downloadBlobAs(res.data, `orgsight_${scenarioName.replace(/[^a-z0-9-_]/gi, "") || "scenario"}.pptx`);
 };
 
-export const dbExportPdf = async (scenarioId, scenarioName = "scenario") => {
-  const res = await axios.get(`${getProjectUrl()}/db/scenarios/${scenarioId}/export/pdf`, { headers: getHeaders(), responseType: "blob" });
+export const dbExportPdf = async (scenarioId, scenarioName = "scenario", detail = "summary") => {
+  const res = await axios.get(`${getProjectUrl()}/db/scenarios/${scenarioId}/export/pdf`, {
+    headers: getHeaders(), responseType: "blob", params: { detail },
+  });
   downloadBlobAs(res.data, `orgsight_${scenarioName.replace(/[^a-z0-9-_]/gi, "") || "scenario"}.pdf`);
 };
 

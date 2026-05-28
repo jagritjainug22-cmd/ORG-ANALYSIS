@@ -70,7 +70,26 @@ def _mgr_of(rec: Dict[str, Any], mgr_col: str) -> Optional[str]:
     return None if val in (None, "", "None") else str(val)
 
 
-def _layout(records: List[Dict[str, Any]], emp_col: str, mgr_col: str):
+def _collect_subtree(root_id: str, children: Dict[str, List[str]]) -> set:
+    """Return the set of all node IDs in the subtree rooted at *root_id*."""
+    out = {root_id}
+    stack = [root_id]
+    while stack:
+        nid = stack.pop()
+        for kid in children.get(nid, []):
+            out.add(kid)
+            stack.append(kid)
+    return out
+
+
+def _layout(
+    records: List[Dict[str, Any]],
+    emp_col: str,
+    mgr_col: str,
+    *,
+    root_id: Optional[str] = None,
+    max_depth: Optional[int] = None,
+):
     by_id: Dict[str, Dict[str, Any]] = {}
     children: Dict[str, List[str]] = {}
     roots: List[str] = []
@@ -92,17 +111,25 @@ def _layout(records: List[Dict[str, Any]], emp_col: str, mgr_col: str):
         else:
             roots.append(rid)
 
+    if root_id and root_id in by_id:
+        keep = _collect_subtree(root_id, children)
+        by_id = {k: v for k, v in by_id.items() if k in keep}
+        children = {k: [c for c in v if c in keep] for k, v in children.items() if k in keep}
+        roots = [root_id]
+
     subtree_w: Dict[str, float] = {}
     nodes: Dict[str, Tuple[float, float, int]] = {}
 
-    def measure(node_id: str) -> float:
+    def measure(node_id: str, depth: int = 0) -> float:
         kids = children.get(node_id, [])
+        if max_depth is not None and depth >= max_depth - 1:
+            kids = []
         if not kids:
             subtree_w[node_id] = CARD_W
             return CARD_W
         total = 0.0
         for i, k in enumerate(kids):
-            total += measure(k)
+            total += measure(k, depth + 1)
             if i < len(kids) - 1:
                 total += HGAP
         subtree_w[node_id] = max(CARD_W, total)
@@ -110,6 +137,8 @@ def _layout(records: List[Dict[str, Any]], emp_col: str, mgr_col: str):
 
     def place(node_id: str, left_x: float, depth: int) -> None:
         kids = children.get(node_id, [])
+        if max_depth is not None and depth >= max_depth - 1:
+            kids = []
         my_w = subtree_w[node_id]
         if kids:
             total_kid = sum(subtree_w[k] for k in kids) + HGAP * (len(kids) - 1)
@@ -134,7 +163,6 @@ def _layout(records: List[Dict[str, Any]], emp_col: str, mgr_col: str):
     max_x = max((p[0] + CARD_W for p in nodes.values()), default=CARD_W)
     max_y = max((p[1] + CARD_H for p in nodes.values()), default=CARD_H)
 
-    # Compute subtree headcount and cost (excluding flagged) for each node
     stats: Dict[str, Dict[str, float]] = {}
 
     def compute_stats(node_id: str) -> Dict[str, float]:
@@ -145,11 +173,6 @@ def _layout(records: List[Dict[str, Any]], emp_col: str, mgr_col: str):
             stats[node_id] = {"hc": 0, "cost": 0}
             return stats[node_id]
         removed = bool(node.get("is_flagged_removed"))
-        self_cost = 0.0
-        if not removed:
-            for cost_field in ("flc_col", "FLC", "Avg_FLC"):
-                # placeholder; caller supplies flc_col separately when rendering
-                pass
         s = {"hc": 0 if removed else 1, "cost": 0.0}
         for k in children.get(node_id, []):
             c = compute_stats(k)
@@ -161,7 +184,7 @@ def _layout(records: List[Dict[str, Any]], emp_col: str, mgr_col: str):
     for nid in by_id:
         compute_stats(nid)
 
-    return by_id, children, nodes, stats, max_x, max_y
+    return by_id, children, roots, nodes, stats, max_x, max_y
 
 
 def _format_compact_currency(n: float) -> str:
@@ -231,7 +254,10 @@ def render_scenario_svg(
     flc_col: Optional[str] = None,
     country_col: Optional[str] = None,
     title: str = "OrgSight 2.0",
+    subtitle: Optional[str] = None,
     include_flagged: bool = True,
+    root_id: Optional[str] = None,
+    max_depth: Optional[int] = None,
 ) -> str:
     if not records:
         return (
@@ -241,7 +267,9 @@ def render_scenario_svg(
         )
 
     rows = records if include_flagged else [r for r in records if not r.get("is_flagged_removed")]
-    by_id, children, nodes, _stats, max_x, max_y = _layout(rows, emp_col, mgr_col)
+    by_id, children, _roots, nodes, _stats, max_x, max_y = _layout(
+        rows, emp_col, mgr_col, root_id=root_id, max_depth=max_depth,
+    )
 
     # Compute live subtree headcount + cost ourselves so we can use the actual
     # flc/fte columns at render time.
@@ -276,8 +304,9 @@ def render_scenario_svg(
         walk(nid)
 
     pad = 40
+    title_h = 56 if subtitle else 40
     width = int(max_x + pad * 2)
-    height = int(max_y + pad * 2 + 50)  # extra 50 for title bar
+    height = int(max_y + pad * 2 + title_h + 10)
 
     parts: List[str] = []
     parts.append(
@@ -288,14 +317,19 @@ def render_scenario_svg(
     # Background
     parts.append(f'<rect x="0" y="0" width="{width}" height="{height}" fill="#f4f6f9"/>')
 
-    # Title bar
-    parts.append(f'<rect x="0" y="0" width="{width}" height="40" fill="{NAVY}"/>')
+    title_h = 56 if subtitle else 40
+    parts.append(f'<rect x="0" y="0" width="{width}" height="{title_h}" fill="{NAVY}"/>')
     parts.append(
         f'<text x="20" y="26" font-size="14" font-weight="700" fill="{WHITE}">'
         f'{escape(title)}</text>'
     )
+    if subtitle:
+        parts.append(
+            f'<text x="20" y="46" font-size="11" fill="{GOLD}">'
+            f'{escape(subtitle)}</text>'
+        )
 
-    g_open = f'<g transform="translate({pad},{pad + 50})">'
+    g_open = f'<g transform="translate({pad},{pad + title_h + 10})">'
     parts.append(g_open)
 
     # Connectors — shared-bus per parent (matches live UI stepPath)
@@ -429,3 +463,55 @@ def render_scenario_svg(
 
     parts.append("</g></svg>")
     return "".join(parts)
+
+
+def get_tree_structure(
+    records: List[Dict[str, Any]],
+    emp_col: str,
+    mgr_col: str,
+) -> Dict[str, Any]:
+    """Return the tree structure for export pagination: roots, children map,
+    and subtree headcount per node.  Used by the PPT/PDF generator to decide
+    which subtree slides to produce."""
+    by_id: Dict[str, Dict[str, Any]] = {}
+    children: Dict[str, List[str]] = {}
+    roots: List[str] = []
+
+    for r in records:
+        rid = _id_of(r, emp_col)
+        if not rid:
+            continue
+        by_id[rid] = r
+        children.setdefault(rid, [])
+
+    for r in records:
+        rid = _id_of(r, emp_col)
+        if not rid:
+            continue
+        pid = _mgr_of(r, mgr_col)
+        if pid and pid in by_id:
+            children[pid].append(rid)
+        else:
+            roots.append(rid)
+
+    hc: Dict[str, int] = {}
+
+    def count(nid: str) -> int:
+        if nid in hc:
+            return hc[nid]
+        rec = by_id.get(nid, {})
+        n = 0 if rec.get("is_flagged_removed") else 1
+        for k in children.get(nid, []):
+            n += count(k)
+        hc[nid] = n
+        return n
+
+    for nid in by_id:
+        count(nid)
+
+    return {
+        "by_id": by_id,
+        "children": children,
+        "roots": roots,
+        "headcount": hc,
+    }

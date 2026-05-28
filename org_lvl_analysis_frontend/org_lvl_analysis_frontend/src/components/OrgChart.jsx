@@ -1127,35 +1127,72 @@ export default function OrgChart({
                 borderRadius: 8,
                 boxShadow: "0 12px 28px rgba(1,36,74,0.18)",
                 border: `1px solid ${AM.border}`,
-                minWidth: 220,
-                overflow: "hidden",
+                minWidth: 260,
+                maxHeight: 460,
+                overflowY: "auto",
                 zIndex: 20,
               }}
             >
               {inDbMode ? (
                 <>
+                  <ExportGroupLabel label="PowerPoint (.pptx)" />
                   <ExportItem
-                    label="Editable PPT (.pptx)"
-                    desc="SVG → EMF via Inkscape, editable shapes"
+                    label="Overview"
+                    desc="Title + KPIs + L1-L2 chart"
                     onClick={() => {
                       const s = (scenarios || []).find((x) => x.id === activeScenarioId);
-                      dbExportPpt(activeScenarioId, s?.name || "scenario").catch((e) =>
+                      dbExportPpt(activeScenarioId, s?.name || "scenario", "overview").catch((e) =>
                         setError(e.response?.data?.detail || e.message || "Failed to export.")
                       );
                       setExportMenuOpen(false);
                     }}
                   />
                   <ExportItem
-                    label="PDF"
-                    desc="Single-page visual snapshot"
+                    label="Summary"
+                    desc="Overview + subtree slides per L1 report"
                     onClick={() => {
                       const s = (scenarios || []).find((x) => x.id === activeScenarioId);
-                      dbExportPdf(activeScenarioId, s?.name || "scenario").catch((e) =>
+                      dbExportPpt(activeScenarioId, s?.name || "scenario", "summary").catch((e) =>
                         setError(e.response?.data?.detail || e.message || "Failed to export.")
                       );
                       setExportMenuOpen(false);
                     }}
                   />
+                  <ExportItem
+                    label="Full Detail"
+                    desc="Summary + deep drill-down for large teams"
+                    onClick={() => {
+                      const s = (scenarios || []).find((x) => x.id === activeScenarioId);
+                      dbExportPpt(activeScenarioId, s?.name || "scenario", "full").catch((e) =>
+                        setError(e.response?.data?.detail || e.message || "Failed to export.")
+                      );
+                      setExportMenuOpen(false);
+                    }}
+                  />
+                  <ExportGroupLabel label="PDF" />
+                  <ExportItem
+                    label="Overview"
+                    desc="L1-L2 visual chart"
+                    onClick={() => {
+                      const s = (scenarios || []).find((x) => x.id === activeScenarioId);
+                      dbExportPdf(activeScenarioId, s?.name || "scenario", "overview").catch((e) =>
+                        setError(e.response?.data?.detail || e.message || "Failed to export.")
+                      );
+                      setExportMenuOpen(false);
+                    }}
+                  />
+                  <ExportItem
+                    label="Summary"
+                    desc="Overview + subtree pages per L1 report"
+                    onClick={() => {
+                      const s = (scenarios || []).find((x) => x.id === activeScenarioId);
+                      dbExportPdf(activeScenarioId, s?.name || "scenario", "summary").catch((e) =>
+                        setError(e.response?.data?.detail || e.message || "Failed to export.")
+                      );
+                      setExportMenuOpen(false);
+                    }}
+                  />
+                  <ExportGroupLabel label="Other Formats" />
                   <ExportItem
                     label="SVG"
                     desc="Raw vector file"
@@ -1168,7 +1205,7 @@ export default function OrgChart({
                     }}
                   />
                   <ExportItem
-                    label="Change summary (Excel)"
+                    label="Change Summary (Excel)"
                     desc="Before vs After + change log"
                     onClick={() => {
                       const s = (scenarios || []).find((x) => x.id === activeScenarioId);
@@ -1179,7 +1216,7 @@ export default function OrgChart({
                     }}
                   />
                   <ExportItem
-                    label="Current records (Excel)"
+                    label="Current Records (Excel)"
                     desc="Full To-Be roster"
                     onClick={() => {
                       const s = (scenarios || []).find((x) => x.id === activeScenarioId);
@@ -1638,6 +1675,25 @@ function ExportItem({ label, desc, onClick }) {
       <div style={{ fontSize: 12, fontWeight: 600, color: AM.textPrimary }}>{label}</div>
       <div style={{ fontSize: 10, color: AM.textMuted, marginTop: 2 }}>{desc}</div>
     </button>
+  );
+}
+
+function ExportGroupLabel({ label }) {
+  return (
+    <div
+      style={{
+        padding: "8px 14px 4px",
+        fontSize: 10,
+        fontWeight: 700,
+        letterSpacing: "0.5px",
+        textTransform: "uppercase",
+        color: AM.navy,
+        borderBottom: `1px solid ${AM.borderLight}`,
+        background: "#f4f6f9",
+      }}
+    >
+      {label}
+    </div>
   );
 }
 

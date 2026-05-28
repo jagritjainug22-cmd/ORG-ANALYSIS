@@ -38,13 +38,20 @@ def _deadline_info(project: dict) -> dict:
 
 @router.get("")
 async def list_my_projects(user: dict = Depends(get_current_user)):
-    """List projects assigned to the current user. Admins see all."""
+    """List projects assigned to the current user. Admins see all.
+
+    Augments each project with deadline warnings, lock status, team
+    member preview, and dataset count -- everything the project picker
+    needs to render rich cards/rows in one round-trip.
+    """
     if user["role"] == "admin":
         projects = project_service.list_all_projects()
     else:
         projects = project_service.list_user_projects(user["id"])
 
     locks = lock_service.get_all_locks()
+    overview = project_service.get_projects_overview([p["id"] for p in projects])
+
     result = []
     for p in projects:
         entry = {**p, **_deadline_info(p)}
@@ -55,6 +62,10 @@ async def list_my_projects(user: dict = Depends(get_current_user)):
         else:
             entry["locked_by"] = None
             entry["locked_by_id"] = None
+        ov = overview.get(p["id"], {})
+        entry["member_count"] = ov.get("member_count", 0)
+        entry["members_preview"] = ov.get("members_preview", [])
+        entry["dataset_count"] = ov.get("dataset_count", 0)
         result.append(entry)
     return result
 

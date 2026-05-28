@@ -64,7 +64,35 @@ async def list_users(admin: dict = Depends(require_admin)):
         rows = conn.execute(
             "SELECT id, username, display_name, role, is_active, must_change_password, created_at, updated_at FROM users ORDER BY id"
         ).fetchall()
-    return [dict(r) for r in rows]
+
+        # Pull all assignments + project names in one go and group by user_id
+        # to avoid an N+1. Only surface active projects.
+        assignments = conn.execute(
+            """
+            SELECT pa.user_id, pa.role AS project_role,
+                   p.id AS project_id, p.name AS project_name, p.status AS project_status
+            FROM project_assignments pa
+            JOIN projects p ON p.id = pa.project_id
+            ORDER BY p.name COLLATE NOCASE
+            """
+        ).fetchall()
+
+    projects_by_user: dict[int, list[dict]] = {}
+    for row in assignments:
+        projects_by_user.setdefault(row["user_id"], []).append({
+            "id": row["project_id"],
+            "name": row["project_name"],
+            "status": row["project_status"],
+            "role": row["project_role"],
+        })
+
+    users = []
+    for r in rows:
+        u = dict(r)
+        u["projects"] = projects_by_user.get(u["id"], [])
+        u["project_count"] = len(u["projects"])
+        users.append(u)
+    return users
 
 
 @router.post("/users", status_code=201)

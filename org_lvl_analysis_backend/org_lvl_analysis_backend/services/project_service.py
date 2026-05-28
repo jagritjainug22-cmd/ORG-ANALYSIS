@@ -147,6 +147,65 @@ def get_assignment(project_id: int, user_id: int) -> Optional[Dict[str, Any]]:
         return dict(row) if row else None
 
 
+def get_projects_overview(project_ids: List[int]) -> Dict[int, Dict[str, Any]]:
+    """For each project_id, return a lightweight overview:
+        - member_count
+        - members_preview (first 5 active members, ordered by assignment)
+        - dataset_count
+
+    Used by the projects listing page to render stacked avatars and stats
+    without an N+1 fetch per row.
+    """
+    if not project_ids:
+        return {}
+
+    placeholders = ",".join("?" for _ in project_ids)
+    overview: Dict[int, Dict[str, Any]] = {pid: {
+        "member_count": 0,
+        "members_preview": [],
+        "dataset_count": 0,
+    } for pid in project_ids}
+
+    with _connect() as conn:
+        member_rows = conn.execute(
+            f"""
+            SELECT pa.project_id, pa.role, pa.assigned_at,
+                   u.id AS user_id, u.username, u.display_name, u.is_active
+            FROM project_assignments pa
+            JOIN users u ON pa.user_id = u.id
+            WHERE pa.project_id IN ({placeholders})
+            ORDER BY pa.project_id, pa.assigned_at
+            """,
+            project_ids,
+        ).fetchall()
+
+        for row in member_rows:
+            pid = row["project_id"]
+            entry = overview[pid]
+            entry["member_count"] += 1
+            if len(entry["members_preview"]) < 5 and row["is_active"]:
+                entry["members_preview"].append({
+                    "user_id": row["user_id"],
+                    "username": row["username"],
+                    "display_name": row["display_name"],
+                    "role": row["role"],
+                })
+
+        ds_rows = conn.execute(
+            f"""
+            SELECT project_id, COUNT(*) AS n
+            FROM datasets
+            WHERE project_id IN ({placeholders})
+            GROUP BY project_id
+            """,
+            project_ids,
+        ).fetchall()
+        for row in ds_rows:
+            overview[row["project_id"]]["dataset_count"] = row["n"]
+
+    return overview
+
+
 def list_project_assignments(project_id: int) -> List[Dict[str, Any]]:
     with _connect() as conn:
         rows = conn.execute(

@@ -34,6 +34,38 @@ function Avatar({ displayName, username, size = "sm" }) {
   );
 }
 
+function StackedAvatars({ members, count }) {
+  if (!members || members.length === 0) {
+    return <span className="text-xs text-gray-400 italic">No team</span>;
+  }
+  const shown = members.slice(0, 4);
+  const extra = (count ?? members.length) - shown.length;
+  return (
+    <div className="flex items-center">
+      <div className="flex -space-x-2">
+        {shown.map((m, idx) => (
+          <div
+            key={m.user_id || idx}
+            className={`w-7 h-7 rounded-full ${colorFor(m.username || m.display_name || "")} ring-2 ring-white text-white text-[10px] font-semibold flex items-center justify-center transition-transform hover:translate-y-[-2px] hover:z-10 cursor-default`}
+            title={m.display_name || m.username}
+            style={{ zIndex: shown.length - idx }}
+          >
+            {initialsOf(m.display_name, m.username)}
+          </div>
+        ))}
+        {extra > 0 && (
+          <div
+            className="w-7 h-7 rounded-full bg-gray-200 ring-2 ring-white text-gray-600 text-[10px] font-semibold flex items-center justify-center"
+            title={`${extra} more team member${extra === 1 ? "" : "s"}`}
+          >
+            +{extra}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function ProjectSelector() {
   const { user, handleLogout } = useAuth();
   const navigate = useNavigate();
@@ -44,8 +76,8 @@ export default function ProjectSelector() {
   const [search, setSearch] = useState("");
   const [sortBy, setSortBy] = useState("name");
   const [sortDir, setSortDir] = useState("asc");
+  const [statusFilter, setStatusFilter] = useState("all");
 
-  // expanded rows: project id -> { loading, members, error }
   const [expanded, setExpanded] = useState({});
 
   useEffect(() => {
@@ -77,14 +109,36 @@ export default function ProjectSelector() {
     return "active";
   };
 
+  const stats = useMemo(() => {
+    const counts = { total: projects.length, active: 0, expiring: 0, expired: 0, archived: 0 };
+    projects.forEach((p) => {
+      const s = statusOf(p);
+      counts[s] = (counts[s] || 0) + 1;
+      const days = daysUntilDeadline(p.deadline);
+      if (s === "active" && days !== null && days <= 7) counts.expiring += 1;
+    });
+    return counts;
+  }, [projects]);
+
   const filteredSorted = useMemo(() => {
     const q = search.trim().toLowerCase();
     let rows = projects.filter((p) => {
-      if (!q) return true;
-      return (
-        (p.name || "").toLowerCase().includes(q) ||
-        (p.description || "").toLowerCase().includes(q)
-      );
+      if (q) {
+        const m =
+          (p.name || "").toLowerCase().includes(q) ||
+          (p.description || "").toLowerCase().includes(q);
+        if (!m) return false;
+      }
+      if (statusFilter !== "all") {
+        const s = statusOf(p);
+        if (statusFilter === "expiring") {
+          const days = daysUntilDeadline(p.deadline);
+          if (!(s === "active" && days !== null && days <= 7)) return false;
+        } else if (s !== statusFilter) {
+          return false;
+        }
+      }
+      return true;
     });
     const dir = sortDir === "asc" ? 1 : -1;
     rows = [...rows].sort((a, b) => {
@@ -111,7 +165,7 @@ export default function ProjectSelector() {
       return 0;
     });
     return rows;
-  }, [projects, search, sortBy, sortDir]);
+  }, [projects, search, sortBy, sortDir, statusFilter]);
 
   const toggleSort = (col) => {
     if (sortBy === col) {
@@ -170,14 +224,13 @@ export default function ProjectSelector() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col">
-      {/* Header */}
-      <header className="px-8 py-4 bg-white border-b border-gray-200">
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-100 flex flex-col">
+      <header className="px-8 py-4 bg-white border-b border-gray-200 shadow-sm">
         <div className="flex items-center justify-between max-w-7xl mx-auto w-full">
           <div className="flex items-center gap-3">
             <span className="text-am-500 font-bold text-xl tracking-tight">A&amp;M</span>
             <span className="h-5 w-px bg-gray-300" />
-            <span className="text-gray-800 font-semibold">Org Analysis</span>
+            <span className="text-gray-800 font-semibold">OrgSight</span>
           </div>
           <div className="flex items-center gap-3">
             {user?.role === "admin" && (
@@ -202,7 +255,7 @@ export default function ProjectSelector() {
             </div>
             <button
               onClick={() => { handleLogout(); navigate("/login"); }}
-              className="inline-flex items-center gap-2 px-3 py-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-md text-sm font-medium transition"
+              className="inline-flex items-center gap-2 px-3 py-2 text-gray-600 hover:text-red-600 hover:bg-red-50 rounded-md text-sm font-medium transition"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
@@ -215,12 +268,84 @@ export default function ProjectSelector() {
 
       {/* Content */}
       <div className="flex-1 px-8 py-8 max-w-7xl mx-auto w-full">
-        <div className="flex items-end justify-between mb-6 gap-4 flex-wrap">
-          <div>
-            <h2 className="text-2xl font-semibold text-gray-900 tracking-tight">Your Projects</h2>
-            <p className="text-gray-500 mt-1 text-sm">
-              Select a project workspace to continue your analysis
-            </p>
+        {/* Hero strip */}
+        <div className="mb-6">
+          <h2 className="text-3xl font-bold text-gray-900 tracking-tight">
+            Welcome back{user?.display_name ? `, ${user.display_name.split(" ")[0]}` : ""}
+          </h2>
+          <p className="text-gray-500 mt-1.5 text-sm">
+            Choose a project workspace to continue your organizational analysis.
+          </p>
+        </div>
+
+        {/* Stats strip */}
+        {!loading && !error && projects.length > 0 && (
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+            <StatCard
+              label="Total Projects"
+              value={stats.total}
+              tone="indigo"
+              icon={
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7l9-4 9 4M3 7l9 4 9-4M3 7v10l9 4m0 0l9-4V7m-9 14V11" />
+                </svg>
+              }
+              active={statusFilter === "all"}
+              onClick={() => setStatusFilter("all")}
+            />
+            <StatCard
+              label="Active"
+              value={stats.active}
+              tone="emerald"
+              icon={
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              }
+              active={statusFilter === "active"}
+              onClick={() => setStatusFilter(statusFilter === "active" ? "all" : "active")}
+            />
+            <StatCard
+              label="Expiring Soon"
+              value={stats.expiring}
+              tone="amber"
+              icon={
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              }
+              active={statusFilter === "expiring"}
+              onClick={() => setStatusFilter(statusFilter === "expiring" ? "all" : "expiring")}
+            />
+            <StatCard
+              label="Archived / Expired"
+              value={(stats.archived || 0) + (stats.expired || 0)}
+              tone="gray"
+              icon={
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
+                </svg>
+              }
+              active={statusFilter === "archived" || statusFilter === "expired"}
+              onClick={() => setStatusFilter(statusFilter === "archived" ? "all" : "archived")}
+            />
+          </div>
+        )}
+
+        <div className="flex items-end justify-between mb-4 gap-4 flex-wrap">
+          <div className="flex items-center gap-2 text-sm text-gray-500">
+            <span className="font-semibold text-gray-800">{filteredSorted.length}</span> project{filteredSorted.length !== 1 ? "s" : ""}
+            {statusFilter !== "all" && (
+              <button
+                onClick={() => setStatusFilter("all")}
+                className="ml-2 inline-flex items-center gap-1 text-am-600 hover:text-am-700 font-medium"
+              >
+                Clear filter
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            )}
           </div>
           <div className="relative w-full max-w-xs">
             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -233,7 +358,7 @@ export default function ProjectSelector() {
               placeholder="Search projects..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-am-500 focus:border-am-500 outline-none transition text-sm bg-white"
+              className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-am-500 focus:border-am-500 outline-none transition text-sm bg-white shadow-sm"
             />
           </div>
         </div>
@@ -251,7 +376,7 @@ export default function ProjectSelector() {
             <p className="text-sm mt-1">{error}</p>
           </div>
         ) : projects.length === 0 ? (
-          <div className="bg-white border border-gray-200 rounded-lg p-12 text-center">
+          <div className="bg-white border border-gray-200 rounded-xl p-12 text-center shadow-sm">
             <svg className="w-16 h-16 mx-auto text-gray-300 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
             </svg>
@@ -261,23 +386,26 @@ export default function ProjectSelector() {
             </p>
           </div>
         ) : filteredSorted.length === 0 ? (
-          <div className="bg-white border border-gray-200 rounded-lg p-12 text-center">
+          <div className="bg-white border border-gray-200 rounded-xl p-12 text-center shadow-sm">
             <p className="text-gray-700 font-medium">No projects match your search</p>
-            <p className="text-sm text-gray-500 mt-1">Try a different keyword.</p>
+            <p className="text-sm text-gray-500 mt-1">Try a different keyword or clear the active filter.</p>
           </div>
         ) : (
-          <div className="bg-white border border-gray-200 rounded-lg overflow-hidden shadow-sm">
+          <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-md">
             <div className="overflow-x-auto">
               <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
+                <thead className="bg-gradient-to-b from-gray-50 to-gray-100/60">
                   <tr>
+                    <th scope="col" className="w-1 px-0 py-3"></th>
                     <th scope="col" className="w-8 px-3 py-3"></th>
-                    <SortHeader col="name">Project Name</SortHeader>
-                    <SortHeader col="description">Description</SortHeader>
+                    <SortHeader col="name">Project</SortHeader>
                     <SortHeader col="status">Status</SortHeader>
                     <SortHeader col="deadline">Deadline</SortHeader>
                     <th scope="col" className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
                       Team
+                    </th>
+                    <th scope="col" className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                      Datasets
                     </th>
                     <th scope="col" className="px-6 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">
                       Action
@@ -292,16 +420,26 @@ export default function ProjectSelector() {
                     const daysLeft = daysUntilDeadline(project.deadline);
                     const isOpen = !!expanded[project.id];
                     const expState = expanded[project.id];
+                    const accentTone = archived ? "gray" : expired ? "red" : daysLeft !== null && daysLeft <= 7 ? "amber" : "emerald";
+                    const accentClass = {
+                      gray: "bg-gray-300",
+                      red: "bg-red-500",
+                      amber: "bg-amber-500",
+                      emerald: "bg-emerald-500",
+                    }[accentTone];
 
                     return (
                       <React.Fragment key={project.id}>
-                        <tr className="hover:bg-gray-50 transition-colors">
+                        <tr className="group hover:bg-gray-50/70 transition-colors">
+                          <td className="p-0 align-stretch">
+                            <div className={`w-1 h-full ${accentClass}`} style={{ minHeight: 56 }} />
+                          </td>
                           <td className="px-3 py-4 align-middle">
                             <button
                               onClick={() => toggleExpand(project)}
                               className="w-6 h-6 rounded-md text-gray-400 hover:text-am-600 hover:bg-am-50 flex items-center justify-center transition"
                               aria-label={isOpen ? "Collapse" : "Expand"}
-                              title={isOpen ? "Hide team" : "Show team"}
+                              title={isOpen ? "Hide team" : "Show full team"}
                             >
                               <svg
                                 className={`w-4 h-4 transform transition-transform ${isOpen ? "rotate-90" : ""}`}
@@ -313,8 +451,8 @@ export default function ProjectSelector() {
                           </td>
 
                           <td className="px-6 py-4 align-middle">
-                            <div className="flex items-center gap-2">
-                              <span className="font-semibold text-gray-900">{project.name}</span>
+                            <div className="flex items-center gap-2 mb-1">
+                              <span className="font-semibold text-gray-900 text-[15px]">{project.name}</span>
                               {project.locked_by && (
                                 <span
                                   className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-50 text-amber-700 border border-amber-200"
@@ -327,11 +465,8 @@ export default function ProjectSelector() {
                                 </span>
                               )}
                             </div>
-                          </td>
-
-                          <td className="px-6 py-4 align-middle max-w-xs">
-                            <p className="text-sm text-gray-600 truncate" title={project.description || ""}>
-                              {project.description || <span className="text-gray-400 italic">No description</span>}
+                            <p className="text-xs text-gray-500 truncate max-w-md" title={project.description || ""}>
+                              {project.description || <span className="italic text-gray-400">No description</span>}
                             </p>
                           </td>
 
@@ -340,44 +475,54 @@ export default function ProjectSelector() {
                           </td>
 
                           <td className="px-6 py-4 align-middle whitespace-nowrap">
-                            <span
-                              className={`text-sm ${
-                                expired
-                                  ? "text-red-600 font-medium"
-                                  : daysLeft !== null && daysLeft <= 7
-                                  ? "text-amber-600 font-medium"
-                                  : "text-gray-700"
-                              }`}
-                            >
-                              {expired
-                                ? `Expired ${formatDeadline(project.deadline)}`
-                                : daysLeft !== null && daysLeft <= 7
-                                ? `${daysLeft} day${daysLeft !== 1 ? "s" : ""} left`
-                                : formatDeadline(project.deadline)}
-                            </span>
+                            <DeadlinePill deadline={project.deadline} daysLeft={daysLeft} expired={expired} formatDeadline={formatDeadline} />
                           </td>
 
                           <td className="px-6 py-4 align-middle">
-                            <button
-                              onClick={() => toggleExpand(project)}
-                              className="inline-flex items-center text-xs text-am-600 hover:text-am-700 font-medium"
-                            >
-                              {isOpen ? "Hide team" : "View team"}
-                              <svg className="w-3 h-3 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                                  d={isOpen ? "M19 9l-7 7-7-7" : "M9 5l7 7-7 7"} />
+                            {(project.member_count ?? 0) === 0 ? (
+                              <span className="text-xs text-gray-400 italic">No team</span>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => toggleExpand(project)}
+                                className="group/team inline-flex items-center gap-2 rounded-md px-1.5 py-1 -ml-1.5 hover:bg-gray-100 transition-colors"
+                                title={isOpen ? "Hide team" : "View all team members"}
+                                aria-expanded={isOpen}
+                              >
+                                <StackedAvatars
+                                  members={project.members_preview || []}
+                                  count={project.member_count}
+                                />
+                                <span className="inline-flex items-center gap-0.5 text-[11px] font-medium text-gray-500 group-hover/team:text-am-600 transition-colors">
+                                  {isOpen ? "Hide" : "View all"}
+                                  <svg
+                                    className={`w-3.5 h-3.5 transform transition-transform ${isOpen ? "rotate-180" : ""}`}
+                                    fill="none" stroke="currentColor" viewBox="0 0 24 24"
+                                  >
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                  </svg>
+                                </span>
+                              </button>
+                            )}
+                          </td>
+
+                          <td className="px-6 py-4 align-middle">
+                            <span className="inline-flex items-center gap-1.5 text-sm text-gray-700 font-medium">
+                              <svg className="w-3.5 h-3.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7v10c0 2 1.5 3 4 3h8c2.5 0 4-1 4-3V7c0-2-1.5-3-4-3H8C5.5 4 4 5 4 7zM4 11h16" />
                               </svg>
-                            </button>
+                              {project.dataset_count ?? 0}
+                            </span>
                           </td>
 
                           <td className="px-6 py-4 align-middle text-right">
                             <button
                               onClick={() => !blocked && navigate(`/projects/${project.id}`)}
                               disabled={blocked}
-                              className={`inline-flex items-center gap-1.5 px-4 py-1.5 rounded-md text-sm font-medium transition ${
+                              className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-md text-sm font-semibold transition-all ${
                                 blocked
                                   ? "bg-gray-100 text-gray-400 cursor-not-allowed"
-                                  : "bg-am-500 hover:bg-am-600 text-white shadow-sm"
+                                  : "bg-am-500 hover:bg-am-600 text-white shadow-sm hover:shadow-md hover:gap-2.5"
                               }`}
                               title={
                                 blocked
@@ -388,7 +533,7 @@ export default function ProjectSelector() {
                               }
                             >
                               Open
-                              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <svg className={`w-3.5 h-3.5 transition-transform ${blocked ? "" : "group-hover:translate-x-0.5"}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" />
                               </svg>
                             </button>
@@ -397,6 +542,7 @@ export default function ProjectSelector() {
 
                         {isOpen && (
                           <tr className="bg-gray-50/60">
+                            <td className={`w-1 ${accentClass} opacity-40`} />
                             <td></td>
                             <td colSpan={6} className="px-6 py-4">
                               <ExpandedTeam state={expState} />
@@ -413,6 +559,78 @@ export default function ProjectSelector() {
         )}
       </div>
     </div>
+  );
+}
+
+function StatCard({ label, value, tone = "indigo", icon, active, onClick }) {
+  const palette = {
+    indigo: {
+      ring: active ? "ring-2 ring-indigo-400" : "",
+      iconBg: "bg-indigo-50 text-indigo-600",
+      gradient: "from-indigo-500/10 to-indigo-500/0",
+    },
+    emerald: {
+      ring: active ? "ring-2 ring-emerald-400" : "",
+      iconBg: "bg-emerald-50 text-emerald-600",
+      gradient: "from-emerald-500/10 to-emerald-500/0",
+    },
+    amber: {
+      ring: active ? "ring-2 ring-amber-400" : "",
+      iconBg: "bg-amber-50 text-amber-600",
+      gradient: "from-amber-500/10 to-amber-500/0",
+    },
+    gray: {
+      ring: active ? "ring-2 ring-gray-400" : "",
+      iconBg: "bg-gray-100 text-gray-600",
+      gradient: "from-gray-400/10 to-gray-400/0",
+    },
+  }[tone];
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`relative overflow-hidden bg-white border border-gray-200 rounded-xl p-4 text-left transition-all hover:shadow-md hover:-translate-y-0.5 ${palette.ring}`}
+    >
+      <div className={`absolute inset-0 bg-gradient-to-br ${palette.gradient} pointer-events-none`} />
+      <div className="relative flex items-start justify-between">
+        <div>
+          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">{label}</p>
+          <p className="text-3xl font-bold text-gray-900 mt-1 leading-none">{value}</p>
+        </div>
+        <div className={`w-10 h-10 rounded-lg ${palette.iconBg} flex items-center justify-center flex-shrink-0`}>
+          {icon}
+        </div>
+      </div>
+    </button>
+  );
+}
+
+function DeadlinePill({ deadline, daysLeft, expired, formatDeadline }) {
+  if (!deadline) {
+    return <span className="text-sm text-gray-400 italic">No deadline</span>;
+  }
+  if (expired) {
+    return (
+      <span className="inline-flex flex-col">
+        <span className="text-sm font-semibold text-red-600">Expired</span>
+        <span className="text-[11px] text-red-400">{formatDeadline(deadline)}</span>
+      </span>
+    );
+  }
+  if (daysLeft !== null && daysLeft <= 7) {
+    return (
+      <span className="inline-flex flex-col">
+        <span className="text-sm font-semibold text-amber-600">{daysLeft} day{daysLeft !== 1 ? "s" : ""} left</span>
+        <span className="text-[11px] text-amber-400">{formatDeadline(deadline)}</span>
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex flex-col">
+      <span className="text-sm text-gray-700">{formatDeadline(deadline)}</span>
+      {daysLeft !== null && <span className="text-[11px] text-gray-400">in {daysLeft} days</span>}
+    </span>
   );
 }
 
@@ -434,7 +652,7 @@ function StatusBadge({ status }) {
   };
   return (
     <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium border ${styles[status]}`}>
-      <span className={`w-1.5 h-1.5 rounded-full ${dots[status]}`}></span>
+      <span className={`w-1.5 h-1.5 rounded-full ${dots[status]} ${status === "active" ? "animate-pulse" : ""}`}></span>
       {labels[status]}
     </span>
   );
@@ -466,7 +684,7 @@ function ExpandedTeam({ state }) {
         {state.members.map((m) => (
           <div
             key={m.user_id}
-            className="flex items-center gap-3 bg-white border border-gray-200 rounded-md px-3 py-2"
+            className="flex items-center gap-3 bg-white border border-gray-200 rounded-lg px-3 py-2 hover:border-am-300 hover:shadow-sm transition-all"
           >
             <Avatar displayName={m.display_name} username={m.username} size="md" />
             <div className="min-w-0 flex-1">

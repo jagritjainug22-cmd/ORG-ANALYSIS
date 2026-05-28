@@ -17,6 +17,9 @@ export default function OrgScenarioBar({
   onCompare,
   onReset,
   onUndo,
+  onActivity,
+  activityUnseenCount = 0,
+  activityActive = false,
 }) {
   const [adding, setAdding] = useState(false);
   const [newName, setNewName] = useState("");
@@ -188,6 +191,57 @@ export default function OrgScenarioBar({
       )}
 
       <div style={{ flex: 1 }} />
+
+      {onActivity && (
+        <button
+          onClick={onActivity}
+          title={activityUnseenCount > 0
+            ? `${activityUnseenCount} new change${activityUnseenCount === 1 ? "" : "s"} since your last visit`
+            : "Activity feed"}
+          style={{
+            ...ghostPill(),
+            position: "relative",
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 6,
+            paddingRight: activityUnseenCount > 0 ? 24 : 10,
+            background: activityActive ? AM.gold : AM.white,
+            color: activityActive ? AM.navy : AM.textSecondary,
+            border: `1px solid ${activityActive ? AM.gold : AM.border}`,
+            fontWeight: activityActive ? 700 : 600,
+          }}
+        >
+          <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+          </svg>
+          Activity
+          {activityUnseenCount > 0 && (
+            <span
+              style={{
+                position: "absolute",
+                top: -5,
+                right: -5,
+                minWidth: 16,
+                height: 16,
+                borderRadius: 8,
+                background: AM.gold,
+                color: AM.navy,
+                fontSize: 9,
+                fontWeight: 800,
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                padding: "0 4px",
+                border: `1.5px solid ${AM.white}`,
+                boxShadow: `0 0 0 1px ${AM.gold}`,
+                animation: "orgsight-pulse 1.6s ease-in-out infinite",
+              }}
+            >
+              {activityUnseenCount > 99 ? "99+" : activityUnseenCount}
+            </span>
+          )}
+        </button>
+      )}
 
       <button onClick={() => onUndo?.()} style={ghostPill()} title="Undo last change (Ctrl+Z)">
         Undo

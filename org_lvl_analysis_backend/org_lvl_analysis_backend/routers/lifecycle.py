@@ -1304,6 +1304,7 @@ def db_save_baseline(
 def db_list_datasets(
     project_id: int,
     mine_only: bool = Query(False),
+    include_preview: bool = Query(False),
     user: dict = Depends(require_project_access()),
 ):
     username = user["username"]
@@ -1320,6 +1321,13 @@ def db_list_datasets(
         else:
             ds["locked_by"] = None
             ds["locked_by_id"] = None
+        if include_preview:
+            ds["preview"] = db_service.get_dataset_preview(
+                ds["id"],
+                job_title_col=ds.get("job_title_col"),
+                emp_col=ds.get("emp_col"),
+            )
+            ds.update(db_service.get_dataset_meta(ds["id"]))
     return {"datasets": datasets}
 
 
@@ -1352,6 +1360,37 @@ def db_get_baseline(
 ):
     _require_dataset_in_project(dataset_id, project_id)
     return {"records": db_service.get_baseline_records(dataset_id)}
+
+
+@router.get("/db/datasets/{dataset_id}/recent-changes")
+def db_get_dataset_recent_changes(
+    dataset_id: int,
+    project_id: int,
+    since: Optional[str] = Query(None),
+    limit: int = Query(50, ge=1, le=500),
+    user: dict = Depends(require_project_access()),
+):
+    """Activity feed for a dataset -- aggregates change_log across all
+    scenarios and flags entries that are unseen by the current user."""
+    _require_dataset_in_project(dataset_id, project_id)
+    return db_service.get_dataset_recent_changes(
+        dataset_id,
+        user["id"],
+        since=since,
+        limit=limit,
+        current_username=user["username"],
+    )
+
+
+@router.post("/db/datasets/{dataset_id}/mark-seen")
+def db_mark_dataset_seen(
+    dataset_id: int,
+    project_id: int,
+    user: dict = Depends(require_project_access()),
+):
+    _require_dataset_in_project(dataset_id, project_id)
+    ts = db_service.mark_dataset_seen(dataset_id, user["id"])
+    return {"status": "ok", "last_seen": ts}
 
 
 # ---------------------------------------------------------------------------

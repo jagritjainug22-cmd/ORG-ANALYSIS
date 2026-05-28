@@ -351,8 +351,11 @@ export const dbSaveBaseline = async ({ name, records, empCol, mgrCol, fteCol = n
   return res.data;
 };
 
-export const dbListDatasets = async (mineOnly = false) => {
-  const res = await axios.get(`${getProjectUrl()}/db/datasets`, { headers: getHeaders(), params: { mine_only: mineOnly } });
+export const dbListDatasets = async (mineOnly = false, includePreview = false) => {
+  const res = await axios.get(`${getProjectUrl()}/db/datasets`, {
+    headers: getHeaders(),
+    params: { mine_only: mineOnly, include_preview: includePreview },
+  });
   return res.data;
 };
 
@@ -423,6 +426,21 @@ export const dbGetSummary = async (scenarioId) => {
 
 export const dbGetChangeLog = async (scenarioId) => {
   const res = await axios.get(`${getProjectUrl()}/db/scenarios/${scenarioId}/change_log`, { headers: getHeaders() });
+  return res.data;
+};
+
+export const dbGetDatasetRecentChanges = async (datasetId, { since = null, limit = 50 } = {}) => {
+  const params = { limit };
+  if (since) params.since = since;
+  const res = await axios.get(`${getProjectUrl()}/db/datasets/${datasetId}/recent-changes`, {
+    headers: getHeaders(),
+    params,
+  });
+  return res.data;
+};
+
+export const dbMarkDatasetSeen = async (datasetId) => {
+  const res = await axios.post(`${getProjectUrl()}/db/datasets/${datasetId}/mark-seen`, {}, { headers: jsonHeaders() });
   return res.data;
 };
 

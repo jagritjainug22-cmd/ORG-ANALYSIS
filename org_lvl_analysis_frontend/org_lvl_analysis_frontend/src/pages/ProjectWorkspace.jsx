@@ -4,6 +4,7 @@ import { useAuth } from "../contexts/AuthContext";
 import { setCurrentProjectId, fetchProjectDetail, cleanup, crosstab, orgchart, spansLayers, acquireLock, lockHeartbeat, releaseLock } from "../api/backend";
 
 import Upload from "../components/Upload";
+import DataSourceSelector from "../components/DataSourceSelector";
 import Cleanup from "../components/Cleanup";
 import Validate from "../components/Validate";
 import FilterErrors from "../components/FilterErrors";
@@ -238,7 +239,7 @@ export default function ProjectWorkspace() {
     switch (activeModule) {
       case "Upload":
         return (
-          <Upload
+          <DataSourceSelector
             setDfRecords={(df) => {
               setDfRecords(df);
               setValidatedDf(null);
@@ -249,6 +250,18 @@ export default function ProjectWorkspace() {
             }}
             setColumns={setColumns}
             setUploadedFileName={setUploadedFileName}
+            onDatasetPicked={({ dataset, scenarios: scs, activeScenarioId: sid }) => {
+              setDatasetId(dataset.id);
+              setScenarios(scs);
+              setActiveScenarioId(sid);
+              setEmpCol(dataset.emp_col || "");
+              setMgrCol(dataset.mgr_col || "");
+              if (dataset.fte_col) setFteCol(dataset.fte_col);
+              if (dataset.flc_col) setFlcCol(dataset.flc_col);
+              if (dataset.job_title_col) setJobTitleCol(dataset.job_title_col);
+              if (dataset.country_col) setCountryCol(dataset.country_col);
+              setActiveModule("Org Chart");
+            }}
           />
         );
       case "Cleanup":
@@ -342,7 +355,7 @@ export default function ProjectWorkspace() {
               onClick={() => navigate("/projects")}
               className="text-gray-500 hover:text-am-600 text-sm font-medium transition"
             >
-              Org Analysis
+              OrgSight
             </button>
             <svg className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />

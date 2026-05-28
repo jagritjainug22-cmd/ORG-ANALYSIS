@@ -44,7 +44,7 @@ export default function ChangePassword() {
         <div className="flex items-center gap-3 mb-6 justify-center">
           <span className="text-am-500 font-bold text-xl tracking-tight">A&amp;M</span>
           <span className="h-5 w-px bg-gray-300" />
-          <span className="text-gray-800 font-semibold">Org Analysis</span>
+          <span className="text-gray-800 font-semibold">OrgSight</span>
         </div>
 
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">

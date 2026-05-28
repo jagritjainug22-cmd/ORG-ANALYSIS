@@ -42,16 +42,16 @@ function LoginPage() {
           <div className="text-2xl font-bold tracking-tight">A&amp;M</div>
           <div className="h-6 w-px bg-white/30" />
           <div className="text-sm font-medium text-white/80 tracking-wide">
-            Org Analysis
+            OrgSight
           </div>
         </div>
 
         {/* Headline */}
         <div className="relative z-10 max-w-md">
           <h1 className="text-4xl xl:text-5xl font-bold leading-tight mb-4">
-            Organizational
+            OrgSight
             <br />
-            Analysis Platform
+            Workforce Intelligence
           </h1>
           <p className="text-white/80 text-base leading-relaxed mb-10">
             Streamline your organizational insights with data-driven analysis,
@@ -100,7 +100,7 @@ function LoginPage() {
         {/* Mobile brand header */}
         <div className="absolute top-6 left-6 lg:hidden flex items-center gap-2">
           <span className="text-am-500 font-bold text-lg">A&amp;M</span>
-          <span className="text-gray-500 text-sm">Org Analysis</span>
+          <span className="text-gray-500 text-sm">OrgSight</span>
         </div>
 
         <Login

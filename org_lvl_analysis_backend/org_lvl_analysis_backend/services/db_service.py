@@ -467,11 +467,31 @@ def _migrate_v4(conn: sqlite3.Connection) -> None:
     c.execute("CREATE INDEX IF NOT EXISTS idx_dslocks_heartbeat ON dataset_locks(last_heartbeat)")
 
 
+def _migrate_v5(conn: sqlite3.Connection) -> None:
+    """v5: dataset_user_views table -- tracks per-user 'last seen' timestamps
+    for each dataset so the activity feed can highlight unseen changes."""
+    c = conn.cursor()
+    c.execute(
+        """
+        CREATE TABLE IF NOT EXISTS dataset_user_views (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            dataset_id INTEGER NOT NULL REFERENCES datasets(id) ON DELETE CASCADE,
+            user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            last_seen  TEXT NOT NULL,
+            UNIQUE (dataset_id, user_id)
+        )
+        """
+    )
+    c.execute("CREATE INDEX IF NOT EXISTS idx_duv_dataset ON dataset_user_views(dataset_id)")
+    c.execute("CREATE INDEX IF NOT EXISTS idx_duv_user ON dataset_user_views(user_id)")
+
+
 _MIGRATIONS = [
     (1, "projects + assignments + audit_log tables", _migrate_v1),
     (2, "project_id on datasets + Legacy project backfill", _migrate_v2),
     (3, "project_locks table", _migrate_v3),
     (4, "dataset_locks table", _migrate_v4),
+    (5, "dataset_user_views table", _migrate_v5),
 ]
 
 
@@ -700,6 +720,87 @@ def get_dataset(dataset_id: int) -> Optional[Dict[str, Any]]:
     with _connect() as conn:
         row = conn.execute("SELECT * FROM datasets WHERE id = ?", (dataset_id,)).fetchone()
         return dict(row) if row else None
+
+
+def get_dataset_preview(
+    dataset_id: int,
+    job_title_col: Optional[str] = None,
+    emp_col: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Lightweight org-structure preview for the dataset selector cards.
+
+    Returns the root node label and the first few level-2 (direct reports)
+    labels, prefering the configured job-title column then "Job Title", then
+    emp_id as a last-resort fallback. Cheap enough to call for every dataset
+    on the list page (two indexed queries per dataset).
+    """
+    def _label(data: Dict[str, Any], emp_id: str) -> str:
+        if job_title_col and data.get(job_title_col):
+            return str(data[job_title_col])
+        if data.get("Job Title"):
+            return str(data["Job Title"])
+        if emp_col and data.get(emp_col):
+            return str(data[emp_col])
+        return str(emp_id)
+
+    with _connect() as conn:
+        root_row = conn.execute(
+            "SELECT data_json, emp_id FROM baseline_records "
+            "WHERE dataset_id = ? AND level = 1 ORDER BY id LIMIT 1",
+            (dataset_id,),
+        ).fetchone()
+        root = None
+        if root_row:
+            try:
+                data = json.loads(root_row["data_json"])
+            except Exception:
+                data = {}
+            root = {"emp_id": root_row["emp_id"], "label": _label(data, root_row["emp_id"])}
+
+        child_rows = conn.execute(
+            "SELECT data_json, emp_id FROM baseline_records "
+            "WHERE dataset_id = ? AND level = 2 ORDER BY id LIMIT 4",
+            (dataset_id,),
+        ).fetchall()
+        children = []
+        for r in child_rows:
+            try:
+                data = json.loads(r["data_json"])
+            except Exception:
+                data = {}
+            children.append({"emp_id": r["emp_id"], "label": _label(data, r["emp_id"])})
+
+        total_l2_row = conn.execute(
+            "SELECT COUNT(*) AS n FROM baseline_records WHERE dataset_id = ? AND level = 2",
+            (dataset_id,),
+        ).fetchone()
+        total_l2 = total_l2_row["n"] if total_l2_row else 0
+
+        return {"root": root, "children": children, "total_children": total_l2}
+
+
+def get_dataset_meta(dataset_id: int) -> Dict[str, Any]:
+    """Aggregate metadata (scenario count, last activity, promoted scenario)
+    used by the dataset selector cards."""
+    with _connect() as conn:
+        rows = conn.execute(
+            "SELECT name, is_promoted, updated_at FROM scenarios WHERE dataset_id = ?",
+            (dataset_id,),
+        ).fetchall()
+        scenario_count = len(rows)
+        last_modified: Optional[str] = None
+        promoted_name: Optional[str] = None
+        for r in rows:
+            ts = r["updated_at"]
+            if ts and (last_modified is None or ts > last_modified):
+                last_modified = ts
+            if r["is_promoted"]:
+                promoted_name = r["name"]
+        return {
+            "scenario_count": scenario_count,
+            "last_modified_at": last_modified,
+            "promoted_scenario_name": promoted_name,
+        }
 
 
 def get_baseline_records(dataset_id: int) -> List[Dict[str, Any]]:
@@ -1232,6 +1333,106 @@ def get_change_log(scenario_id: int) -> List[Dict[str, Any]]:
             (scenario_id,),
         )
         return [dict(r) for r in cur.fetchall()]
+
+
+# ---------------------------------------------------------------------------
+# Dataset activity feed (per-user "last seen" tracking + recent changes query)
+# ---------------------------------------------------------------------------
+
+def get_dataset_last_seen(dataset_id: int, user_id: int) -> Optional[str]:
+    with _connect() as conn:
+        row = conn.execute(
+            "SELECT last_seen FROM dataset_user_views WHERE dataset_id = ? AND user_id = ?",
+            (dataset_id, user_id),
+        ).fetchone()
+        return row["last_seen"] if row else None
+
+
+def mark_dataset_seen(dataset_id: int, user_id: int) -> str:
+    """Record that this user has viewed this dataset at this moment.
+    UPSERT on (dataset_id, user_id). Returns the ISO timestamp written."""
+    now = datetime.utcnow().isoformat()
+    with _connect() as conn:
+        conn.execute(
+            """
+            INSERT INTO dataset_user_views (dataset_id, user_id, last_seen)
+            VALUES (?, ?, ?)
+            ON CONFLICT(dataset_id, user_id)
+            DO UPDATE SET last_seen = excluded.last_seen
+            """,
+            (dataset_id, user_id, now),
+        )
+        conn.commit()
+    return now
+
+
+def get_dataset_recent_changes(
+    dataset_id: int,
+    user_id: int,
+    *,
+    since: Optional[str] = None,
+    limit: int = 50,
+    current_username: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Return change_log entries across every scenario in this dataset, plus
+    metadata describing which are unseen by this user.
+
+    - `since` overrides the stored last_seen for the user (used when the
+      caller already knows the cut-off, e.g. for pagination).
+    - Entries authored by the current user are never counted as "unseen" --
+      you don't need to be notified about your own edits.
+    """
+    last_seen = since if since is not None else get_dataset_last_seen(dataset_id, user_id)
+
+    with _connect() as conn:
+        rows = conn.execute(
+            """
+            SELECT cl.id, cl.scenario_id, cl.action, cl.emp_id,
+                   cl.old_mgr_id, cl.new_mgr_id, cl.field,
+                   cl.old_value, cl.new_value, cl.timestamp, cl.username,
+                   s.name AS scenario_name
+            FROM change_log cl
+            JOIN scenarios s ON s.id = cl.scenario_id
+            WHERE s.dataset_id = ?
+            ORDER BY cl.timestamp DESC, cl.id DESC
+            LIMIT ?
+            """,
+            (dataset_id, limit),
+        ).fetchall()
+
+        changes: List[Dict[str, Any]] = []
+        unseen_count = 0
+        contributors: Dict[str, int] = {}
+        action_counts: Dict[str, int] = {}
+
+        for r in rows:
+            d = dict(r)
+            ts = d.get("timestamp")
+            is_self = (current_username is not None and d.get("username") == current_username)
+            is_unseen = (
+                not is_self
+                and ts is not None
+                and (last_seen is None or ts > last_seen)
+            )
+            d["is_unseen"] = is_unseen
+            changes.append(d)
+            if is_unseen:
+                unseen_count += 1
+                uname = d.get("username") or "Unknown"
+                contributors[uname] = contributors.get(uname, 0) + 1
+                action = d.get("action") or "other"
+                action_counts[action] = action_counts.get(action, 0) + 1
+
+        return {
+            "changes": changes,
+            "unseen_count": unseen_count,
+            "last_seen_at": last_seen,
+            "contributors": [
+                {"username": name, "change_count": cnt}
+                for name, cnt in sorted(contributors.items(), key=lambda kv: -kv[1])
+            ],
+            "action_counts": action_counts,
+        }
 
 
 def get_scenario_summary(scenario_id: int) -> Dict[str, Any]:

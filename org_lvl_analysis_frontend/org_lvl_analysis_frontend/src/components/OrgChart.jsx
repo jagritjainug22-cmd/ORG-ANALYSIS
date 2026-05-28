@@ -31,6 +31,8 @@ import {
   releaseDatasetLock,
   getDatasetLockStatus,
   handleLockConflict,
+  dbGetDatasetRecentChanges,
+  dbMarkDatasetSeen,
 } from "../api/backend";
 import {
   CARD_WIDTH,
@@ -54,6 +56,7 @@ import OrgCompareModal from "./orgchart/OrgCompareModal";
 import OrgAddChildModal from "./orgchart/OrgAddChildModal";
 import OrgMoveConfirmModal from "./orgchart/OrgMoveConfirmModal";
 import SavedDatasetPicker from "./orgchart/SavedDatasetPicker";
+import OrgActivityPanel from "./orgchart/OrgActivityPanel";
 
 /**
  * OrgSight 2.0 -- interactive org chart.
@@ -110,6 +113,7 @@ export default function OrgChart({
   const [zoomLabel, setZoomLabel] = useState(1);
   const [search, setSearch] = useState("");
   const [departmentFilter, setDepartmentFilter] = useState("");
+  const [jobTitleFilter, setJobTitleFilter] = useState("");
 
   // dnd-kit sensors: PointerSensor (mouse) + TouchSensor (mobile).
   // distance: 5 prevents accidental drags during card clicks.
@@ -160,6 +164,19 @@ export default function OrgChart({
   const [comparison, setComparison] = useState(null);
   const [addChildFor, setAddChildFor] = useState(null);
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
+
+  // Activity feed (recent changes since user's last visit)
+  const [activityOpen, setActivityOpen] = useState(false);
+  const [activityChanges, setActivityChanges] = useState([]);
+  const [activityLoading, setActivityLoading] = useState(false);
+  const [activityMeta, setActivityMeta] = useState({
+    unseen_count: 0,
+    last_seen_at: null,
+    contributors: [],
+    action_counts: {},
+  });
+  const [activityBannerVisible, setActivityBannerVisible] = useState(false);
+  const activityBannerTimerRef = useRef(null);
 
   // Mouse-drag pan state (separate from the transform ref)
   const dragStateRef = useRef({ dragging: false, startX: 0, startY: 0, startPanX: 0, startPanY: 0 });
@@ -245,6 +262,83 @@ export default function OrgChart({
       }
     };
   }, [datasetId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ----- Activity feed: fetch unseen changes when dataset is (re)opened -----
+  const fetchActivity = useCallback(async () => {
+    if (!datasetId) return;
+    setActivityLoading(true);
+    try {
+      const data = await dbGetDatasetRecentChanges(datasetId, { limit: 60 });
+      setActivityChanges(data.changes || []);
+      setActivityMeta({
+        unseen_count: data.unseen_count || 0,
+        last_seen_at: data.last_seen_at || null,
+        contributors: data.contributors || [],
+        action_counts: data.action_counts || {},
+      });
+      return data;
+    } catch (e) {
+      console.warn("Failed to load activity feed:", e);
+      return null;
+    } finally {
+      setActivityLoading(false);
+    }
+  }, [datasetId]);
+
+  // On dataset open: load activity, surface banner if there are unseen changes
+  useEffect(() => {
+    if (!inDbMode || !datasetId) return;
+    let cancelled = false;
+    fetchActivity().then((data) => {
+      if (cancelled || !data) return;
+      // Show the banner whenever there are changes the current user hasn't
+      // acknowledged (self-authored edits are excluded server-side). First-time
+      // visits also get the banner -- acts as a "here's what's been happening"
+      // welcome rather than staying invisible.
+      if (data.unseen_count > 0) {
+        setActivityBannerVisible(true);
+        if (activityBannerTimerRef.current) clearTimeout(activityBannerTimerRef.current);
+        activityBannerTimerRef.current = setTimeout(() => {
+          setActivityBannerVisible(false);
+        }, 12000);
+      }
+    });
+    return () => {
+      cancelled = true;
+      if (activityBannerTimerRef.current) clearTimeout(activityBannerTimerRef.current);
+    };
+  }, [inDbMode, datasetId, fetchActivity]);
+
+  const dismissActivityBanner = useCallback(() => {
+    setActivityBannerVisible(false);
+    if (activityBannerTimerRef.current) clearTimeout(activityBannerTimerRef.current);
+    if (datasetId) {
+      dbMarkDatasetSeen(datasetId)
+        .then((resp) => {
+          setActivityMeta((m) => ({ ...m, unseen_count: 0, last_seen_at: resp.last_seen || m.last_seen_at }));
+          // Mark every loaded change as seen locally so the panel reflects it.
+          setActivityChanges((cs) => cs.map((c) => ({ ...c, is_unseen: false })));
+        })
+        .catch(() => {});
+    }
+  }, [datasetId]);
+
+  const openActivityPanel = useCallback(() => {
+    setActivityOpen(true);
+    setActivityBannerVisible(false);
+    if (activityBannerTimerRef.current) clearTimeout(activityBannerTimerRef.current);
+    // Mark seen when panel is opened (after a tiny delay so the user sees the
+    // highlighted unseen section first).
+    if (datasetId && activityMeta.unseen_count > 0) {
+      setTimeout(() => {
+        dbMarkDatasetSeen(datasetId)
+          .then((resp) => {
+            setActivityMeta((m) => ({ ...m, unseen_count: 0, last_seen_at: resp.last_seen || m.last_seen_at }));
+          })
+          .catch(() => {});
+      }, 800);
+    }
+  }, [datasetId, activityMeta.unseen_count]);
 
   const startHeartbeat = useCallback(() => {
     if (lockHeartbeatRef.current) clearInterval(lockHeartbeatRef.current);
@@ -363,16 +457,20 @@ export default function OrgChart({
     return computeSubtreeStats(records, idOf, parentOf, { fteOf, flcOf, flaggedOf });
   }, [records, idOf, parentOf, fteOf, flcOf, flaggedOf]);
 
-  // Hidden ids from search + department filter
+  // Hidden ids from search + department + job title filters
   const hidden = useMemo(() => {
     const out = new Set();
-    if (!records || (!search.trim() && !departmentFilter)) return out;
+    if (!records || (!search.trim() && !departmentFilter && !jobTitleFilter)) return out;
 
     const term = search.trim().toLowerCase();
     const matchesEmp = (r) => {
       if (departmentFilter) {
         const dept = r.Division || r.Department || r["Org Unit"] || "";
         if (String(dept) !== departmentFilter) return false;
+      }
+      if (jobTitleFilter) {
+        const title = (jobTitleCol && r[jobTitleCol]) || r["Job Title"] || "";
+        if (String(title) !== jobTitleFilter) return false;
       }
       if (term) {
         const haystack = [
@@ -425,7 +523,7 @@ export default function OrgChart({
       if (!visible.has(id)) out.add(id);
     });
     return out;
-  }, [records, search, departmentFilter, empCol, jobTitleCol, countryCol, idOf, parentOf, index]);
+  }, [records, search, departmentFilter, jobTitleFilter, empCol, jobTitleCol, countryCol, idOf, parentOf, index]);
 
   const layout = useMemo(() => {
     if (!records || !records.length) return { nodes: new Map(), width: 0, height: 0 };
@@ -448,6 +546,17 @@ export default function OrgChart({
     });
     return Array.from(set).sort();
   }, [records]);
+
+  // Unique job titles for the filter dropdown
+  const jobTitles = useMemo(() => {
+    if (!records) return [];
+    const set = new Set();
+    records.forEach((r) => {
+      const t = (jobTitleCol && r[jobTitleCol]) || r["Job Title"];
+      if (t) set.add(String(t));
+    });
+    return Array.from(set).sort();
+  }, [records, jobTitleCol]);
 
   const selectedRecord = useMemo(() => {
     if (!selectedId || !records) return null;
@@ -472,6 +581,8 @@ export default function OrgChart({
       if (resp?.summary) setSummary(resp.summary);
       const log = await dbGetChangeLog(activeScenarioId);
       setChangeLog(log.changes || []);
+      // Keep the activity feed fresh after each successful mutation.
+      fetchActivity();
     } catch (e) {
       // Three-state 423 handler: reacquire / lost / generic error
       if (e?.response?.status === 423) {
@@ -974,6 +1085,83 @@ export default function OrgChart({
         </div>
       )}
 
+      {/* Auto-dismiss activity banner -- briefly summarises unseen changes */}
+      {activityBannerVisible && activityMeta.unseen_count > 0 && (
+        <div
+          style={{
+            background: "linear-gradient(90deg, rgba(197,168,74,0.18), rgba(197,168,74,0.06))",
+            borderBottom: `1px solid ${AM.gold}`,
+            padding: "10px 20px",
+            display: "flex",
+            alignItems: "center",
+            gap: 14,
+            fontSize: 13,
+            color: AM.navy,
+            flexShrink: 0,
+            animation: "orgsight-slide-down 0.35s ease-out",
+          }}
+        >
+          <span
+            style={{
+              width: 24,
+              height: 24,
+              borderRadius: "50%",
+              background: AM.gold,
+              color: AM.navy,
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontWeight: 800,
+              fontSize: 12,
+              flexShrink: 0,
+            }}
+          >
+            {activityMeta.unseen_count}
+          </span>
+          <span style={{ flex: 1 }}>
+            <strong>{activityMeta.unseen_count} change{activityMeta.unseen_count === 1 ? "" : "s"}</strong>{" "}
+            since your last visit
+            {summariseActivity(activityMeta.action_counts, activityMeta.contributors) && (
+              <span style={{ color: AM.textSecondary, marginLeft: 8 }}>
+                — {summariseActivity(activityMeta.action_counts, activityMeta.contributors)}
+              </span>
+            )}
+          </span>
+          <button
+            onClick={openActivityPanel}
+            style={{
+              background: AM.navy,
+              color: AM.white,
+              border: "none",
+              borderRadius: 12,
+              padding: "5px 14px",
+              fontSize: 11,
+              fontWeight: 700,
+              letterSpacing: "0.4px",
+              cursor: "pointer",
+              textTransform: "uppercase",
+            }}
+          >
+            View
+          </button>
+          <button
+            onClick={dismissActivityBanner}
+            aria-label="Dismiss"
+            style={{
+              background: "transparent",
+              border: "none",
+              color: AM.textSecondary,
+              cursor: "pointer",
+              fontSize: 18,
+              padding: 0,
+              lineHeight: 1,
+            }}
+          >
+            ×
+          </button>
+        </div>
+      )}
+
       {/* Header bar -- single compact line */}
       <div
         style={{
@@ -1037,6 +1225,7 @@ export default function OrgChart({
           <select
             value={departmentFilter}
             onChange={(e) => setDepartmentFilter(e.target.value)}
+            title="Filter by department"
             style={{
               background: "#0a3366",
               border: "1px solid #1a4d7a",
@@ -1045,11 +1234,34 @@ export default function OrgChart({
               padding: "6px 8px",
               fontSize: 12,
               outline: "none",
+              maxWidth: 140,
             }}
           >
             <option value="">All departments</option>
             {departments.map((d) => (
               <option key={d} value={d}>{d}</option>
+            ))}
+          </select>
+        )}
+        {jobTitles.length > 0 && (
+          <select
+            value={jobTitleFilter}
+            onChange={(e) => setJobTitleFilter(e.target.value)}
+            title="Filter by job title"
+            style={{
+              background: "#0a3366",
+              border: "1px solid #1a4d7a",
+              color: AM.white,
+              borderRadius: 6,
+              padding: "6px 8px",
+              fontSize: 12,
+              outline: "none",
+              maxWidth: 160,
+            }}
+          >
+            <option value="">All job titles</option>
+            {jobTitles.map((t) => (
+              <option key={t} value={t}>{t}</option>
             ))}
           </select>
         )}
@@ -1287,6 +1499,9 @@ export default function OrgChart({
           onCompare={openCompare}
           onReset={handleReset}
           onUndo={handleUndo}
+          onActivity={() => (activityOpen ? setActivityOpen(false) : openActivityPanel())}
+          activityUnseenCount={activityMeta.unseen_count}
+          activityActive={activityOpen}
         />
       )}
 
@@ -1312,8 +1527,18 @@ export default function OrgChart({
         </div>
       )}
 
-      {/* Global card hover style (single instance instead of per-card) */}
-      <style>{`.org-node-card:hover .org-node-toolbar{opacity:1;pointer-events:auto}`}</style>
+      {/* Global card hover style + activity feed animations */}
+      <style>{`
+        .org-node-card:hover .org-node-toolbar{opacity:1;pointer-events:auto}
+        @keyframes orgsight-pulse {
+          0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(197,168,74,0.6); }
+          50% { transform: scale(1.1); box-shadow: 0 0 0 5px rgba(197,168,74,0); }
+        }
+        @keyframes orgsight-slide-down {
+          from { transform: translateY(-100%); opacity: 0; }
+          to { transform: translateY(0); opacity: 1; }
+        }
+      `}</style>
 
       {/* Body: canvas + detail panel (panel floats so it never squeezes the canvas) */}
       <div style={{ flex: 1, display: "flex", overflow: "hidden", minHeight: 400, position: "relative" }}>
@@ -1510,6 +1735,19 @@ export default function OrgChart({
             onFlagToggle={handleFlag}
           />
         )}
+
+        <OrgActivityPanel
+          open={activityOpen}
+          changes={activityChanges}
+          scenarios={scenarios || []}
+          lastSeenAt={activityMeta.last_seen_at}
+          unseenCount={activityMeta.unseen_count}
+          loading={activityLoading}
+          records={records}
+          empCol={empCol}
+          jobTitleCol={jobTitleCol}
+          onClose={() => setActivityOpen(false)}
+        />
       </div>
 
       <OrgImpactStrip summary={summary} changes={changeLog} />
@@ -1712,6 +1950,34 @@ function emptyStyle() {
     padding: 40,
     textAlign: "center",
   };
+}
+
+/**
+ * Build a one-line summary "3 moves, 2 edits -- John, Sarah" for the banner.
+ */
+function summariseActivity(actionCounts, contributors) {
+  const parts = [];
+  const labels = {
+    move: ["move", "moves"],
+    edit: ["edit", "edits"],
+    add: ["addition", "additions"],
+    flag_remove: ["flag", "flags"],
+    delete: ["deletion", "deletions"],
+    unflag_restore: ["restore", "restores"],
+    reset: ["reset", "resets"],
+  };
+  Object.entries(actionCounts || {}).forEach(([action, count]) => {
+    if (!count) return;
+    const [sg, pl] = labels[action] || [action, action];
+    parts.push(`${count} ${count === 1 ? sg : pl}`);
+  });
+  const names = (contributors || []).slice(0, 3).map((c) => c.username).filter(Boolean);
+  const remainder = (contributors || []).length - names.length;
+  const byClause = names.length
+    ? ` by ${names.join(", ")}${remainder > 0 ? ` +${remainder}` : ""}`
+    : "";
+  if (parts.length === 0 && !byClause) return "";
+  return `${parts.join(", ")}${byClause}`;
 }
 
 /**

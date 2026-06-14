@@ -1633,44 +1633,118 @@ def get_scenario_summary(scenario_id: int) -> Dict[str, Any]:
 # Rate cards
 # ---------------------------------------------------------------------------
 
-def get_dataset_columns(dataset_id: int) -> List[str]:
-    """Return sorted unique column names available on baseline records."""
+def get_dataset_columns(dataset_id: int) -> Dict[str, Any]:
+    """Return columns that actually exist in baseline records, with metadata.
+
+    Returns:
+        {
+          "columns": [str, ...],        # sorted column names
+          "column_meta": {              # per-column metadata
+            "<col>": {
+              "unique_count": int,
+              "sample_values": [str, ...],  # up to 5 distinct values
+              "is_dimension": bool,         # good candidate for grouping
+              "is_cost": bool,              # cost/numeric measure
+            }
+          }
+        }
+    """
     dataset = get_dataset(dataset_id)
     if not dataset:
         raise ValueError(f"Dataset {dataset_id} not found")
 
-    preferred = [
-        dataset.get("emp_col"),
-        dataset.get("mgr_col"),
-        dataset.get("fte_col"),
-        dataset.get("flc_col"),
-        dataset.get("job_title_col"),
-        dataset.get("country_col"),
-        "Level",
-        "Department",
-        "Division",
-        "Location",
-        "Job Grade",
-        "Job Title",
-    ]
-    cols: set = set()
-    for name in preferred:
-        if name:
-            cols.add(str(name))
+    emp_col = dataset.get("emp_col") or ""
+    mgr_col = dataset.get("mgr_col") or ""
+    flc_col = dataset.get("flc_col") or ""
+    fte_col = dataset.get("fte_col") or ""
+
+    # system / id columns to exclude from grouping suggestions
+    id_cols = {emp_col.lower(), mgr_col.lower()}
+    # column name substrings that suggest a cost/numeric measure
+    # use whole-word / prefix checks to avoid false positives like "country" matching "count"
+    _cost_word_hints = {"pay", "cost", "flc", "bonus", "salary", "allowance",
+                        "compensation", "fte", "basic"}
+    _cost_prefix_hints = {"add on", "on-target"}  # must appear at start or after space
+
+    def _is_cost_col(col_lower: str) -> bool:
+        import re
+        # exact word boundary match for each hint
+        for h in _cost_word_hints:
+            if re.search(r"(?<![a-z])" + re.escape(h) + r"(?![a-z])", col_lower):
+                return True
+        for h in _cost_prefix_hints:
+            if h in col_lower:
+                return True
+        return False
+    # computed chain columns
+    _chain_hints = {"chain", "l1", "l2", "l3", "l4", "l5", "last_employee", "span", "total_reports"}
 
     with _connect_ro() as conn:
-        row = conn.execute(
-            "SELECT data_json FROM baseline_records WHERE dataset_id = ? LIMIT 1",
+        rows = conn.execute(
+            "SELECT data_json FROM baseline_records WHERE dataset_id = ? LIMIT 500",
             (dataset_id,),
-        ).fetchone()
-        if row:
-            try:
-                data = json.loads(row["data_json"])
-                cols.update(str(k) for k in data.keys() if not str(k).startswith("__"))
-            except Exception:
-                pass
+        ).fetchall()
 
-    return sorted(cols, key=lambda s: s.lower())
+    if not rows:
+        return {"columns": [], "column_meta": {}}
+
+    # accumulate unique values per column
+    values_by_col: Dict[str, set] = {}
+    for r in rows:
+        try:
+            rec = json.loads(r["data_json"])
+        except Exception:
+            continue
+        for k, v in rec.items():
+            if str(k).startswith("__"):
+                continue
+            col = str(k)
+            if col not in values_by_col:
+                values_by_col[col] = set()
+            if v is not None and str(v).strip():
+                values_by_col[col].add(str(v).strip())
+
+    column_meta: Dict[str, Any] = {}
+    for col, vals in values_by_col.items():
+        col_lower = col.lower()
+        unique_count = len(vals)
+
+        is_id = col_lower in id_cols
+        is_flag = (
+            col_lower.startswith("flag_") or col_lower.startswith("flag ")
+            or col_lower.endswith("_flag")
+        )
+        is_cost = (
+            col_lower == (flc_col or "").lower()
+            or col_lower == (fte_col or "").lower()
+            or _is_cost_col(col_lower)
+        )
+        is_chain = any(col_lower == h or col_lower.startswith(h + "_") for h in _chain_hints)
+        is_date = any(h in col_lower for h in ("date", "start", "end", "hire"))
+
+        # Good grouping dimension: not an ID/flag/cost/chain/date, moderate cardinality
+        is_dimension = (
+            not is_id
+            and not is_flag
+            and not is_cost
+            and not is_chain
+            and not is_date
+            and 2 <= unique_count <= 30
+        )
+
+        sample_values = sorted(vals)[:5]
+
+        column_meta[col] = {
+            "unique_count": unique_count,
+            "sample_values": sample_values,
+            "is_dimension": is_dimension,
+            "is_cost": is_cost,
+            "is_id": is_id,
+            "is_flag": is_flag,
+        }
+
+    cols_sorted = sorted(values_by_col.keys(), key=lambda s: s.lower())
+    return {"columns": cols_sorted, "column_meta": column_meta}
 
 
 def list_rate_cards(dataset_id: int) -> List[Dict[str, Any]]:

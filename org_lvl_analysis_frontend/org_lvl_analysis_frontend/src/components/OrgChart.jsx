@@ -189,6 +189,7 @@ export default function OrgChart({
 
   const [rateCards, setRateCards] = useState([]);
   const [datasetColumns, setDatasetColumns] = useState([]);
+  const [datasetColumnMeta, setDatasetColumnMeta] = useState({});
 
   // Mouse-drag pan state (separate from the transform ref)
   const dragStateRef = useRef({ dragging: false, startX: 0, startY: 0, startPanX: 0, startPanY: 0 });
@@ -289,6 +290,7 @@ export default function OrgChart({
         ]);
         setRateCards(rcResp.rate_cards || []);
         setDatasetColumns(colResp.columns || []);
+        setDatasetColumnMeta(colResp.column_meta || {});
       } catch (e) {
         console.warn("Failed to load rate card metadata:", e);
       }
@@ -1676,6 +1678,7 @@ export default function OrgChart({
           datasetId={datasetId}
           flcCol={flcCol}
           datasetColumns={datasetColumns}
+          datasetColumnMeta={datasetColumnMeta}
           rateCards={rateCards}
           onRateCardCreated={handleRateCardCreated}
           onScenarioRateCardChange={handleScenarioRateCardChange}

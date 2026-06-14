@@ -12,6 +12,7 @@ export default function ScenarioCreateModal({
   datasetId,
   flcCol,
   columns,
+  columnMeta = {},
   rateCards = [],
   dbPreviewRateCard,
   dbGenerateRateCard,
@@ -138,6 +139,7 @@ export default function ScenarioCreateModal({
         datasetId={datasetId}
         flcCol={flcCol}
         columns={columns}
+        columnMeta={columnMeta}
         dbPreviewRateCard={dbPreviewRateCard}
         dbGenerateRateCard={dbGenerateRateCard}
         dbPatchRateCardRow={dbPatchRateCardRow}

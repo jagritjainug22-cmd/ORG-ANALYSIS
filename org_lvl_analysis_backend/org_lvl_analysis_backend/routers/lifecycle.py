@@ -1399,7 +1399,7 @@ def db_dataset_columns(
 ):
     _require_dataset_in_project(dataset_id, project_id)
     try:
-        return {"columns": db_service.get_dataset_columns(dataset_id)}
+        return db_service.get_dataset_columns(dataset_id)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 

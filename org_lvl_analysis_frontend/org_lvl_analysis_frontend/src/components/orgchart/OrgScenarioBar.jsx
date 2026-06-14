@@ -25,6 +25,7 @@ export default function OrgScenarioBar({
   datasetId,
   flcCol,
   datasetColumns = [],
+  datasetColumnMeta = {},
   rateCards = [],
   onRateCardCreated,
   onScenarioRateCardChange,
@@ -297,6 +298,7 @@ export default function OrgScenarioBar({
         datasetId={datasetId}
         flcCol={flcCol}
         columns={datasetColumns}
+        columnMeta={datasetColumnMeta}
         rateCards={rateCards}
         dbPreviewRateCard={dbPreviewRateCard}
         dbGenerateRateCard={dbGenerateRateCard}
@@ -310,6 +312,7 @@ export default function OrgScenarioBar({
         datasetId={datasetId}
         flcCol={flcCol}
         columns={datasetColumns}
+        columnMeta={datasetColumnMeta}
         dbPreviewRateCard={dbPreviewRateCard}
         dbGenerateRateCard={dbGenerateRateCard}
         dbPatchRateCardRow={dbPatchRateCardRow}

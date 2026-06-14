@@ -256,6 +256,7 @@ function ActionPill({ action }) {
     move: { bg: "#dde7f5", fg: AM.navy, label: "Move" },
     edit: { bg: AM.borderLight, fg: AM.textSecondary, label: "Edit" },
     add: { bg: AM.successLight, fg: AM.success, label: "Add" },
+    clone: { bg: "#cffafe", fg: "#0e7490", label: "Clone" },
     flag_remove: { bg: AM.dangerLight, fg: AM.danger, label: "Flag" },
     unflag_restore: { bg: AM.successLight, fg: AM.success, label: "Restore" },
     delete: { bg: AM.dangerLight, fg: AM.danger, label: "Delete" },

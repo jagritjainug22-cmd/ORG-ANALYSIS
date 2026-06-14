@@ -369,8 +369,14 @@ export const dbGetScenario = async (scenarioId) => {
   return res.data;
 };
 
-export const dbCreateScenario = async (datasetId, { name, description = "", sourceScenarioId = null }) => {
-  const res = await axios.post(`${getProjectUrl()}/db/datasets/${datasetId}/scenarios`, { name, description, source_scenario_id: sourceScenarioId }, { headers: jsonHeaders() });
+export const dbCreateScenario = async (datasetId, { name, description = "", sourceScenarioId = null, rateCardId = null, rateCardQuartile = "p50" }) => {
+  const res = await axios.post(`${getProjectUrl()}/db/datasets/${datasetId}/scenarios`, {
+    name,
+    description,
+    source_scenario_id: sourceScenarioId,
+    rate_card_id: rateCardId,
+    rate_card_quartile: rateCardQuartile,
+  }, { headers: jsonHeaders() });
   return res.data;
 };
 
@@ -396,6 +402,11 @@ export const dbEditEmployee = async (scenarioId, empId, updates) => {
 
 export const dbAddEmployee = async (scenarioId, payload) => {
   const res = await axios.post(`${getProjectUrl()}/db/scenarios/${scenarioId}/add`, payload, { headers: jsonHeaders() });
+  return res.data;
+};
+
+export const dbCloneEmployee = async (scenarioId, payload) => {
+  const res = await axios.post(`${getProjectUrl()}/db/scenarios/${scenarioId}/clone`, payload, { headers: jsonHeaders() });
   return res.data;
 };
 
@@ -446,6 +457,53 @@ export const dbMarkDatasetSeen = async (datasetId) => {
 
 export const dbCompareScenarios = async (datasetId) => {
   const res = await axios.get(`${getProjectUrl()}/db/datasets/${datasetId}/compare`, { headers: getHeaders() });
+  return res.data;
+};
+
+export const dbGetDatasetColumns = async (datasetId) => {
+  const res = await axios.get(`${getProjectUrl()}/db/datasets/${datasetId}/columns`, { headers: getHeaders() });
+  return res.data;
+};
+
+export const dbListRateCards = async (datasetId) => {
+  const res = await axios.get(`${getProjectUrl()}/db/datasets/${datasetId}/rate_cards`, { headers: getHeaders() });
+  return res.data;
+};
+
+export const dbPreviewRateCard = async (datasetId, payload) => {
+  const res = await axios.post(`${getProjectUrl()}/db/datasets/${datasetId}/rate_cards/preview`, payload, { headers: jsonHeaders() });
+  return res.data;
+};
+
+export const dbGenerateRateCard = async (datasetId, payload) => {
+  const res = await axios.post(`${getProjectUrl()}/db/datasets/${datasetId}/rate_cards/generate`, payload, { headers: jsonHeaders() });
+  return res.data;
+};
+
+export const dbUploadRateCard = async (datasetId, formData) => {
+  const res = await axios.post(`${getProjectUrl()}/db/datasets/${datasetId}/rate_cards/upload`, formData, {
+    headers: { ...getHeaders(), "Content-Type": "multipart/form-data" },
+  });
+  return res.data;
+};
+
+export const dbGetRateCard = async (rateCardId) => {
+  const res = await axios.get(`${getProjectUrl()}/db/rate_cards/${rateCardId}`, { headers: getHeaders() });
+  return res.data;
+};
+
+export const dbPatchRateCardRow = async (datasetId, rateCardId, payload) => {
+  const res = await axios.patch(`${getProjectUrl()}/db/datasets/${datasetId}/rate_cards/${rateCardId}/rows`, payload, { headers: jsonHeaders() });
+  return res.data;
+};
+
+export const dbSetScenarioRateCard = async (scenarioId, payload) => {
+  const res = await axios.patch(`${getProjectUrl()}/db/scenarios/${scenarioId}/rate_card`, payload, { headers: jsonHeaders() });
+  return res.data;
+};
+
+export const dbLookupRateCardCost = async (scenarioId, values) => {
+  const res = await axios.post(`${getProjectUrl()}/db/scenarios/${scenarioId}/rate_card/lookup`, { values }, { headers: jsonHeaders() });
   return res.data;
 };
 

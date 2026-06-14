@@ -9,10 +9,10 @@ Lock semantics:
   - Enforced: mutation endpoints reject non-holders with 423
 """
 
-import sqlite3
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
+from services.pg_adapter import IntegrityError
 from services.db_service import _connect
 
 LOCK_EXPIRY_SECONDS = 90
@@ -92,7 +92,7 @@ def acquire_lock(dataset_id: int, project_id: int, user_id: int, username: str) 
                 "acquired": True, "holder": username, "holder_id": user_id,
                 "acquired_at": now, "last_heartbeat": now,
             }
-        except sqlite3.IntegrityError:
+        except IntegrityError:
             winner = conn.execute(
                 "SELECT * FROM dataset_locks WHERE dataset_id = ?", (dataset_id,)
             ).fetchone()

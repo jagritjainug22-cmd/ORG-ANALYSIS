@@ -85,10 +85,47 @@ class FlagBody(BaseModel):
     emp_id: str
     flagged: bool = True
 
+class CloneBody(BaseModel):
+    source_emp_id: str
+    new_emp_id: str
+    new_mgr_id: Optional[str] = None
+
 class ScenarioBody(BaseModel):
     name: str
     description: Optional[str] = ""
     source_scenario_id: Optional[int] = None
+    rate_card_id: Optional[int] = None
+    rate_card_quartile: Optional[str] = "p50"
+
+
+class RateCardGenerateBody(BaseModel):
+    name: str
+    property_cols: List[str]
+    cost_col: Optional[str] = None
+    min_sample: int = 3
+
+
+class RateCardPreviewBody(BaseModel):
+    property_cols: List[str]
+    cost_col: Optional[str] = None
+    min_sample: int = 3
+
+
+class RateCardRowBody(BaseModel):
+    composite_key: str
+    p25: Optional[float] = None
+    p50: Optional[float] = None
+    p75: Optional[float] = None
+    avg_cost: Optional[float] = None
+
+
+class ScenarioRateCardBody(BaseModel):
+    rate_card_id: Optional[int] = None
+    rate_card_quartile: str = "p50"
+
+
+class RateCardLookupBody(BaseModel):
+    values: Dict[str, Any]
 
 
 # ---------------------------------------------------------------------------
@@ -1352,6 +1389,187 @@ def db_delete_dataset(
     return {"status": "deleted"}
 
 
+
+
+@router.get("/db/datasets/{dataset_id}/columns")
+def db_dataset_columns(
+    dataset_id: int,
+    project_id: int,
+    _user: dict = Depends(require_project_access()),
+):
+    _require_dataset_in_project(dataset_id, project_id)
+    try:
+        return {"columns": db_service.get_dataset_columns(dataset_id)}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.get("/db/datasets/{dataset_id}/rate_cards")
+def db_list_rate_cards(
+    dataset_id: int,
+    project_id: int,
+    _user: dict = Depends(require_project_access()),
+):
+    _require_dataset_in_project(dataset_id, project_id)
+    return {"rate_cards": db_service.list_rate_cards(dataset_id)}
+
+
+@router.post("/db/datasets/{dataset_id}/rate_cards/preview")
+def db_preview_rate_card(
+    dataset_id: int,
+    body: RateCardPreviewBody,
+    project_id: int,
+    _user: dict = Depends(require_project_access()),
+):
+    _require_dataset_in_project(dataset_id, project_id)
+    try:
+        rows = db_service.preview_rate_card(
+            dataset_id,
+            body.property_cols,
+            cost_col=body.cost_col,
+            min_sample=body.min_sample,
+        )
+        return {"rows": rows}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/db/datasets/{dataset_id}/rate_cards/generate")
+def db_generate_rate_card(
+    dataset_id: int,
+    body: RateCardGenerateBody,
+    project_id: int,
+    user: dict = Depends(require_project_access()),
+    _lock: dict = Depends(require_dataset_lock_holder_for_dataset()),
+):
+    _require_dataset_in_project(dataset_id, project_id)
+    try:
+        rate_card_id = db_service.create_rate_card_from_baseline(
+            dataset_id=dataset_id,
+            name=body.name,
+            property_cols=body.property_cols,
+            cost_col=body.cost_col,
+            min_sample=body.min_sample,
+            created_by=user["username"],
+        )
+        return {"rate_card": db_service.get_rate_card(rate_card_id)}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/db/datasets/{dataset_id}/rate_cards/upload")
+async def db_upload_rate_card(
+    dataset_id: int,
+    project_id: int,
+    request: Request,
+    user: dict = Depends(require_project_access()),
+    _lock: dict = Depends(require_dataset_lock_holder_for_dataset()),
+):
+    from services.rate_card_service import parse_property_cols, rows_from_upload_df
+
+    _require_dataset_in_project(dataset_id, project_id)
+    form = await request.form()
+    upload = form.get("file")
+    name = str(form.get("name") or "Uploaded rate card")
+    property_cols_raw = form.get("property_cols")
+    cost_col = form.get("cost_col")
+    if not upload:
+        raise HTTPException(status_code=400, detail="file is required")
+    try:
+        content = await upload.read()
+        df = pd.read_excel(BytesIO(content))
+        rows = rows_from_upload_df(df)
+        property_cols = parse_property_cols(property_cols_raw or "[]")
+        ds = db_service.get_dataset(dataset_id)
+        resolved_cost = str(cost_col or (ds or {}).get("flc_col") or "FLC")
+        rate_card_id = db_service.create_rate_card_from_rows(
+            dataset_id=dataset_id,
+            name=name,
+            property_cols=property_cols,
+            cost_col=resolved_cost,
+            rows=rows,
+            created_by=user["username"],
+        )
+        return {"rate_card": db_service.get_rate_card(rate_card_id)}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Failed to parse upload: {e}")
+
+
+@router.get("/db/rate_cards/{rate_card_id}")
+def db_get_rate_card(
+    rate_card_id: int,
+    project_id: int,
+    _user: dict = Depends(require_project_access()),
+):
+    rc = db_service.get_rate_card(rate_card_id)
+    if not rc:
+        raise HTTPException(status_code=404, detail="Rate card not found")
+    ds = db_service.get_dataset(rc["dataset_id"])
+    if not ds or ds.get("project_id") != project_id:
+        raise HTTPException(status_code=404, detail="Rate card not found in this project")
+    return {"rate_card": rc}
+
+
+@router.patch("/db/datasets/{dataset_id}/rate_cards/{rate_card_id}/rows")
+def db_patch_rate_card_row(
+    dataset_id: int,
+    rate_card_id: int,
+    body: RateCardRowBody,
+    project_id: int,
+    _user: dict = Depends(require_project_access()),
+    _lock: dict = Depends(require_dataset_lock_holder_for_dataset()),
+):
+    _require_dataset_in_project(dataset_id, project_id)
+    rc = db_service.get_rate_card(rate_card_id)
+    if not rc or rc["dataset_id"] != dataset_id:
+        raise HTTPException(status_code=404, detail="Rate card not found")
+    try:
+        db_service.upsert_rate_card_row(
+            rate_card_id,
+            body.composite_key,
+            p25=body.p25,
+            p50=body.p50,
+            p75=body.p75,
+            avg_cost=body.avg_cost,
+        )
+        return {"rate_card": db_service.get_rate_card(rate_card_id)}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.patch("/db/scenarios/{scenario_id}/rate_card")
+def db_set_scenario_rate_card(
+    scenario_id: int,
+    body: ScenarioRateCardBody,
+    project_id: int,
+    _user: dict = Depends(require_project_access()),
+    _lock: dict = Depends(require_dataset_lock_holder()),
+):
+    _require_scenario_in_project(scenario_id, project_id)
+    try:
+        scenario = db_service.set_scenario_rate_card(
+            scenario_id,
+            body.rate_card_id,
+            body.rate_card_quartile,
+        )
+        return {"scenario": scenario}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/db/scenarios/{scenario_id}/rate_card/lookup")
+def db_lookup_scenario_rate_card(
+    scenario_id: int,
+    body: RateCardLookupBody,
+    project_id: int,
+    _user: dict = Depends(require_project_access()),
+):
+    _require_scenario_in_project(scenario_id, project_id)
+    result = db_service.lookup_rate_card_cost(scenario_id, body.values)
+    return {"lookup": result}
+
 @router.get("/db/datasets/{dataset_id}/baseline")
 def db_get_baseline(
     dataset_id: int,
@@ -1493,6 +1711,8 @@ def db_create_scenario(
             dataset_id=dataset_id, name=body.name,
             description=body.description or "",
             source_scenario_id=body.source_scenario_id,
+            rate_card_id=body.rate_card_id,
+            rate_card_quartile=body.rate_card_quartile or "p50",
         )
         write_activity_log(
             username=username, action="scenario_create", module="Org Chart",
@@ -1612,6 +1832,29 @@ def db_scenario_add(
             scenario_id=scenario_id, record=body.record,
             emp_id=body.emp_id, mgr_id=body.mgr_id, level=body.level,
             fte=body.fte, flc=body.flc, username=username,
+        )
+        return {"record": record, "summary": db_service.get_scenario_summary(scenario_id)}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/db/scenarios/{scenario_id}/clone")
+def db_scenario_clone(
+    scenario_id: int,
+    body: CloneBody,
+    project_id: int,
+    user: dict = Depends(require_project_access()),
+    _lock: dict = Depends(require_dataset_lock_holder()),
+):
+    _require_scenario_in_project(scenario_id, project_id)
+    username = user["username"]
+    try:
+        record = db_service.clone_employee(
+            scenario_id=scenario_id,
+            source_emp_id=body.source_emp_id,
+            new_emp_id=body.new_emp_id,
+            new_mgr_id=body.new_mgr_id,
+            username=username,
         )
         return {"record": record, "summary": db_service.get_scenario_summary(scenario_id)}
     except ValueError as e:

@@ -1,5 +1,7 @@
 import React, { useState } from "react";
 import { AM } from "./orgChartTheme";
+import ScenarioCreateModal from "./ScenarioCreateModal";
+import RateCardModal from "./RateCardModal";
 
 /**
  * Scenario tab bar: switch between scenarios, create new ones (forked from
@@ -20,21 +22,28 @@ export default function OrgScenarioBar({
   onActivity,
   activityUnseenCount = 0,
   activityActive = false,
+  datasetId,
+  flcCol,
+  datasetColumns = [],
+  rateCards = [],
+  onRateCardCreated,
+  onScenarioRateCardChange,
+  dbPreviewRateCard,
+  dbGenerateRateCard,
+  dbPatchRateCardRow,
+  dbSetScenarioRateCard,
 }) {
-  const [adding, setAdding] = useState(false);
-  const [newName, setNewName] = useState("");
-  const [forkFromActive, setForkFromActive] = useState(true);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [rateCardModalOpen, setRateCardModalOpen] = useState(false);
   const [renamingId, setRenamingId] = useState(null);
   const [renameDraft, setRenameDraft] = useState("");
 
   const active = scenarios.find((s) => s.id === activeScenarioId);
   const isBaseline = active?.name === "Baseline";
+  const activeRateCard = rateCards.find((rc) => rc.id === active?.rate_card_id);
 
-  const submitCreate = () => {
-    if (!newName.trim()) return;
-    onCreate?.(newName.trim(), forkFromActive ? activeScenarioId : null);
-    setNewName("");
-    setAdding(false);
+  const submitCreate = ({ name, forkFromActive, rateCardId, rateCardQuartile }) => {
+    onCreate?.(name, forkFromActive ? activeScenarioId : null, rateCardId, rateCardQuartile);
   };
 
   const submitRename = (id) => {
@@ -44,6 +53,11 @@ export default function OrgScenarioBar({
     }
     onRename?.(id, renameDraft.trim());
     setRenamingId(null);
+  };
+
+  const changeQuartile = async (q) => {
+    if (!active || !active.rate_card_id || !dbSetScenarioRateCard) return;
+    await onScenarioRateCardChange?.(active.id, active.rate_card_id, q);
   };
 
   return (
@@ -153,41 +167,37 @@ export default function OrgScenarioBar({
         );
       })}
 
-      {adding ? (
-        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          <input
-            autoFocus
-            value={newName}
-            onChange={(e) => setNewName(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") submitCreate();
-              if (e.key === "Escape") setAdding(false);
-            }}
-            placeholder="Scenario name"
+      <button onClick={() => setCreateOpen(true)} style={ghostPill()} title="New scenario">
+        + New
+      </button>
+
+      {datasetId && (
+        <button onClick={() => setRateCardModalOpen(true)} style={ghostPill()} title="Manage rate cards">
+          Rate cards
+        </button>
+      )}
+
+      {activeRateCard && (
+        <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: AM.textSecondary }}>
+          <span style={{ fontWeight: 600 }}>{activeRateCard.name}</span>
+          <select
+            value={active?.rate_card_quartile || "p50"}
+            onChange={(e) => changeQuartile(e.target.value)}
             style={{
               border: `1px solid ${AM.border}`,
-              borderRadius: 12,
-              padding: "4px 10px",
-              fontSize: 12,
-              outline: "none",
-              width: 140,
+              borderRadius: 10,
+              padding: "2px 8px",
+              fontSize: 10,
+              fontWeight: 700,
+              color: AM.navy,
+              background: AM.white,
             }}
-          />
-          <label style={{ fontSize: 10, color: AM.textSecondary, display: "flex", alignItems: "center", gap: 4 }}>
-            <input
-              type="checkbox"
-              checked={forkFromActive}
-              onChange={(e) => setForkFromActive(e.target.checked)}
-            />
-            fork from active
-          </label>
-          <button onClick={submitCreate} style={ghostPill(true)}>Create</button>
-          <button onClick={() => setAdding(false)} style={ghostPill()}>Cancel</button>
+          >
+            <option value="p25">P25</option>
+            <option value="p50">P50</option>
+            <option value="p75">P75</option>
+          </select>
         </div>
-      ) : (
-        <button onClick={() => setAdding(true)} style={ghostPill()} title="New scenario">
-          + New
-        </button>
       )}
 
       <div style={{ flex: 1 }} />
@@ -234,7 +244,6 @@ export default function OrgScenarioBar({
                 padding: "0 4px",
                 border: `1.5px solid ${AM.white}`,
                 boxShadow: `0 0 0 1px ${AM.gold}`,
-                animation: "orgsight-pulse 1.6s ease-in-out infinite",
               }}
             >
               {activityUnseenCount > 99 ? "99+" : activityUnseenCount}
@@ -280,6 +289,32 @@ export default function OrgScenarioBar({
           Promote to live
         </button>
       )}
+
+      <ScenarioCreateModal
+        open={createOpen}
+        onClose={() => setCreateOpen(false)}
+        onConfirm={submitCreate}
+        datasetId={datasetId}
+        flcCol={flcCol}
+        columns={datasetColumns}
+        rateCards={rateCards}
+        dbPreviewRateCard={dbPreviewRateCard}
+        dbGenerateRateCard={dbGenerateRateCard}
+        dbPatchRateCardRow={dbPatchRateCardRow}
+        onRateCardCreated={onRateCardCreated}
+      />
+
+      <RateCardModal
+        open={rateCardModalOpen}
+        onClose={() => setRateCardModalOpen(false)}
+        datasetId={datasetId}
+        flcCol={flcCol}
+        columns={datasetColumns}
+        dbPreviewRateCard={dbPreviewRateCard}
+        dbGenerateRateCard={dbGenerateRateCard}
+        dbPatchRateCardRow={dbPatchRateCardRow}
+        onCreated={onRateCardCreated}
+      />
     </div>
   );
 }

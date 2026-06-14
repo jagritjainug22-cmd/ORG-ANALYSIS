@@ -13,6 +13,7 @@ import {
   dbMoveEmployee,
   dbEditEmployee,
   dbAddEmployee,
+  dbCloneEmployee,
   dbFlagEmployee,
   dbCreateScenario,
   dbRenameScenario,
@@ -33,6 +34,13 @@ import {
   handleLockConflict,
   dbGetDatasetRecentChanges,
   dbMarkDatasetSeen,
+  dbListRateCards,
+  dbGetDatasetColumns,
+  dbPreviewRateCard,
+  dbGenerateRateCard,
+  dbPatchRateCardRow,
+  dbSetScenarioRateCard,
+  dbLookupRateCardCost,
 } from "../api/backend";
 import {
   CARD_WIDTH,
@@ -108,6 +116,7 @@ export default function OrgChart({
   const [editMode, setEditMode] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
   const [selectedId, setSelectedId] = useState(null);
+  const [clonePromptFor, setClonePromptFor] = useState(null);
   const [collapsed, setCollapsed] = useState(() => new Set());
   const [maxDepth, setMaxDepth] = useState(2);
   const [zoomLabel, setZoomLabel] = useState(1);
@@ -177,6 +186,9 @@ export default function OrgChart({
   });
   const [activityBannerVisible, setActivityBannerVisible] = useState(false);
   const activityBannerTimerRef = useRef(null);
+
+  const [rateCards, setRateCards] = useState([]);
+  const [datasetColumns, setDatasetColumns] = useState([]);
 
   // Mouse-drag pan state (separate from the transform ref)
   const dragStateRef = useRef({ dragging: false, startX: 0, startY: 0, startPanX: 0, startPanY: 0 });
@@ -262,6 +274,48 @@ export default function OrgChart({
       }
     };
   }, [datasetId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!datasetId) {
+      setRateCards([]);
+      setDatasetColumns([]);
+      return;
+    }
+    (async () => {
+      try {
+        const [rcResp, colResp] = await Promise.all([
+          dbListRateCards(datasetId),
+          dbGetDatasetColumns(datasetId),
+        ]);
+        setRateCards(rcResp.rate_cards || []);
+        setDatasetColumns(colResp.columns || []);
+      } catch (e) {
+        console.warn("Failed to load rate card metadata:", e);
+      }
+    })();
+  }, [datasetId]);
+
+  const activeScenario = useMemo(
+    () => (scenarios || []).find((s) => s.id === activeScenarioId) || null,
+    [scenarios, activeScenarioId]
+  );
+
+  const activeRateCardMeta = useMemo(
+    () => rateCards.find((rc) => rc.id === activeScenario?.rate_card_id) || null,
+    [rateCards, activeScenario]
+  );
+
+  const rateCardPropertyCols = activeRateCardMeta?.property_cols || [];
+
+  const lookupRateCardForValues = useCallback(async (values) => {
+    if (!activeScenarioId || !activeScenario?.rate_card_id) return null;
+    try {
+      const resp = await dbLookupRateCardCost(activeScenarioId, values);
+      return resp.lookup;
+    } catch {
+      return null;
+    }
+  }, [activeScenarioId, activeScenario?.rate_card_id]);
 
   // ----- Activity feed: fetch unseen changes when dataset is (re)opened -----
   const fetchActivity = useCallback(async () => {
@@ -563,6 +617,34 @@ export default function OrgChart({
     return records.find((r) => String(idOf(r)) === String(selectedId));
   }, [selectedId, records, idOf]);
 
+  const existingEmpIds = useMemo(
+    () => (records || []).map((r) => String(idOf(r))),
+    [records, idOf]
+  );
+
+  const mutationStates = useMemo(() => {
+    const map = new Map();
+    if (!records) return map;
+    const logByEmp = new Map();
+    for (const c of changeLog || []) {
+      if (!c.emp_id) continue;
+      if (!logByEmp.has(c.emp_id)) logByEmp.set(c.emp_id, []);
+      logByEmp.get(c.emp_id).push(c);
+    }
+    for (const r of records) {
+      const eid = String(idOf(r));
+      const logs = logByEmp.get(eid) || [];
+      map.set(eid, {
+        added: !!r.is_added,
+        flagged: !!r.is_flagged_removed,
+        moved: logs.some((c) => c.action === "move"),
+        edited: logs.some((c) => c.action === "edit"),
+        cloned: logs.some((c) => c.action === "clone"),
+      });
+    }
+    return map;
+  }, [records, changeLog, idOf]);
+
   // --------------------------------------------------------------------
   // Mutations
   // --------------------------------------------------------------------
@@ -639,9 +721,14 @@ export default function OrgChart({
   const handleEdit = async (empId, updates) => {
     await applyAndPersist(
       (recs) =>
-        recs.map((r) =>
-          String(idOf(r)) === String(empId) ? { ...r, ...updates } : r
-        ),
+        recs.map((r) => {
+          if (String(idOf(r)) !== String(empId)) return r;
+          const next = { ...r, ...updates };
+          if (flcCol && Object.prototype.hasOwnProperty.call(updates, flcCol)) {
+            next.__rate_card_derived = false;
+          }
+          return next;
+        }),
       () => dbEditEmployee(activeScenarioId, empId, updates)
     );
   };
@@ -659,6 +746,30 @@ export default function OrgChart({
     );
   };
 
+  const handleApplyRateCard = async (empId) => {
+    const record = records?.find((r) => String(idOf(r)) === String(empId));
+    if (!record || !flcCol) return;
+    const values = {};
+    rateCardPropertyCols.forEach((col) => {
+      values[col] = record[col];
+    });
+    const lookup = await lookupRateCardForValues(values);
+    if (lookup?.cost == null) {
+      setError("No rate card match for this property combination.");
+      return;
+    }
+    const updates = { [flcCol]: lookup.cost };
+    await applyAndPersist(
+      (recs) =>
+        recs.map((r) =>
+          String(idOf(r)) === String(empId)
+            ? { ...r, [flcCol]: lookup.cost, __rate_card_derived: true }
+            : r
+        ),
+      () => dbEditEmployee(activeScenarioId, empId, updates)
+    );
+  };
+
   const handleAddChild = async (payload) => {
     const synthesized = {
       ...payload.record,
@@ -667,6 +778,7 @@ export default function OrgChart({
       is_flagged_removed: false,
       is_added: true,
       Level: payload.level,
+      __rate_card_derived: !!payload.rate_card_derived,
     };
     if (fteCol) synthesized[fteCol] = payload.fte;
     if (flcCol) synthesized[flcCol] = payload.flc;
@@ -676,6 +788,39 @@ export default function OrgChart({
       () => dbAddEmployee(activeScenarioId, payload)
     );
     setAddChildFor(null);
+  };
+
+  const handleClone = async (sourceEmpId, newEmpId) => {
+    if (!inDbMode) return;
+    const source = records.find((r) => String(idOf(r)) === String(sourceEmpId));
+    if (!source) return;
+
+    const mgrId = source.__mgr_id ?? source[mgrCol] ?? null;
+    const synthesized = {
+      ...source,
+      __emp_id: newEmpId,
+      __mgr_id: mgrId,
+      is_flagged_removed: false,
+      is_added: true,
+    };
+    if (empCol) synthesized[empCol] = newEmpId;
+    if (mgrCol && mgrId != null) synthesized[mgrCol] = mgrId;
+
+    await applyAndPersist(
+      (recs) => [...recs, synthesized],
+      () =>
+        dbCloneEmployee(activeScenarioId, {
+          source_emp_id: sourceEmpId,
+          new_emp_id: newEmpId,
+          new_mgr_id: mgrId,
+        })
+    );
+    setSelectedId(newEmpId);
+  };
+
+  const openCloneFor = (empId) => {
+    setSelectedId(empId);
+    setClonePromptFor(String(empId));
   };
 
   // --------------------------------------------------------------------
@@ -874,19 +1019,45 @@ export default function OrgChart({
   // Scenario actions (Phase 5)
   // --------------------------------------------------------------------
 
-  const handleCreateScenario = async (name, sourceScenarioId) => {
+  const handleCreateScenario = async (name, sourceScenarioId, rateCardId = null, rateCardQuartile = "p50") => {
     if (!datasetId) return;
     try {
       const resp = await dbCreateScenario(datasetId, {
         name,
         description: "",
         sourceScenarioId,
+        rateCardId,
+        rateCardQuartile,
       });
       const newScenario = resp.scenario;
       setScenarios?.([...(scenarios || []), newScenario]);
       setActiveScenarioId?.(newScenario.id);
     } catch (e) {
       setError(e.message || "Failed to create scenario.");
+    }
+  };
+
+  const handleRateCardCreated = (rateCard) => {
+    if (!rateCard?.id) return;
+    setRateCards((prev) => {
+      const exists = prev.some((rc) => rc.id === rateCard.id);
+      if (exists) {
+        return prev.map((rc) => (rc.id === rateCard.id ? { ...rc, ...rateCard } : rc));
+      }
+      return [rateCard, ...prev];
+    });
+  };
+
+  const handleScenarioRateCardChange = async (scenarioId, rateCardId, quartile) => {
+    try {
+      const resp = await dbSetScenarioRateCard(scenarioId, {
+        rate_card_id: rateCardId,
+        rate_card_quartile: quartile,
+      });
+      const updated = resp.scenario;
+      setScenarios?.((scenarios || []).map((s) => (s.id === scenarioId ? { ...s, ...updated } : s)));
+    } catch (e) {
+      setError(e.message || "Failed to update rate card settings.");
     }
   };
 
@@ -1502,6 +1673,16 @@ export default function OrgChart({
           onActivity={() => (activityOpen ? setActivityOpen(false) : openActivityPanel())}
           activityUnseenCount={activityMeta.unseen_count}
           activityActive={activityOpen}
+          datasetId={datasetId}
+          flcCol={flcCol}
+          datasetColumns={datasetColumns}
+          rateCards={rateCards}
+          onRateCardCreated={handleRateCardCreated}
+          onScenarioRateCardChange={handleScenarioRateCardChange}
+          dbPreviewRateCard={dbPreviewRateCard}
+          dbGenerateRateCard={dbGenerateRateCard}
+          dbPatchRateCardRow={dbPatchRateCardRow}
+          dbSetScenarioRateCard={dbSetScenarioRateCard}
         />
       )}
 
@@ -1644,6 +1825,7 @@ export default function OrgChart({
                   onStartEdit={(eid) => setSelectedId(eid)}
                   onFlagToggle={handleFlag}
                   onAddChild={(eid) => setAddChildFor(eid)}
+                  onClone={openCloneFor}
                   onCollapseToggle={(eid) => {
                     setCollapsed((prev) => {
                       const n = new Set(prev);
@@ -1657,6 +1839,7 @@ export default function OrgChart({
                   activeDragId={activeDragId}
                   dragDescendants={dragDescendantsRef.current}
                   dragOldParentLevel={dragOldParentLevel}
+                  mutationState={mutationStates.get(id)}
                 />
               );
             })}
@@ -1730,9 +1913,19 @@ export default function OrgChart({
             flcCol={flcCol}
             countryCol={countryCol}
             editMode={editMode}
-            onClose={() => setSelectedId(null)}
+            onClose={() => {
+              setSelectedId(null);
+              setClonePromptFor(null);
+            }}
             onSave={handleEdit}
             onFlagToggle={handleFlag}
+            onClone={handleClone}
+            existingEmpIds={existingEmpIds}
+            autoStartClone={clonePromptFor === String(idOf(selectedRecord))}
+            onAutoCloneConsumed={() => setClonePromptFor(null)}
+            flcCol={flcCol}
+            rateCardActive={!!activeScenario?.rate_card_id}
+            onApplyRateCard={handleApplyRateCard}
           />
         )}
 
@@ -1767,6 +1960,8 @@ export default function OrgChart({
           fteCol={fteCol}
           flcCol={flcCol}
           countryCol={countryCol}
+          rateCardPropertyCols={rateCardPropertyCols}
+          onLookupRateCard={lookupRateCardForValues}
           onClose={() => setAddChildFor(null)}
           onSubmit={handleAddChild}
         />

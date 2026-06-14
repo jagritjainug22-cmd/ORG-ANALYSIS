@@ -20,18 +20,40 @@ export default function OrgDetailPanel({
   onClose,
   onSave,
   onFlagToggle,
+  onClone,
+  existingEmpIds = [],
+  autoStartClone = false,
+  onAutoCloneConsumed,
+  rateCardActive = false,
+  onApplyRateCard,
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState({});
+  const [cloning, setCloning] = useState(false);
+  const [cloneId, setCloneId] = useState("");
+  const [cloneError, setCloneError] = useState("");
+
+  const empId = record ? String(record.__emp_id ?? record[empCol] ?? "") : "";
 
   useEffect(() => {
     setEditing(false);
     setDraft({});
+    setCloning(false);
+    setCloneId("");
+    setCloneError("");
   }, [record?.__emp_id]);
+
+  useEffect(() => {
+    if (!autoStartClone || !record || !empId) return;
+    setCloneId(makeCloneSuggestion(empId, existingEmpIds));
+    setCloneError("");
+    setCloning(true);
+    setEditing(false);
+    onAutoCloneConsumed?.();
+  }, [autoStartClone, record?.__emp_id, empId, existingEmpIds, onAutoCloneConsumed]);
 
   if (!record) return null;
 
-  const empId = String(record.__emp_id ?? record[empCol] ?? "");
   const flagged = !!record.is_flagged_removed;
 
   const editableFields = [
@@ -60,6 +82,31 @@ export default function OrgDetailPanel({
       onSave?.(empId, updates);
     }
     setEditing(false);
+  };
+
+  const suggestCloneId = () => makeCloneSuggestion(empId, existingEmpIds);
+
+  const startClone = () => {
+    setCloneId(suggestCloneId());
+    setCloneError("");
+    setCloning(true);
+    setEditing(false);
+  };
+
+  const submitClone = () => {
+    const nextId = cloneId.trim();
+    if (!nextId) {
+      setCloneError("Employee ID is required");
+      return;
+    }
+    if (existingEmpIds.map(String).includes(nextId)) {
+      setCloneError("That employee ID already exists");
+      return;
+    }
+    onClone?.(empId, nextId);
+    setCloning(false);
+    setCloneId("");
+    setCloneError("");
   };
 
   const allFields = Object.entries(record).filter(
@@ -142,8 +189,8 @@ export default function OrgDetailPanel({
         </div>
 
         {editMode && (
-          <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
-            {!editing ? (
+          <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
+            {!editing && !cloning ? (
               <>
                 <button
                   onClick={startEdit}
@@ -153,10 +200,30 @@ export default function OrgDetailPanel({
                   Edit fields
                 </button>
                 <button
+                  onClick={startClone}
+                  disabled={flagged}
+                  style={ghostBtn(flagged)}
+                >
+                  Clone position
+                </button>
+                <button
                   onClick={() => onFlagToggle?.(empId, !flagged)}
                   style={flagged ? successBtn() : dangerBtn()}
                 >
                   {flagged ? "Restore" : "Flag"}
+                </button>
+              </>
+            ) : cloning ? (
+              <>
+                <button onClick={submitClone} style={primaryBtn(false)}>Create clone</button>
+                <button
+                  onClick={() => {
+                    setCloning(false);
+                    setCloneError("");
+                  }}
+                  style={ghostBtn()}
+                >
+                  Cancel
                 </button>
               </>
             ) : (
@@ -164,6 +231,63 @@ export default function OrgDetailPanel({
                 <button onClick={save} style={primaryBtn(false)}>Save</button>
                 <button onClick={() => setEditing(false)} style={ghostBtn()}>Cancel</button>
               </>
+            )}
+          </div>
+        )}
+
+        {cloning && (
+          <div style={{ marginBottom: 16 }}>
+            <label
+              style={{
+                display: "block",
+                fontSize: 10,
+                fontWeight: 600,
+                color: AM.textSecondary,
+                textTransform: "uppercase",
+                letterSpacing: "0.6px",
+                marginBottom: 4,
+              }}
+            >
+              New employee ID
+            </label>
+            <input
+              value={cloneId}
+              onChange={(e) => {
+                setCloneId(e.target.value);
+                setCloneError("");
+              }}
+              style={{
+                width: "100%",
+                border: `1px solid ${cloneError ? AM.danger : AM.border}`,
+                borderRadius: 6,
+                padding: "6px 10px",
+                fontSize: 12,
+                outline: "none",
+                fontFamily: "'IBM Plex Mono', monospace",
+              }}
+            />
+            {cloneError && (
+              <div style={{ fontSize: 11, color: AM.danger, marginTop: 6 }}>{cloneError}</div>
+            )}
+            <div style={{ fontSize: 11, color: AM.textMuted, marginTop: 8, lineHeight: 1.4 }}>
+              Creates a copy under the same manager with the same role properties.
+            </div>
+          </div>
+        )}
+
+        {editMode && flcCol && rateCardActive && !editing && !cloning && (
+          <div style={{ marginBottom: 12 }}>
+            <button
+              onClick={() => onApplyRateCard?.(empId)}
+              disabled={flagged}
+              style={ghostBtn(flagged)}
+            >
+              Recalculate from rate card
+            </button>
+            {record.__rate_card_derived && (
+              <div style={{ fontSize: 11, color: AM.success, marginTop: 6, fontWeight: 600 }}>
+                Cost is rate-card derived
+              </div>
             )}
           </div>
         )}
@@ -251,6 +375,17 @@ export default function OrgDetailPanel({
   );
 }
 
+function makeCloneSuggestion(sourceId, existingEmpIds) {
+  let candidate = `${sourceId}-copy`;
+  let n = 2;
+  const taken = new Set(existingEmpIds.map(String));
+  while (taken.has(candidate)) {
+    candidate = `${sourceId}-copy${n}`;
+    n += 1;
+  }
+  return candidate;
+}
+
 function formatVal(v) {
   if (v === null || v === undefined || v === "") return "—";
   if (typeof v === "number") return fmtNumber(v);
@@ -296,16 +431,16 @@ function successBtn() {
     cursor: "pointer",
   };
 }
-function ghostBtn() {
+function ghostBtn(disabled = false) {
   return {
     flex: 1,
-    background: AM.borderLight,
-    color: AM.textSecondary,
+    background: disabled ? AM.borderLight : AM.borderLight,
+    color: disabled ? AM.textMuted : AM.textSecondary,
     border: "none",
     borderRadius: 6,
     padding: "8px 10px",
     fontSize: 12,
     fontWeight: 600,
-    cursor: "pointer",
+    cursor: disabled ? "not-allowed" : "pointer",
   };
 }

@@ -46,11 +46,10 @@ function fmtNumber(n) {
 }
 
 /**
- * DataSourceSelector wraps the Upload module slot. If saved baselines exist,
- * users land on a refined full-width list of existing org charts (with mini
- * structure previews). A pill toggle switches to the legacy upload flow for
- * new files. Picking an existing dataset hydrates the workspace state and
- * jumps straight to the Org Chart module.
+ * DataSourceSelector wraps the Upload module slot. Users land on the upload
+ * form immediately; saved baselines load in the background. A pill toggle
+ * switches to the saved org-chart list when available. Picking an existing
+ * dataset hydrates the workspace state and jumps straight to the Org Chart.
  */
 export default function DataSourceSelector({
   onDatasetPicked,
@@ -59,8 +58,9 @@ export default function DataSourceSelector({
   setColumns,
   setUploadedFileName,
 }) {
-  const [view, setView] = useState("picker");
+  const [view, setView] = useState("upload");
   const [datasets, setDatasets] = useState(null);
+  const [listError, setListError] = useState(null);
   const [error, setError] = useState(null);
   const [loadingPickId, setLoadingPickId] = useState(null);
 
@@ -69,14 +69,13 @@ export default function DataSourceSelector({
     dbListDatasets(false, true)
       .then((data) => {
         if (cancelled) return;
-        const list = data?.datasets || [];
-        setDatasets(list);
-        if (list.length === 0) setView("upload");
+        setListError(null);
+        setDatasets(data?.datasets || []);
       })
       .catch((e) => {
         if (cancelled) return;
-        setError(e?.response?.data?.detail || e?.message || "Failed to load saved org charts.");
-        setView("upload");
+        setListError(e?.response?.data?.detail || e?.message || "Failed to load saved org charts.");
+        setDatasets([]);
       });
     return () => {
       cancelled = true;
@@ -102,7 +101,9 @@ export default function DataSourceSelector({
     }
   };
 
+  const listLoading = datasets === null;
   const hasDatasets = Array.isArray(datasets) && datasets.length > 0;
+  const showToggle = listLoading || hasDatasets;
 
   return (
     <div className="space-y-5">
@@ -111,14 +112,14 @@ export default function DataSourceSelector({
         <div>
           <h3 className="text-xl font-bold text-gray-900 tracking-tight">Data Source</h3>
           <p className="text-sm text-gray-500 mt-1">
-            {view === "picker"
-              ? hasDatasets
-                ? `Access and manage your saved organization charts.`
-                : `Loading saved org charts...`
-              : `Upload a fresh Excel file to start a new analysis.`}
+            {view === "upload"
+              ? "Upload a fresh Excel file to start a new analysis."
+              : listLoading
+                ? "Loading saved org charts..."
+                : "Access and manage your saved organization charts."}
           </p>
         </div>
-        {hasDatasets && (
+        {showToggle && (
           <div className="inline-flex bg-gray-100 rounded-lg p-1 shadow-sm">
             <ToggleBtn
               active={view === "picker"}
@@ -128,7 +129,12 @@ export default function DataSourceSelector({
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" />
                 </svg>
               }
-              label={`Saved Org Charts (${datasets.length})`}
+              label={
+                listLoading
+                  ? "Saved Org Charts"
+                  : `Saved Org Charts (${datasets.length})`
+              }
+              loading={listLoading}
             />
             <ToggleBtn
               active={view === "upload"}
@@ -151,8 +157,15 @@ export default function DataSourceSelector({
       )}
 
       {view === "picker" ? (
-        datasets === null ? (
+        listLoading ? (
           <PickerSkeleton />
+        ) : listError ? (
+          <div className="space-y-4">
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm text-amber-800">
+              {listError}
+            </div>
+            <EmptyState onUploadClick={() => setView("upload")} />
+          </div>
         ) : !hasDatasets ? (
           <EmptyState onUploadClick={() => setView("upload")} />
         ) : (
@@ -186,7 +199,7 @@ export default function DataSourceSelector({
   );
 }
 
-function ToggleBtn({ active, onClick, icon, label }) {
+function ToggleBtn({ active, onClick, icon, label, loading }) {
   return (
     <button
       onClick={onClick}
@@ -198,6 +211,12 @@ function ToggleBtn({ active, onClick, icon, label }) {
     >
       {icon}
       {label}
+      {loading && (
+        <svg className="animate-spin h-3.5 w-3.5 text-gray-400" viewBox="0 0 24 24" fill="none">
+          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+        </svg>
+      )}
     </button>
   );
 }

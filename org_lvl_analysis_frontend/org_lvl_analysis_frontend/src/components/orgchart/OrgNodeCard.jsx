@@ -40,17 +40,22 @@ function OrgNodeCardImpl({
   onStartEdit,
   onFlagToggle,
   onAddChild,
+  onClone,
   onCollapseToggle,
   collapsed,
   hasChildren,
   hiddenCount,
   activeDragId,
   dragDescendants,
-  // dragOldParentLevel mirrors dragOldParentLevelRef -- they must stay in sync.
   dragOldParentLevel,
+  mutationState,
 }) {
   const empId = String(record.__emp_id ?? record[empCol] ?? "");
   const flagged = !!record.is_flagged_removed;
+  const added = !!record.is_added;
+  const moved = !!mutationState?.moved;
+  const edited = !!mutationState?.edited;
+  const cloned = !!mutationState?.cloned;
   const level = Number(record.Level) || 0;
   const header = headerColorForLevel(level);
   const headerLbl = headerLabel(record, level, jobTitleCol);
@@ -90,6 +95,8 @@ function OrgNodeCardImpl({
     ? AM.danger
     : flagged
     ? AM.danger
+    : added
+    ? AM.success
     : AM.border;
   const borderStyle = isValidTarget ? "dashed" : "solid";
 
@@ -194,6 +201,13 @@ function OrgNodeCardImpl({
             }}
           />
           {headerLbl}
+          {!flagged && (
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 3, marginLeft: 2 }}>
+              {moved && <MutationDot color="#2563eb" title="Moved" />}
+              {edited && <MutationDot color="#d97706" title="Edited" />}
+              {(added || cloned) && <MutationDot color={AM.success} title={cloned ? "Cloned" : "Added"} />}
+            </span>
+          )}
         </span>
         {flagged && (
           <span
@@ -333,6 +347,11 @@ function OrgNodeCardImpl({
             <PlusIcon />
           </ToolbarBtn>
         )}
+        {editMode && (
+          <ToolbarBtn title="Clone position" onClick={(e) => { e.stopPropagation(); onClone?.(empId); }} disabled={flagged}>
+            <CloneIcon />
+          </ToolbarBtn>
+        )}
         {hasChildren && (
           <ToolbarBtn
             title={collapsed ? "Expand" : "Collapse"}
@@ -415,9 +434,26 @@ const OrgNodeCard = React.memo(OrgNodeCardImpl, (prev, next) => {
   if (prev.activeDragId !== next.activeDragId) return false;
   if (prev.dragDescendants !== next.dragDescendants) return false;
   if (prev.dragOldParentLevel !== next.dragOldParentLevel) return false;
+  if (prev.mutationState !== next.mutationState) return false;
   return true;
 });
 export default OrgNodeCard;
+
+function MutationDot({ color, title }) {
+  return (
+    <span
+      title={title}
+      style={{
+        width: 7,
+        height: 7,
+        borderRadius: "50%",
+        background: color,
+        display: "inline-block",
+        boxShadow: `0 0 0 1px ${AM.white}`,
+      }}
+    />
+  );
+}
 
 function ToolbarBtn({ children, onClick, title, disabled, tone }) {
   const color =
@@ -494,6 +530,15 @@ function PlusIcon() {
   return (
     <svg {...ICON_PROPS}>
       <path d="M12 5v14M5 12h14" />
+    </svg>
+  );
+}
+
+function CloneIcon() {
+  return (
+    <svg {...ICON_PROPS}>
+      <rect x="9" y="9" width="11" height="11" rx="2" />
+      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
     </svg>
   );
 }

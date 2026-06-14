@@ -9,7 +9,7 @@ import json
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from services.db_service import _connect
+from services.db_service import _connect, _connect_ro
 
 
 def write_audit_log(
@@ -75,7 +75,7 @@ def query_audit_log(
     """
     params.extend([limit, offset])
 
-    with _connect() as conn:
+    with _connect_ro() as conn:
         rows = conn.execute(sql, params).fetchall()
         results = []
         for row in rows:

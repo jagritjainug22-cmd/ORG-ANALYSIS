@@ -104,15 +104,27 @@ export default function ProjectWorkspace() {
       .catch((err) => {
         const status = err.response?.status;
         const body = err.response?.data;
+        const detail = body?.detail;
+        const errDetail =
+          typeof detail === "object" && detail !== null ? detail : body;
+        const errMessage =
+          errDetail?.message ||
+          (typeof detail === "string" ? detail : null) ||
+          "Failed to load project";
         if (status === 403) {
           setProjectError({
-            code: body?.error_code || "access_denied",
-            message: body?.message || body?.detail || "Access denied",
+            code: errDetail?.error_code || "access_denied",
+            message: errMessage,
           });
         } else if (status === 404) {
           setProjectError({ code: "not_found", message: "Project not found" });
+        } else if (!err.response) {
+          setProjectError({
+            code: "backend_unreachable",
+            message: "Cannot reach the API at port 8001. Is the backend running?",
+          });
         } else {
-          setProjectError({ code: "unknown", message: body?.detail || "Failed to load project" });
+          setProjectError({ code: "unknown", message: errMessage });
         }
       });
   }, [pid]);

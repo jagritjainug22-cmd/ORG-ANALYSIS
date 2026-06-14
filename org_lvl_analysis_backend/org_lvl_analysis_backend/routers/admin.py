@@ -5,7 +5,6 @@ All endpoints require admin role via the require_admin dependency.
 Every mutating action is recorded in the audit log.
 """
 
-import sqlite3
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Query
@@ -60,7 +59,7 @@ class AssignUserRequest(BaseModel):
 
 @router.get("/users")
 async def list_users(admin: dict = Depends(require_admin)):
-    with db_service._connect() as conn:
+    with db_service._connect_ro() as conn:
         rows = conn.execute(
             "SELECT id, username, display_name, role, is_active, must_change_password, created_at, updated_at FROM users ORDER BY id"
         ).fetchall()
@@ -73,7 +72,7 @@ async def list_users(admin: dict = Depends(require_admin)):
                    p.id AS project_id, p.name AS project_name, p.status AS project_status
             FROM project_assignments pa
             JOIN projects p ON p.id = pa.project_id
-            ORDER BY p.name COLLATE NOCASE
+            ORDER BY LOWER(p.name)
             """
         ).fetchall()
 

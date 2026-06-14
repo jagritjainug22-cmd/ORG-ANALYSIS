@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { AM } from "./orgChartTheme";
 
 /**
@@ -15,6 +15,8 @@ export default function OrgAddChildModal({
   fteCol,
   flcCol,
   countryCol,
+  rateCardPropertyCols = [],
+  onLookupRateCard,
   onClose,
   onSubmit,
 }) {
@@ -23,7 +25,57 @@ export default function OrgAddChildModal({
   const [fte, setFte] = useState("1.0");
   const [flc, setFlc] = useState("");
   const [country, setCountry] = useState("");
+  const [propValues, setPropValues] = useState({});
+  const [rateCardDerived, setRateCardDerived] = useState(false);
+  const [lookupNote, setLookupNote] = useState("");
   const [error, setError] = useState("");
+
+  const propertyCols = useMemo(
+    () => (rateCardPropertyCols || []).filter((c) => c && c !== flcCol),
+    [rateCardPropertyCols, flcCol]
+  );
+
+  useEffect(() => {
+    if (!open) return;
+    setEmpId("");
+    setTitle("");
+    setFte("1.0");
+    setFlc("");
+    setCountry("");
+    setPropValues({});
+    setRateCardDerived(false);
+    setLookupNote("");
+    setError("");
+  }, [open]);
+
+  useEffect(() => {
+    if (!open || !propertyCols.length || !onLookupRateCard) return;
+    const values = {};
+    propertyCols.forEach((col) => {
+      values[col] = propValues[col] ?? "";
+    });
+    const ready = propertyCols.every((col) => String(values[col] || "").trim());
+    if (!ready) {
+      setLookupNote("");
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      const lookup = await onLookupRateCard(values);
+      if (cancelled) return;
+      if (lookup?.cost != null) {
+        setFlc(String(Math.round(lookup.cost)));
+        setRateCardDerived(true);
+        setLookupNote(`Rate card (${String(lookup.quartile || "p50").toUpperCase()}) · ${lookup.composite_key}`);
+      } else {
+        setRateCardDerived(false);
+        setLookupNote("No rate card match for this combination");
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [open, propValues, propertyCols, onLookupRateCard]);
 
   if (!open) return null;
 
@@ -36,6 +88,9 @@ export default function OrgAddChildModal({
     setFte("1.0");
     setFlc("");
     setCountry("");
+    setPropValues({});
+    setRateCardDerived(false);
+    setLookupNote("");
     setError("");
   };
 
@@ -53,6 +108,9 @@ export default function OrgAddChildModal({
     if (fteCol) record[fteCol] = Number(fte) || 0;
     if (flcCol) record[flcCol] = Number(flc) || 0;
     if (countryCol && country) record[countryCol] = country;
+    propertyCols.forEach((col) => {
+      if (propValues[col]) record[col] = propValues[col];
+    });
 
     onSubmit({
       record,
@@ -61,6 +119,7 @@ export default function OrgAddChildModal({
       level: parentLevel + 1,
       fte: Number(fte) || 0,
       flc: Number(flc) || 0,
+      rate_card_derived: rateCardDerived,
     });
     reset();
   };
@@ -83,7 +142,7 @@ export default function OrgAddChildModal({
         onClick={(e) => e.stopPropagation()}
         style={{
           background: AM.white,
-          width: 380,
+          width: 420,
           borderRadius: 12,
           overflow: "hidden",
           boxShadow: "0 30px 60px rgba(1,36,74,0.25)",
@@ -110,6 +169,18 @@ export default function OrgAddChildModal({
               <input value={title} onChange={(e) => setTitle(e.target.value)} style={inputStyle()} />
             </Field>
           )}
+          {propertyCols.map((col) => (
+            <Field key={col} label={col}>
+              <input
+                value={propValues[col] ?? ""}
+                onChange={(e) => {
+                  setPropValues((prev) => ({ ...prev, [col]: e.target.value }));
+                  setRateCardDerived(false);
+                }}
+                style={inputStyle()}
+              />
+            </Field>
+          ))}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
             {fteCol && (
               <Field label="FTE">
@@ -128,12 +199,25 @@ export default function OrgAddChildModal({
                   type="number"
                   step="1000"
                   value={flc}
-                  onChange={(e) => setFlc(e.target.value)}
+                  onChange={(e) => {
+                    setFlc(e.target.value);
+                    setRateCardDerived(false);
+                    setLookupNote("");
+                  }}
                   style={inputStyle()}
                 />
               </Field>
             )}
           </div>
+          {rateCardDerived && (
+            <div style={{ fontSize: 11, color: AM.success, fontWeight: 600 }}>Rate card derived</div>
+          )}
+          {lookupNote && !rateCardDerived && (
+            <div style={{ fontSize: 11, color: AM.textMuted }}>{lookupNote}</div>
+          )}
+          {lookupNote && rateCardDerived && (
+            <div style={{ fontSize: 11, color: AM.textSecondary }}>{lookupNote}</div>
+          )}
           {countryCol && (
             <Field label="Country">
               <input value={country} onChange={(e) => setCountry(e.target.value)} style={inputStyle()} />

@@ -323,6 +323,8 @@ function actionPalette(action) {
       return { dot: "#d97706", bg: "#fef3c7", fg: "#b45309" };
     case "add":
       return { dot: "#16a34a", bg: "#dcfce7", fg: "#15803d" };
+    case "clone":
+      return { dot: "#0891b2", bg: "#cffafe", fg: "#0e7490" };
     case "flag_remove":
     case "delete":
       return { dot: "#dc2626", bg: "#fee2e2", fg: "#b91c1c" };
@@ -360,6 +362,10 @@ function describeChange(change, nameOf) {
     }
     case "add":
       return `Added new employee ${empWithId}`;
+    case "clone": {
+      const source = change.old_value || change.field || "another position";
+      return `Cloned ${source} to ${empWithId}`;
+    }
     case "flag_remove":
       return `Flagged ${empLabel} for removal`;
     case "unflag_restore":

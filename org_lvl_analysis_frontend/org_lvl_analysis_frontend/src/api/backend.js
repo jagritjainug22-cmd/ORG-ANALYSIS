@@ -440,6 +440,14 @@ export const dbGetChangeLog = async (scenarioId) => {
   return res.data;
 };
 
+export const dbGetScenarioSummaryByDim = async (scenarioId, dimCol) => {
+  const res = await axios.get(`${getProjectUrl()}/db/scenarios/${scenarioId}/summary_by_dim`, {
+    headers: getHeaders(),
+    params: { dim_col: dimCol },
+  });
+  return res.data;
+};
+
 export const dbGetDatasetRecentChanges = async (datasetId, { since = null, limit = 50 } = {}) => {
   const params = { limit };
   if (since) params.since = since;

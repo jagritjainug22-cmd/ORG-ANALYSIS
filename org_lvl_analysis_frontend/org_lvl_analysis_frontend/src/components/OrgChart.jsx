@@ -309,6 +309,23 @@ export default function OrgChart({
 
   const rateCardPropertyCols = activeRateCardMeta?.property_cols || [];
 
+  const dimensionColumns = useMemo(() => {
+    const meta = datasetColumnMeta || {};
+    const cols = datasetColumns || [];
+    const dims = cols.filter((c) => meta[c]?.is_dimension);
+    if (cols.includes("Level") && !dims.includes("Level")) {
+      return ["Level", ...dims];
+    }
+    return dims;
+  }, [datasetColumns, datasetColumnMeta]);
+
+  const handleExportChanges = useCallback(() => {
+    const s = (scenarios || []).find((x) => x.id === activeScenarioId);
+    dbExportChanges(activeScenarioId, s?.name || "scenario").catch((e) =>
+      setError(e.message || "Failed to export.")
+    );
+  }, [activeScenarioId, scenarios]);
+
   const lookupRateCardForValues = useCallback(async (values) => {
     if (!activeScenarioId || !activeScenario?.rate_card_id) return null;
     try {
@@ -1591,7 +1608,7 @@ export default function OrgChart({
                   />
                   <ExportItem
                     label="Change Summary (Excel)"
-                    desc="Before vs After + change log"
+                    desc="Summary + change log + breakdown by dimension"
                     onClick={() => {
                       const s = (scenarios || []).find((x) => x.id === activeScenarioId);
                       dbExportChanges(activeScenarioId, s?.name || "scenario").catch((e) =>
@@ -1946,7 +1963,13 @@ export default function OrgChart({
         />
       </div>
 
-      <OrgImpactStrip summary={summary} changes={changeLog} />
+      <OrgImpactStrip
+        summary={summary}
+        changes={changeLog}
+        scenarioId={inDbMode ? activeScenarioId : null}
+        dimensionColumns={dimensionColumns}
+        onExportChanges={inDbMode ? handleExportChanges : null}
+      />
 
       <OrgCompareModal
         open={compareOpen}

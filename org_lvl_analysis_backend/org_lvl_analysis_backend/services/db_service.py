@@ -1627,6 +1627,162 @@ def get_scenario_summary(scenario_id: int) -> Dict[str, Any]:
     }
 
 
+def _dim_value_from_json(data_json: str, dimension_col: str) -> str:
+    try:
+        data = json.loads(data_json)
+        val = data.get(dimension_col)
+        if val is None or str(val).strip() == "":
+            return "(Blank)"
+        return str(val).strip()
+    except Exception:
+        return "(Blank)"
+
+
+def get_scenario_summary_by_dimension(
+    scenario_id: int,
+    dimension_col: str,
+) -> Dict[str, Any]:
+    """Return baseline vs to-be breakdown grouped by a census dimension column.
+
+    Each employee contributes to baseline at their baseline dimension value and
+    to to-be at their current (active) scenario dimension value, so moves between
+    departments/countries show correctly as deltas on both sides.
+    """
+    if not dimension_col or not str(dimension_col).strip():
+        raise ValueError("dimension_col is required")
+
+    dimension_col = str(dimension_col).strip()
+
+    with _connect_ro() as conn:
+        scenario = conn.execute(
+            "SELECT * FROM scenarios WHERE id = ?", (scenario_id,)
+        ).fetchone()
+        if not scenario:
+            raise ValueError(f"Scenario {scenario_id} not found")
+        dataset_id = scenario["dataset_id"]
+
+        baseline_rows = conn.execute(
+            "SELECT emp_id, mgr_id, level, fte, flc, data_json FROM baseline_records WHERE dataset_id = ?",
+            (dataset_id,),
+        ).fetchall()
+
+        scenario_rows = conn.execute(
+            """
+            SELECT emp_id, mgr_id, level, fte, flc, is_flagged_removed, data_json
+            FROM scenario_records WHERE scenario_id = ?
+            """,
+            (scenario_id,),
+        ).fetchall()
+
+    # Validate column exists in at least one record
+    sample_json = None
+    if baseline_rows:
+        sample_json = baseline_rows[0]["data_json"]
+    elif scenario_rows:
+        sample_json = scenario_rows[0]["data_json"]
+    if sample_json:
+        try:
+            keys = set(json.loads(sample_json).keys())
+            if dimension_col not in keys and dimension_col != "Level":
+                raise ValueError(
+                    f"Column '{dimension_col}' not found in dataset records. "
+                    f"Available columns include: {', '.join(sorted(keys)[:12])}…"
+                )
+        except json.JSONDecodeError:
+            pass
+
+    def _accum(bucket_map: Dict[str, Dict[str, float]], dim_val: str, fte: float, cost: float) -> None:
+        b = bucket_map.setdefault(dim_val, {"headcount": 0, "fte": 0.0, "cost": 0.0})
+        b["headcount"] += 1
+        b["fte"] += fte
+        b["cost"] += cost
+
+    def _row_dim_val(row) -> str:
+        if dimension_col == "Level":
+            lv = row["level"]
+            return str(lv) if lv is not None else "(Blank)"
+        return _dim_value_from_json(row["data_json"], dimension_col)
+
+    baseline_buckets: Dict[str, Dict[str, float]] = {}
+    for r in baseline_rows:
+        _accum(baseline_buckets, _row_dim_val(r), float(r["fte"] or 0), float(r["flc"] or 0))
+
+    tobe_buckets: Dict[str, Dict[str, float]] = {}
+    for r in scenario_rows:
+        if r["is_flagged_removed"]:
+            continue
+        _accum(tobe_buckets, _row_dim_val(r), float(r["fte"] or 0), float(r["flc"] or 0))
+
+    all_values = sorted(
+        set(baseline_buckets.keys()) | set(tobe_buckets.keys()),
+        key=lambda s: (s == "(Blank)", s.lower()),
+    )
+
+    rows: List[Dict[str, Any]] = []
+    tot_b_hc = tot_b_fte = tot_b_cost = 0
+    tot_t_hc = tot_t_fte = tot_t_cost = 0
+
+    for dv in all_values:
+        b = baseline_buckets.get(dv, {"headcount": 0, "fte": 0.0, "cost": 0.0})
+        t = tobe_buckets.get(dv, {"headcount": 0, "fte": 0.0, "cost": 0.0})
+        b_hc, b_fte, b_cost = int(b["headcount"]), float(b["fte"]), float(b["cost"])
+        t_hc, t_fte, t_cost = int(t["headcount"]), float(t["fte"]), float(t["cost"])
+        tot_b_hc += b_hc
+        tot_b_fte += b_fte
+        tot_b_cost += b_cost
+        tot_t_hc += t_hc
+        tot_t_fte += t_fte
+        tot_t_cost += t_cost
+        rows.append({
+            "dimension_value": dv,
+            "baseline_hc": b_hc,
+            "baseline_fte": round(b_fte, 2),
+            "baseline_cost": round(b_cost, 2),
+            "tobe_hc": t_hc,
+            "tobe_fte": round(t_fte, 2),
+            "tobe_cost": round(t_cost, 2),
+            "delta_hc": t_hc - b_hc,
+            "delta_fte": round(t_fte - b_fte, 2),
+            "delta_cost": round(t_cost - b_cost, 2),
+        })
+
+    return {
+        "scenario_id": scenario_id,
+        "dimension_col": dimension_col,
+        "rows": rows,
+        "totals": {
+            "dimension_value": "Total",
+            "baseline_hc": tot_b_hc,
+            "baseline_fte": round(tot_b_fte, 2),
+            "baseline_cost": round(tot_b_cost, 2),
+            "tobe_hc": tot_t_hc,
+            "tobe_fte": round(tot_t_fte, 2),
+            "tobe_cost": round(tot_t_cost, 2),
+            "delta_hc": tot_t_hc - tot_b_hc,
+            "delta_fte": round(tot_t_fte - tot_b_fte, 2),
+            "delta_cost": round(tot_t_cost - tot_b_cost, 2),
+        },
+    }
+
+
+def get_export_dimension_columns(dataset_id: int, max_cols: int = 8) -> List[str]:
+    """Return dimension columns suitable for multi-sheet changes export."""
+    meta = get_dataset_columns(dataset_id)
+    column_meta = meta.get("column_meta") or {}
+    dims = [c for c in meta.get("columns", []) if column_meta.get(c, {}).get("is_dimension")]
+    # Always include Level if present
+    cols = meta.get("columns", [])
+    if "Level" in cols and "Level" not in dims:
+        dims = ["Level"] + dims
+    preferred = ["Country", "Department", "Division", "Grade", "Job Grade", "Location", "Level"]
+    ordered: List[str] = []
+    for p in preferred:
+        if p in dims and p not in ordered:
+            ordered.append(p)
+    for d in dims:
+        if d not in ordered:
+            ordered.append(d)
+    return ordered[:max_cols]
 
 
 # ---------------------------------------------------------------------------

@@ -1914,6 +1914,21 @@ def db_scenario_summary(
         raise HTTPException(status_code=404, detail=str(e))
 
 
+@router.get("/db/scenarios/{scenario_id}/summary_by_dim")
+def db_scenario_summary_by_dim(
+    scenario_id: int,
+    dim_col: str,
+    project_id: int,
+    _user: dict = Depends(require_project_access()),
+):
+    _require_scenario_in_project(scenario_id, project_id)
+    try:
+        breakdown = db_service.get_scenario_summary_by_dimension(scenario_id, dim_col)
+        return {"breakdown": breakdown}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
 @router.post("/db/scenarios/{scenario_id}/reset")
 def db_scenario_reset(
     scenario_id: int,
@@ -1972,7 +1987,7 @@ def db_export_change_summary(
     project_id: int,
     _user: dict = Depends(require_project_access()),
 ):
-    scenario, _ = _require_scenario_in_project(scenario_id, project_id)
+    scenario, dataset = _require_scenario_in_project(scenario_id, project_id)
     summary = db_service.get_scenario_summary(scenario_id)
     changes = db_service.get_change_log(scenario_id)
 
@@ -1995,10 +2010,55 @@ def db_export_change_summary(
         columns=["id", "scenario_id", "action", "emp_id", "old_mgr_id",
                  "new_mgr_id", "field", "old_value", "new_value", "timestamp", "username"]
     )
+
+    def _breakdown_df(dim_col: str) -> pd.DataFrame:
+        data = db_service.get_scenario_summary_by_dimension(scenario_id, dim_col)
+        rows = data.get("rows", [])
+        totals = data.get("totals")
+        if totals:
+            rows = rows + [totals]
+        return pd.DataFrame([
+            {
+                dim_col: r["dimension_value"],
+                "Baseline HC": r["baseline_hc"],
+                "Baseline FTE": r["baseline_fte"],
+                "Baseline Cost": r["baseline_cost"],
+                "To-Be HC": r["tobe_hc"],
+                "To-Be FTE": r["tobe_fte"],
+                "To-Be Cost": r["tobe_cost"],
+                "Delta HC": r["delta_hc"],
+                "Delta FTE": r["delta_fte"],
+                "Delta Cost": r["delta_cost"],
+            }
+            for r in rows
+        ])
+
+    def _safe_sheet_name(name: str, used: set) -> str:
+        cleaned = "".join(c if c.isalnum() or c in " -_" else " " for c in name).strip()
+        cleaned = cleaned[:28] or "Sheet"
+        base = cleaned
+        i = 1
+        while cleaned.lower() in used:
+            suffix = f" {i}"
+            cleaned = base[: 28 - len(suffix)] + suffix
+            i += 1
+        used.add(cleaned.lower())
+        return cleaned
+
+    dim_cols = db_service.get_export_dimension_columns(dataset["id"])
+    used_sheet_names = {"summary", "changes"}
+
     buf = BytesIO()
     with pd.ExcelWriter(buf, engine="openpyxl") as writer:
         summary_df.to_excel(writer, index=False, sheet_name="Summary")
         changes_df.to_excel(writer, index=False, sheet_name="Changes")
+        for dim_col in dim_cols:
+            try:
+                df = _breakdown_df(dim_col)
+                sheet = _safe_sheet_name(f"By {dim_col}", used_sheet_names)
+                df.to_excel(writer, index=False, sheet_name=sheet)
+            except ValueError:
+                continue
     buf.seek(0)
 
     safe_name = "".join(c for c in scenario["name"] if c.isalnum() or c in "-_") or "scenario"

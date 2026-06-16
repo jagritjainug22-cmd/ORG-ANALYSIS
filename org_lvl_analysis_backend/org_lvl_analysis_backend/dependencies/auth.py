@@ -8,6 +8,7 @@ Dependency variants:
 - require_project_access: factory that returns a dependency checking project membership
 """
 
+import logging
 from datetime import datetime
 from typing import Any, Dict
 
@@ -18,6 +19,8 @@ from services.token_service import decode_access_token
 from services import project_service
 from services import dataset_lock_service
 from services.audit_service import write_audit_log
+
+logger = logging.getLogger(__name__)
 
 
 async def get_current_user(request: Request) -> Dict[str, Any]:
@@ -227,19 +230,44 @@ def require_dataset_lock_holder_for_dataset():
 
 def _extract_user_from_token(request: Request) -> Dict[str, Any]:
     """Shared logic: extract Bearer token, decode JWT, load user from DB."""
+    client_ip = request.client.host if request.client else "unknown"
+    endpoint = request.url.path
+
     auth_header = request.headers.get("Authorization", "")
     if not auth_header.startswith("Bearer "):
+        logger.warning(
+            "auth:401 MISSING_HEADER endpoint=%s ip=%s — "
+            "frontend sent a request with no access token. "
+            "Likely the in-memory token was not set yet (race on startup).",
+            endpoint, client_ip,
+        )
         raise HTTPException(status_code=401, detail="Missing or invalid Authorization header")
 
     token = auth_header.removeprefix("Bearer ")
+    token_preview = token[-8:] if token else "(none)"
     payload = decode_access_token(token)
     if payload is None:
+        logger.warning(
+            "auth:401 INVALID_TOKEN endpoint=%s ip=%s token=...%s — "
+            "JWT is expired or signed with wrong secret. "
+            "Common cause: backend restart rotated JWT_SECRET, or token expired "
+            "before proactive refresh could fire.",
+            endpoint, client_ip, token_preview,
+        )
         raise HTTPException(status_code=401, detail="Invalid or expired access token")
 
     user = db_service.get_user_by_id(int(payload["sub"]))
     if not user:
+        logger.warning(
+            "auth:401 USER_NOT_FOUND sub=%s endpoint=%s ip=%s",
+            payload.get("sub"), endpoint, client_ip,
+        )
         raise HTTPException(status_code=401, detail="User not found")
     if not user["is_active"]:
+        logger.warning(
+            "auth:401 ACCOUNT_DEACTIVATED username=%s endpoint=%s ip=%s",
+            user.get("username"), endpoint, client_ip,
+        )
         raise HTTPException(status_code=401, detail="Account is deactivated")
 
     return user

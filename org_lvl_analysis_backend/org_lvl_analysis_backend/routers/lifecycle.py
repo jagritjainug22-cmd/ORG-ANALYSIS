@@ -1600,6 +1600,26 @@ def db_get_baseline(
     return {"records": db_service.get_baseline_records(dataset_id)}
 
 
+@router.get("/db/datasets/{dataset_id}/records")
+def db_get_dataset_flat_records(
+    dataset_id: int,
+    project_id: int,
+    scenario_id: Optional[int] = Query(None),
+    _user: dict = Depends(require_project_access()),
+):
+    """Return a flat record array + column list for the analytics pipeline.
+
+    Optionally pass ?scenario_id=<id> to get the scenario's active merged
+    state instead of the baseline.
+    """
+    _require_dataset_in_project(dataset_id, project_id)
+    if scenario_id is not None:
+        scenario = db_service.get_scenario(scenario_id)
+        if not scenario or scenario.get("dataset_id") != dataset_id:
+            raise HTTPException(status_code=404, detail="Scenario not found in dataset")
+    return db_service.get_dataset_flat_records(dataset_id, scenario_id)
+
+
 @router.get("/db/datasets/{dataset_id}/recent-changes")
 def db_get_dataset_recent_changes(
     dataset_id: int,

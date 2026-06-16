@@ -239,17 +239,34 @@ def generate_crosstab(df: pd.DataFrame, col_x=None, col_y=None, fte_col=None, fl
         return sort_index_with_others_and_total(result)
 
     # ----------------- CASE 4: both X and Y -----------------
+    # When col_x or col_y overlaps with the numeric value columns (fte/flc),
+    # pivot_table would try to use the same column as both grouper and value,
+    # causing "Grouper not 1-dimensional". Use temp names to avoid the conflict.
+    pivot_df = df.copy()
+    fte_val_col = fte
+    flc_val_col = flc
+    conflict_cols = {col_x, col_y}
+
+    if fte and fte in conflict_cols:
+        fte_val_col = f"__fte_val__"
+        pivot_df[fte_val_col] = pivot_df[fte]
+
+    if flc and flc in conflict_cols:
+        flc_val_col = f"__flc_val__"
+        pivot_df[flc_val_col] = pivot_df[flc]
+
+    pivot_values = [c for c in [fte_val_col, flc_val_col] if c]
     pivot_raw = pd.pivot_table(
-        df,
+        pivot_df,
         index=col_y,
         columns=col_x,
-        values=[fte, flc],
+        values=pivot_values,
         aggfunc="sum",
         fill_value=0
     )
 
-    fte_pivot = pivot_raw[fte] if fte else pd.DataFrame(0, index=pivot_raw.index, columns=pivot_raw.columns.levels[1])
-    flc_pivot = pivot_raw[flc] if flc else pd.DataFrame(0, index=pivot_raw.index, columns=pivot_raw.columns.levels[1])
+    fte_pivot = pivot_raw[fte_val_col] if fte_val_col else pd.DataFrame(0, index=pivot_raw.index, columns=pivot_raw.columns.levels[1])
+    flc_pivot = pivot_raw[flc_val_col] if flc_val_col else pd.DataFrame(0, index=pivot_raw.index, columns=pivot_raw.columns.levels[1])
     
     # Round before calculating avg
     fte_pivot = fte_pivot.round(0)

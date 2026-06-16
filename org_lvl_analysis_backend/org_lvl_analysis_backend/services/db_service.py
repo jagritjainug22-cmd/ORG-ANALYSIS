@@ -925,6 +925,36 @@ def get_baseline_records(dataset_id: int) -> List[Dict[str, Any]]:
         return [json.loads(r["data_json"]) for r in cur.fetchall()]
 
 
+def get_dataset_flat_records(
+    dataset_id: int,
+    scenario_id: Optional[int] = None,
+) -> Dict[str, Any]:
+    """Return flat record dicts suitable for the analytics pipeline.
+
+    When scenario_id is given, returns the scenario's active (non-flagged)
+    records from scenario_records.data_json -- the same shape as an Excel
+    upload. Otherwise returns the baseline records.
+
+    Returns {"records": [...], "columns": [...]}
+    """
+    if scenario_id is not None:
+        with _connect_ro() as conn:
+            cur = conn.execute(
+                """
+                SELECT data_json FROM scenario_records
+                WHERE scenario_id = ? AND is_flagged_removed = 0
+                ORDER BY id
+                """,
+                (scenario_id,),
+            )
+            rows = [json.loads(r["data_json"]) for r in cur.fetchall()]
+    else:
+        rows = get_baseline_records(dataset_id)
+
+    columns = list(rows[0].keys()) if rows else []
+    return {"records": rows, "columns": columns}
+
+
 def delete_dataset(dataset_id: int) -> None:
     with _connect() as conn:
         conn.execute("DELETE FROM datasets WHERE id = ?", (dataset_id,))
@@ -2315,32 +2345,37 @@ def preview_rate_card(
 
 
 def _insert_rate_card_rows(c, rate_card_id: int, rows: List[Dict[str, Any]]) -> None:
-    for row in rows:
-        c.execute(
-            """
-            INSERT INTO rate_card_rows
-                (rate_card_id, composite_key, p25, p50, p75, avg_cost,
-                 sample_count, is_manual_override)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT (rate_card_id, composite_key) DO UPDATE SET
-                p25 = EXCLUDED.p25,
-                p50 = EXCLUDED.p50,
-                p75 = EXCLUDED.p75,
-                avg_cost = EXCLUDED.avg_cost,
-                sample_count = EXCLUDED.sample_count,
-                is_manual_override = EXCLUDED.is_manual_override
-            """,
-            (
-                rate_card_id,
-                row["composite_key"],
-                row.get("p25"),
-                row.get("p50"),
-                row.get("p75"),
-                row.get("avg_cost"),
-                int(row.get("sample_count") or 0),
-                1 if row.get("is_manual_override") else 0,
-            ),
+    if not rows:
+        return
+    params = [
+        (
+            rate_card_id,
+            row["composite_key"],
+            row.get("p25"),
+            row.get("p50"),
+            row.get("p75"),
+            row.get("avg_cost"),
+            int(row.get("sample_count") or 0),
+            1 if row.get("is_manual_override") else 0,
         )
+        for row in rows
+    ]
+    c.executemany(
+        """
+        INSERT INTO rate_card_rows
+            (rate_card_id, composite_key, p25, p50, p75, avg_cost,
+             sample_count, is_manual_override)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT (rate_card_id, composite_key) DO UPDATE SET
+            p25 = EXCLUDED.p25,
+            p50 = EXCLUDED.p50,
+            p75 = EXCLUDED.p75,
+            avg_cost = EXCLUDED.avg_cost,
+            sample_count = EXCLUDED.sample_count,
+            is_manual_override = EXCLUDED.is_manual_override
+        """,
+        params,
+    )
 
 
 def create_rate_card_from_baseline(

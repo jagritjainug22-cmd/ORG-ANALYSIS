@@ -28,12 +28,19 @@ export default function OrgAddChildModal({
   const [propValues, setPropValues] = useState({});
   const [rateCardDerived, setRateCardDerived] = useState(false);
   const [lookupNote, setLookupNote] = useState("");
+  const [lookingUp, setLookingUp] = useState(false);
   const [effectiveDate, setEffectiveDate] = useState("");
   const [error, setError] = useState("");
 
+  // Exclude columns already rendered as dedicated fields to avoid duplicates
+  const dedicatedCols = useMemo(
+    () => new Set([flcCol, jobTitleCol, countryCol, empCol, mgrCol].filter(Boolean)),
+    [flcCol, jobTitleCol, countryCol, empCol, mgrCol]
+  );
+
   const propertyCols = useMemo(
-    () => (rateCardPropertyCols || []).filter((c) => c && c !== flcCol),
-    [rateCardPropertyCols, flcCol]
+    () => (rateCardPropertyCols || []).filter((c) => c && !dedicatedCols.has(c)),
+    [rateCardPropertyCols, dedicatedCols]
   );
 
   useEffect(() => {
@@ -46,6 +53,7 @@ export default function OrgAddChildModal({
     setPropValues({});
     setRateCardDerived(false);
     setLookupNote("");
+    setLookingUp(false);
     setError("");
   }, [open]);
 
@@ -58,12 +66,16 @@ export default function OrgAddChildModal({
     const ready = propertyCols.every((col) => String(values[col] || "").trim());
     if (!ready) {
       setLookupNote("");
+      setLookingUp(false);
       return;
     }
     let cancelled = false;
+    setLookingUp(true);
+    setLookupNote("");
     (async () => {
       const lookup = await onLookupRateCard(values);
       if (cancelled) return;
+      setLookingUp(false);
       if (lookup?.cost != null) {
         setFlc(String(Math.round(lookup.cost)));
         setRateCardDerived(true);
@@ -92,6 +104,7 @@ export default function OrgAddChildModal({
     setPropValues({});
     setRateCardDerived(false);
     setLookupNote("");
+    setLookingUp(false);
     setEffectiveDate("");
     setError("");
   };
@@ -197,17 +210,23 @@ export default function OrgAddChildModal({
               </Field>
             )}
             {flcCol && (
-              <Field label="Cost (FLC)">
+              <Field label={lookingUp ? "Cost (FLC) — checking…" : "Cost (FLC)"}>
                 <input
                   type="number"
                   step="1000"
                   value={flc}
+                  disabled={lookingUp}
                   onChange={(e) => {
                     setFlc(e.target.value);
                     setRateCardDerived(false);
                     setLookupNote("");
                   }}
-                  style={inputStyle()}
+                  style={{
+                    ...inputStyle(),
+                    background: lookingUp ? AM.borderLight : AM.white,
+                    color: lookingUp ? AM.textMuted : AM.textPrimary,
+                    cursor: lookingUp ? "wait" : "auto",
+                  }}
                 />
               </Field>
             )}

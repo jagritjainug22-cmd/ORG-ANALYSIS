@@ -40,9 +40,58 @@ const getHeaders = (additionalHeaders = {}) => {
 let _lastRefreshFailAt = 0;
 const REFRESH_COOLDOWN_MS = 5_000;
 
+// ---------------------------------------------------------------------------
+// Auth debug logger
+// All auth events are written to a rolling in-memory log (last 200 entries)
+// accessible at window.__authLog, and also printed to the browser console.
+// ---------------------------------------------------------------------------
+const _authLog = [];
+const _MAX_LOG = 200;
+
+const _logAuth = (level, event, detail = {}) => {
+  const entry = {
+    t: new Date().toISOString(),
+    level,   // 'info' | 'warn' | 'error'
+    event,
+    ...detail,
+  };
+  _authLog.push(entry);
+  if (_authLog.length > _MAX_LOG) _authLog.shift();
+
+  const style = level === "error"
+    ? "color:#d94f4f;font-weight:bold"
+    : level === "warn"
+    ? "color:#d4a942;font-weight:bold"
+    : "color:#2e9e6a";
+  // eslint-disable-next-line no-console
+  console.log(`%c[AUTH ${level.toUpperCase()}] ${entry.t} — ${event}`, style, detail);
+};
+
+if (typeof window !== "undefined") {
+  window.__authLog = _authLog;
+  window.__printAuthLog = () => {
+    // eslint-disable-next-line no-console
+    console.table(_authLog.map(e => ({
+      time: e.t,
+      level: e.level,
+      event: e.event,
+      status: e.status,
+      url: e.url,
+      detail: e.detail,
+      trigger: e.trigger,
+    })));
+  };
+}
+
 // --- Silent refresh ---
-const silentRefresh = async () => {
-  if (refreshPromise) return refreshPromise;
+const silentRefresh = async (trigger = "unknown") => {
+  if (refreshPromise) {
+    _logAuth("info", "silentRefresh:deduped", { trigger, note: "another refresh already in flight, sharing promise" });
+    return refreshPromise;
+  }
+
+  _logAuth("info", "silentRefresh:start", { trigger, currentUsername });
+
   refreshPromise = axios
     .post(`${BASE_URL}/auth/refresh`, {}, {
       headers: { "X-Requested-With": "fetch" },
@@ -51,11 +100,19 @@ const silentRefresh = async () => {
     .then((r) => {
       accessToken = r.data.access_token;
       currentUsername = r.data.user.username;
+      _logAuth("info", "silentRefresh:success", {
+        trigger,
+        username: r.data.user.username,
+        newTokenPreview: r.data.access_token?.slice(-8),
+      });
       _onTokenRefreshed?.(r.data);
       return r.data;
     })
     .catch((err) => {
       _lastRefreshFailAt = Date.now();
+      const status = err?.response?.status;
+      const detail = err?.response?.data?.detail || err?.message;
+      _logAuth("error", "silentRefresh:failed", { trigger, status, detail });
       throw err;
     })
     .finally(() => { refreshPromise = null; });
@@ -69,23 +126,46 @@ axios.interceptors.response.use(
   (response) => response,
   async (error) => {
     const orig = error.config;
+    const status = error.response?.status;
+    const url = orig?.url || "(unknown)";
+
     if (
-      error.response?.status === 401 &&
+      status === 401 &&
       !orig._retry &&
       !orig.url?.includes("/auth/login") &&
       !orig.url?.includes("/auth/refresh")
     ) {
       if (Date.now() - _lastRefreshFailAt < REFRESH_COOLDOWN_MS) {
+        _logAuth("warn", "interceptor:401:cooldown_skip", {
+          url,
+          note: "refresh failed recently, skipping retry",
+          msSinceLastFail: Date.now() - _lastRefreshFailAt,
+        });
         return Promise.reject(error);
       }
+
+      _logAuth("warn", "interceptor:401:retrying", { url });
       orig._retry = true;
       try {
-        await silentRefresh();
+        await silentRefresh(`interceptor:${url}`);
         orig.headers["Authorization"] = `Bearer ${accessToken}`;
+        _logAuth("info", "interceptor:401:retry_success", { url });
         return axios(orig);
-      } catch {
-        // Refresh failed — do not force logout; user stays signed in until explicit logout.
+      } catch (refreshErr) {
+        const refreshStatus = refreshErr?.response?.status;
+        const refreshDetail = refreshErr?.response?.data?.detail || refreshErr?.message;
+        _logAuth("error", "interceptor:401:refresh_failed", {
+          url,
+          refreshStatus,
+          refreshDetail,
+          note: "user stays signed in until explicit logout",
+        });
       }
+    } else if (status === 401) {
+      _logAuth("warn", "interceptor:401:not_retried", {
+        url,
+        reason: orig._retry ? "already_retried" : "auth_endpoint",
+      });
     }
     return Promise.reject(error);
   }
@@ -371,6 +451,12 @@ export const dbListDatasets = async (mineOnly = false, includePreview = false) =
 
 export const dbGetDataset = async (datasetId) => {
   const res = await axios.get(`${getProjectUrl()}/db/datasets/${datasetId}`, { headers: getHeaders() });
+  return res.data;
+};
+
+export const dbGetDatasetRecords = async (datasetId, scenarioId = null) => {
+  const params = scenarioId != null ? `?scenario_id=${scenarioId}` : "";
+  const res = await axios.get(`${getProjectUrl()}/db/datasets/${datasetId}/records${params}`, { headers: getHeaders() });
   return res.data;
 };
 

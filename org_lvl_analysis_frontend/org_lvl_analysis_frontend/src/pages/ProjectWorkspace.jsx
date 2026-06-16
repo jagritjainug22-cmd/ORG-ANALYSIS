@@ -92,6 +92,14 @@ export default function ProjectWorkspace() {
   const [activeScenarioId, setActiveScenarioId] = useState(null);
   const [uploadedFileName, setUploadedFileName] = useState("");
 
+  // --- Active dataset label (shown in header) ---
+  // "db:<name>" for saved datasets, "file:<filename>" for Excel uploads
+  const [activeDatasetLabel, setActiveDatasetLabel] = useState(null);
+  const [activeDatasetName, setActiveDatasetName] = useState(null);
+
+  // --- Switch-dataset confirmation dialog ---
+  const [switchPending, setSwitchPending] = useState(false);
+
   // Set backend project context synchronously before children mount
   useLayoutEffect(() => {
     setCurrentProjectId(pid);
@@ -308,6 +316,17 @@ export default function ProjectWorkspace() {
     );
   }
 
+  const handleSwitchDataset = () => {
+    const guardState = orgGuardRef.current;
+    const hasUnsaved = guardState?.inDbMode && guardState?.datasetId &&
+      ((guardState?.changeLogLength ?? 0) > 0 || (guardState?.editMode && guardState?.lockAcquired));
+    if (hasUnsaved) {
+      setSwitchPending(true);
+    } else {
+      setActiveModule("Upload");
+    }
+  };
+
   // --- CENTER PANE RENDER (same as old App.jsx) ---
   const renderActiveModule = () => {
     if (!dfRecords && activeModule !== "Upload" && activeModule !== "Org Chart" && activeModule !== "Activity Analysis") {
@@ -333,9 +352,16 @@ export default function ProjectWorkspace() {
               setDatasetId(null);
               setScenarios([]);
               setActiveScenarioId(null);
+              setActiveDatasetLabel(null);
+              setActiveDatasetName(null);
             }}
+            setValidatedDf={setValidatedDf}
             setColumns={setColumns}
-            setUploadedFileName={setUploadedFileName}
+            setUploadedFileName={(name) => {
+              setUploadedFileName(name);
+              setActiveDatasetLabel(name || null);
+              setActiveDatasetName(name || null);
+            }}
             onDatasetPicked={({ dataset, scenarios: scs, activeScenarioId: sid }) => {
               setDatasetId(dataset.id);
               setScenarios(scs);
@@ -346,7 +372,11 @@ export default function ProjectWorkspace() {
               if (dataset.flc_col) setFlcCol(dataset.flc_col);
               if (dataset.job_title_col) setJobTitleCol(dataset.job_title_col);
               if (dataset.country_col) setCountryCol(dataset.country_col);
-              setActiveModule("Org Chart");
+              setFilteredRowCount(null);
+              const scenarioName = scs.find((s) => s.id === sid)?.name || "Baseline";
+              setActiveDatasetLabel(dataset.name + " — " + scenarioName);
+              setActiveDatasetName(dataset.name);
+              // Stay on the data source page; all analytics modules are now unlocked
             }}
           />
         );
@@ -460,6 +490,32 @@ export default function ProjectWorkspace() {
                 Due {new Date(project.deadline).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
               </span>
             )}
+            {activeDatasetLabel && (
+              <>
+                <svg className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
+                <span
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-[#01244a]/8 text-[#01244a] border border-[#01244a]/20 max-w-[240px] truncate"
+                  title={activeDatasetLabel}
+                >
+                  <svg className="w-3 h-3 flex-shrink-0 text-[#c5a84a]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4" />
+                  </svg>
+                  <span className="truncate">{activeDatasetLabel}</span>
+                </span>
+                <button
+                  onClick={handleSwitchDataset}
+                  className="hidden md:inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium text-gray-500 hover:text-am-600 hover:bg-am-50 transition"
+                  title="Switch active dataset"
+                >
+                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+                  </svg>
+                  Switch
+                </button>
+              </>
+            )}
           </div>
           <div className="flex items-center gap-2">
             {user?.role === "admin" && (
@@ -500,6 +556,36 @@ export default function ProjectWorkspace() {
           </div>
         </div>
       </header>
+
+      {/* SWITCH DATASET DIALOG */}
+      {switchPending && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl border border-gray-200 w-full max-w-sm mx-4 p-6">
+            <h3 className="text-base font-bold text-gray-900 mb-2">Switch Dataset?</h3>
+            <p className="text-sm text-gray-600 mb-5">
+              You have unsaved changes in the current scenario. Switching datasets will discard them.
+              Save your scenario first or choose to discard.
+            </p>
+            <div className="flex items-center justify-end gap-3">
+              <button
+                onClick={() => setSwitchPending(false)}
+                className="px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  setSwitchPending(false);
+                  setActiveModule("Upload");
+                }}
+                className="px-4 py-2 text-sm font-semibold text-red-600 hover:bg-red-50 rounded-lg transition"
+              >
+                Discard & Switch
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* LOCK BANNER */}
       {lockHolder && !lockAcquired && (

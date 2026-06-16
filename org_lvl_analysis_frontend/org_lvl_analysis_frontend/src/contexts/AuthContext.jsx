@@ -8,6 +8,15 @@ import {
   logout as logoutApi,
 } from "../api/backend";
 
+const _logAuth = (level, event, detail = {}) => {
+  const entry = { t: new Date().toISOString(), level, event, ...detail };
+  const style = level === "error"
+    ? "color:#d94f4f;font-weight:bold"
+    : level === "warn" ? "color:#d4a942;font-weight:bold" : "color:#0085ca";
+  // eslint-disable-next-line no-console
+  console.log(`%c[AUTH-CTX ${level.toUpperCase()}] ${entry.t} — ${event}`, style, detail);
+};
+
 const AuthContext = createContext(null);
 
 const getTokenExpMs = (token) => {
@@ -30,8 +39,14 @@ export function AuthProvider({ children }) {
     const expMs = getTokenExpMs(accessToken);
     if (!expMs) return;
     const delay = Math.max(expMs - Date.now() - 60_000, 0);
+    _logAuth("info", "proactiveRefresh:scheduled", {
+      firesInMs: delay,
+      firesAt: new Date(Date.now() + delay).toISOString(),
+      tokenExpiresAt: new Date(expMs).toISOString(),
+    });
     refreshTimerRef.current = setTimeout(() => {
-      silentRefresh().catch(() => {});
+      _logAuth("info", "proactiveRefresh:firing", {});
+      silentRefresh("proactive-timer").catch(() => {});
     }, delay);
   }, []);
 
@@ -43,15 +58,23 @@ export function AuthProvider({ children }) {
   }, []);
 
   useEffect(() => {
-    silentRefresh()
+    _logAuth("info", "mount:restoring-session", {});
+    silentRefresh("page-mount")
       .then((data) => {
         setAccessToken(data.access_token);
         setCurrentUsername(data.user.username);
         setToken(data.access_token);
         setUser(data.user);
         scheduleProactiveRefresh(data.access_token);
+        _logAuth("info", "mount:session-restored", { username: data.user.username });
       })
-      .catch(() => {})
+      .catch((err) => {
+        _logAuth("info", "mount:no-session", {
+          status: err?.response?.status,
+          detail: err?.response?.data?.detail || err?.message,
+          note: "user not logged in, showing login page",
+        });
+      })
       .finally(() => setLoading(false));
   }, [scheduleProactiveRefresh]);
 

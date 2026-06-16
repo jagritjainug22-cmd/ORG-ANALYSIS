@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { dbListDatasets, dbGetDataset } from "../api/backend";
+import { dbListDatasets, dbGetDataset, dbGetDatasetRecords } from "../api/backend";
 import Upload from "./Upload";
 
 const ACCENT_NAVY = "#01244a";
@@ -48,13 +48,16 @@ function fmtNumber(n) {
 /**
  * DataSourceSelector wraps the Upload module slot. Users land on the upload
  * form immediately; saved baselines load in the background. A pill toggle
- * switches to the saved org-chart list when available. Picking an existing
- * dataset hydrates the workspace state and jumps straight to the Org Chart.
+ * switches to the saved org-chart list when available.
+ *
+ * Selecting a saved dataset opens a scenario picker, then hydrates both
+ * dfRecords (analytics pipeline) and the DB context (Org Chart).
  */
 export default function DataSourceSelector({
   onDatasetPicked,
   onUploadFlow,
   setDfRecords,
+  setValidatedDf,
   setColumns,
   setUploadedFileName,
 }) {
@@ -62,6 +65,9 @@ export default function DataSourceSelector({
   const [datasets, setDatasets] = useState(null);
   const [listError, setListError] = useState(null);
   const [error, setError] = useState(null);
+
+  // Scenario picker state: null | { dataset, scenarios }
+  const [pickerState, setPickerState] = useState(null);
   const [loadingPickId, setLoadingPickId] = useState(null);
 
   useEffect(() => {
@@ -77,25 +83,50 @@ export default function DataSourceSelector({
         setListError(e?.response?.data?.detail || e?.message || "Failed to load saved org charts.");
         setDatasets([]);
       });
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, []);
 
-  const handlePick = async (dataset) => {
+  // Step 1: user clicks "Select" on a dataset card — fetch dataset details and open picker
+  const handleSelectDataset = async (dataset) => {
     setLoadingPickId(dataset.id);
     setError(null);
     try {
       const resp = await dbGetDataset(dataset.id);
       const scs = resp.scenarios || [];
-      const baseline = scs.find((s) => s.name === "Baseline") || scs[0];
-      onDatasetPicked?.({
-        dataset: resp.dataset,
-        scenarios: scs,
-        activeScenarioId: baseline?.id ?? null,
-      });
+      setPickerState({ dataset: resp.dataset, scenarios: scs });
     } catch (e) {
-      setError(e?.response?.data?.detail || e?.message || "Failed to open dataset.");
+      setError(e?.response?.data?.detail || e?.message || "Failed to load dataset.");
+    } finally {
+      setLoadingPickId(null);
+    }
+  };
+
+  // Step 2: user confirms a scenario choice — load flat records and hydrate workspace
+  const handleConfirmSelection = async (pickedScenarioId) => {
+    if (!pickerState) return;
+    const { dataset, scenarios } = pickerState;
+    setLoadingPickId(dataset.id);
+    setError(null);
+    try {
+      const data = await dbGetDatasetRecords(dataset.id, pickedScenarioId);
+      const records = data.records || [];
+      const columns = data.columns || (records.length > 0 ? Object.keys(records[0]) : []);
+
+      // Hydrate the analytics pipeline (Validate, Hierarchy, Spans & Layers, Crosstab)
+      setDfRecords?.(records);
+      setValidatedDf?.(records);
+      setColumns?.(columns);
+
+      // Hydrate the DB context (Org Chart)
+      onDatasetPicked?.({
+        dataset,
+        scenarios,
+        activeScenarioId: pickedScenarioId,
+      });
+
+      setPickerState(null);
+    } catch (e) {
+      setError(e?.response?.data?.detail || e?.message || "Failed to load records.");
     } finally {
       setLoadingPickId(null);
     }
@@ -107,6 +138,18 @@ export default function DataSourceSelector({
 
   return (
     <div className="space-y-5">
+      {/* Scenario picker modal */}
+      {pickerState && (
+        <ScenarioPickerModal
+          dataset={pickerState.dataset}
+          scenarios={pickerState.scenarios}
+          loading={loadingPickId === pickerState.dataset.id}
+          onConfirm={handleConfirmSelection}
+          onCancel={() => setPickerState(null)}
+          error={error}
+        />
+      )}
+
       {/* Header + view toggle */}
       <div className="flex items-end justify-between gap-4 flex-wrap">
         <div>
@@ -116,21 +159,21 @@ export default function DataSourceSelector({
               ? "Upload a fresh Excel file to start a new analysis."
               : listLoading
                 ? "Loading saved org charts..."
-                : "Access and manage your saved organization charts."}
+                : "Select a saved dataset to activate all analysis modules."}
           </p>
         </div>
         {showToggle && (
           <div className="inline-flex bg-gray-100 rounded-lg p-1 shadow-sm">
             <ToggleBtn
-                active={view === "upload"}
-                onClick={() => setView("upload")}
-                icon={
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-                  </svg>
-                }
-                label="Upload New"
-              />
+              active={view === "upload"}
+              onClick={() => setView("upload")}
+              icon={
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                </svg>
+              }
+              label="Upload New"
+            />
             <ToggleBtn
               active={view === "picker"}
               onClick={() => setView("picker")}
@@ -146,12 +189,11 @@ export default function DataSourceSelector({
               }
               loading={listLoading}
             />
-            
           </div>
         )}
       </div>
 
-      {error && (
+      {!pickerState && error && (
         <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-700">
           {error}
         </div>
@@ -176,7 +218,7 @@ export default function DataSourceSelector({
                 <DatasetRow
                   key={d.id}
                   dataset={d}
-                  onOpen={() => handlePick(d)}
+                  onSelect={() => handleSelectDataset(d)}
                   loading={loadingPickId === d.id}
                   disabled={loadingPickId !== null && loadingPickId !== d.id}
                 />
@@ -187,7 +229,10 @@ export default function DataSourceSelector({
       ) : (
         <div>
           <Upload
-            setDfRecords={setDfRecords}
+            setDfRecords={(records) => {
+              setDfRecords?.(records);
+              setValidatedDf?.(null);
+            }}
             setColumns={setColumns}
             setUploadedFileName={(name) => {
               setUploadedFileName?.(name);
@@ -199,6 +244,179 @@ export default function DataSourceSelector({
     </div>
   );
 }
+
+// ---------------------------------------------------------------------------
+// Scenario picker modal
+// ---------------------------------------------------------------------------
+
+function ScenarioPickerModal({ dataset, scenarios, loading, onConfirm, onCancel, error }) {
+  // Build options: null = baseline, or scenario id for a named scenario
+  const baselineScenario = scenarios.find((s) => s.name === "Baseline");
+  const namedScenarios = scenarios.filter((s) => s.name !== "Baseline");
+
+  // Default: promoted scenario or baseline
+  const promotedScenario = scenarios.find((s) => s.is_promoted);
+  const defaultId = promotedScenario?.id ?? baselineScenario?.id ?? scenarios[0]?.id ?? null;
+
+  const [selectedId, setSelectedId] = useState(defaultId);
+
+  const selectedLabel = selectedId == null
+    ? "Baseline"
+    : (scenarios.find((s) => s.id === selectedId)?.name ?? "Baseline");
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm">
+      <div className="bg-white rounded-2xl shadow-2xl border border-gray-200 w-full max-w-md mx-4">
+        {/* Header */}
+        <div className="px-6 pt-6 pb-4 border-b border-gray-100">
+          <div className="flex items-start gap-3">
+            <div
+              className="w-10 h-10 rounded-xl flex items-center justify-center text-white text-sm font-bold flex-shrink-0"
+              style={{ background: ACCENT_NAVY }}
+            >
+              {initialsOf(dataset.name)}
+            </div>
+            <div className="flex-1 min-w-0">
+              <h3 className="text-base font-bold text-gray-900 truncate">{dataset.name}</h3>
+              <p className="text-xs text-gray-500 mt-0.5">{fmtNumber(dataset.row_count)} rows</p>
+            </div>
+            <button
+              onClick={onCancel}
+              className="text-gray-400 hover:text-gray-600 transition flex-shrink-0"
+              aria-label="Close"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        {/* Body */}
+        <div className="px-6 py-5 space-y-4">
+          <div>
+            <p className="text-sm font-medium text-gray-700 mb-2">Select a state to load</p>
+            <p className="text-xs text-gray-400 mb-3">
+              This dataset will become the active working dataset for all analysis modules.
+            </p>
+
+            <div className="space-y-2">
+              {/* Baseline option */}
+              {baselineScenario && (
+                <ScenarioOption
+                  id={baselineScenario.id}
+                  label="Baseline"
+                  description="Original uploaded state"
+                  isDefault={!promotedScenario || baselineScenario.id === promotedScenario?.id}
+                  isPromoted={!promotedScenario || baselineScenario.is_promoted}
+                  selected={selectedId === baselineScenario.id}
+                  onSelect={setSelectedId}
+                />
+              )}
+
+              {/* Named scenarios */}
+              {namedScenarios.map((sc) => (
+                <ScenarioOption
+                  key={sc.id}
+                  id={sc.id}
+                  label={sc.name}
+                  description={sc.description || null}
+                  isPromoted={!!sc.is_promoted}
+                  selected={selectedId === sc.id}
+                  onSelect={setSelectedId}
+                />
+              ))}
+            </div>
+          </div>
+
+          {error && (
+            <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-xs text-red-700">
+              {error}
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="px-6 pb-6 flex items-center justify-between gap-3">
+          <button
+            onClick={onCancel}
+            className="px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={() => onConfirm(selectedId)}
+            disabled={loading || selectedId == null}
+            className="inline-flex items-center gap-2 px-5 py-2.5 bg-[#01244a] hover:bg-[#0a3366] text-white rounded-lg text-sm font-semibold shadow-sm transition disabled:opacity-60 disabled:cursor-not-allowed"
+          >
+            {loading ? (
+              <>
+                <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                </svg>
+                Loading...
+              </>
+            ) : (
+              <>
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+                Load "{selectedLabel}"
+              </>
+            )}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ScenarioOption({ id, label, description, isPromoted, isDefault, selected, onSelect }) {
+  return (
+    <button
+      type="button"
+      onClick={() => onSelect(id)}
+      className={`w-full flex items-center gap-3 px-3.5 py-3 rounded-lg border text-left transition ${
+        selected
+          ? "border-[#01244a] bg-[#01244a]/5 ring-1 ring-[#01244a]/20"
+          : "border-gray-200 hover:border-gray-300 hover:bg-gray-50"
+      }`}
+    >
+      {/* Radio indicator */}
+      <div
+        className={`w-4 h-4 rounded-full border-2 flex-shrink-0 flex items-center justify-center ${
+          selected ? "border-[#01244a]" : "border-gray-300"
+        }`}
+      >
+        {selected && <div className="w-2 h-2 rounded-full bg-[#01244a]" />}
+      </div>
+
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <span className={`text-sm font-semibold ${selected ? "text-[#01244a]" : "text-gray-800"}`}>
+            {label}
+          </span>
+          {isPromoted && (
+            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-[#01244a] text-white">
+              <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+              </svg>
+              Active
+            </span>
+          )}
+        </div>
+        {description && (
+          <p className="text-xs text-gray-500 mt-0.5 truncate">{description}</p>
+        )}
+      </div>
+    </button>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Shared sub-components
+// ---------------------------------------------------------------------------
 
 function ToggleBtn({ active, onClick, icon, label, loading }) {
   return (
@@ -255,7 +473,7 @@ function EmptyState({ onUploadClick }) {
       <p className="text-lg font-semibold text-gray-800">No org charts saved yet</p>
       <p className="text-sm text-gray-500 mt-1.5 max-w-md mx-auto">
         Upload your first Excel file to build a baseline. Once processed, you'll
-        be able to open and edit it directly from here.
+        be able to select and use it across all analysis modules.
       </p>
       <button
         onClick={onUploadClick}
@@ -270,7 +488,7 @@ function EmptyState({ onUploadClick }) {
   );
 }
 
-function DatasetRow({ dataset, onOpen, loading, disabled }) {
+function DatasetRow({ dataset, onSelect, loading, disabled }) {
   const accent = accentFor(dataset);
   const preview = dataset.preview;
   const promoted = dataset.promoted_scenario_name;
@@ -297,7 +515,7 @@ function DatasetRow({ dataset, onOpen, loading, disabled }) {
             {promoted && promoted !== "Baseline" && (
               <span
                 className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-[#01244a] text-white"
-                title={`Promoted scenario: ${promoted}`}
+                title={`Active state: ${promoted}`}
               >
                 <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
@@ -338,15 +556,13 @@ function DatasetRow({ dataset, onOpen, loading, disabled }) {
           <DatasetMiniTree preview={preview} />
         </div>
 
-        {/* Right: Open button */}
+        {/* Right: Select button */}
         <div className="flex-shrink-0">
           <button
-            onClick={onOpen}
+            onClick={onSelect}
             disabled={loading || disabled}
             className={`inline-flex items-center justify-center gap-2 px-4 py-2 rounded-md text-sm font-semibold transition-all ${
-              lockedBy
-                ? "bg-gray-100 text-gray-700 hover:bg-gray-200"
-                : "bg-[#01244a] text-white hover:bg-[#0a3366] shadow-sm hover:shadow"
+              "bg-[#01244a] text-white hover:bg-[#0a3366] shadow-sm hover:shadow"
             } ${loading || disabled ? "cursor-not-allowed opacity-70" : ""}`}
           >
             {loading ? (
@@ -355,11 +571,11 @@ function DatasetRow({ dataset, onOpen, loading, disabled }) {
                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                   <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
                 </svg>
-                Opening...
+                Loading...
               </>
             ) : (
               <>
-                {lockedBy ? "Open (read-only)" : "Open"}
+                Select
                 <svg
                   className="w-3.5 h-3.5 transform group-hover:translate-x-0.5 transition-transform"
                   fill="none" stroke="currentColor" viewBox="0 0 24 24"
@@ -380,8 +596,7 @@ function Sep() {
 }
 
 /**
- * Compact monochrome org-tree snippet: a root box on top and up to four
- * child boxes below, connected by thin gray lines. Renders within ~280px wide.
+ * Compact monochrome org-tree snippet.
  */
 function DatasetMiniTree({ preview }) {
   if (!preview?.root) {
@@ -402,7 +617,6 @@ function DatasetMiniTree({ preview }) {
         {children.length > 0 && (
           <>
             <div className="w-px h-2.5 bg-gray-300" aria-hidden />
-            {/* horizontal connector */}
             <div className="relative w-full flex justify-center">
               <div
                 className="absolute top-0 h-px bg-gray-300"

@@ -102,8 +102,11 @@ async def login(body: LoginRequest, response: Response, request: Request):
 
 @router.post("/refresh")
 async def refresh(request: Request, response: Response):
+    client_ip = request.client.host if request.client else "unknown"
+
     # CSRF protection: require custom header that cross-origin forms can't set
     if request.headers.get("X-Requested-With") != "fetch":
+        logger.warning("auth/refresh: CSRF check failed from %s", client_ip)
         raise HTTPException(
             status_code=403,
             detail="Missing X-Requested-With header (CSRF protection)",
@@ -111,15 +114,25 @@ async def refresh(request: Request, response: Response):
 
     raw_token = request.cookies.get(REFRESH_COOKIE_NAME)
     if not raw_token:
+        logger.warning("auth/refresh: no refresh cookie from %s", client_ip)
         raise HTTPException(status_code=401, detail="No refresh token")
+
+    token_preview = raw_token[-8:] if raw_token else "(none)"
+    logger.info("auth/refresh: attempt from %s token=...%s", client_ip, token_preview)
 
     try:
         token_record = token_service.validate_refresh_token(raw_token)
     except OperationalError:
-        logger.warning("auth/refresh: DB unavailable during token validation")
+        logger.warning("auth/refresh: DB unavailable during token validation from %s", client_ip)
         raise HTTPException(status_code=503, detail="Database temporarily unavailable")
 
     if not token_record:
+        logger.warning(
+            "auth/refresh: INVALID or EXPIRED token ...%s from %s — "
+            "this causes a 401. Likely the token was already rotated "
+            "(race condition) or the 7-day TTL expired.",
+            token_preview, client_ip,
+        )
         _clear_refresh_cookie(response)
         raise HTTPException(status_code=401, detail="Invalid or expired refresh token")
 
@@ -127,10 +140,14 @@ async def refresh(request: Request, response: Response):
         from services import db_service
         user = db_service.get_user_by_id(token_record["user_id"])
     except OperationalError:
-        logger.warning("auth/refresh: DB unavailable during user lookup")
+        logger.warning("auth/refresh: DB unavailable during user lookup from %s", client_ip)
         raise HTTPException(status_code=503, detail="Database temporarily unavailable")
 
     if not user or not user["is_active"]:
+        logger.warning(
+            "auth/refresh: user %s is deactivated or not found from %s",
+            token_record.get("user_id"), client_ip,
+        )
         token_service.revoke_refresh_token(raw_token)
         _clear_refresh_cookie(response)
         raise HTTPException(status_code=401, detail="User account is deactivated")
@@ -138,12 +155,16 @@ async def refresh(request: Request, response: Response):
     try:
         new_refresh_raw = token_service.rotate_refresh_token(raw_token, user["id"])
     except OperationalError:
-        logger.warning("auth/refresh: DB unavailable during token rotation")
+        logger.warning("auth/refresh: DB unavailable during token rotation from %s", client_ip)
         raise HTTPException(status_code=503, detail="Database temporarily unavailable")
 
     _set_refresh_cookie(response, new_refresh_raw)
-
     access_token = token_service.create_access_token(user)
+
+    logger.info(
+        "auth/refresh: SUCCESS for user=%s from %s old=...%s new=...%s",
+        user["username"], client_ip, token_preview, new_refresh_raw[-8:],
+    )
 
     return {
         "access_token": access_token,

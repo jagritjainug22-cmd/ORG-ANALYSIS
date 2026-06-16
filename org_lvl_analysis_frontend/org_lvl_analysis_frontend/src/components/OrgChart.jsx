@@ -41,6 +41,9 @@ import {
   dbPatchRateCardRow,
   dbSetScenarioRateCard,
   dbLookupRateCardCost,
+  dbValidateScenario,
+  dbBulkFlag,
+  dbBulkEditProperty,
 } from "../api/backend";
 import {
   CARD_WIDTH,
@@ -60,6 +63,9 @@ import OrgNodeCard from "./orgchart/OrgNodeCard";
 import OrgDetailPanel from "./orgchart/OrgDetailPanel";
 import OrgImpactStrip from "./orgchart/OrgImpactStrip";
 import OrgScenarioBar from "./orgchart/OrgScenarioBar";
+import BulkActionBar from "./orgchart/BulkActionBar";
+import ValidationSidebar from "./orgchart/ValidationSidebar";
+import { validateRecordsClient } from "./orgchart/validateScenarioClient";
 import OrgCompareModal from "./orgchart/OrgCompareModal";
 import OrgAddChildModal from "./orgchart/OrgAddChildModal";
 import OrgMoveConfirmModal from "./orgchart/OrgMoveConfirmModal";
@@ -95,6 +101,7 @@ export default function OrgChart({
   setFlcCol,
   setJobTitleCol,
   setCountryCol,
+  onGuardStateChange,
 }) {
   const inDbMode = !!(datasetId && activeScenarioId);
   const hasLegacyDf = !!(df && df.length);
@@ -109,6 +116,7 @@ export default function OrgChart({
   // Dataset lock state
   const [lockInfo, setLockInfo] = useState(null); // { holder, holder_id, last_heartbeat } when locked by other
   const [lockAcquired, setLockAcquired] = useState(false);
+  const lockAcquiredRef = useRef(false); // ref mirror so visibility handler can read current value
   const lockHeartbeatRef = useRef(null);
   const [lockToast, setLockToast] = useState(null); // transient toast message
 
@@ -116,6 +124,8 @@ export default function OrgChart({
   const [editMode, setEditMode] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
   const [selectedId, setSelectedId] = useState(null);
+  const [multiSelectedIds, setMultiSelectedIds] = useState(() => new Set());
+  const [nodeIssuesMap, setNodeIssuesMap] = useState(() => new Map());
   const [clonePromptFor, setClonePromptFor] = useState(null);
   const [collapsed, setCollapsed] = useState(() => new Set());
   const [maxDepth, setMaxDepth] = useState(2);
@@ -207,9 +217,11 @@ export default function OrgChart({
         dbGetScenario(activeScenarioId),
         dbGetChangeLog(activeScenarioId),
       ]);
-      setRecords(scResp.records || []);
+      const loaded = scResp.records || [];
+      setRecords(loaded);
       setSummary(scResp.summary || null);
       setChangeLog(logResp.changes || []);
+      setNodeIssuesMap(validateRecordsClient(loaded, { empCol, mgrCol }));
     } catch (e) {
       console.error("Failed to load scenario:", e);
       setError(e.message || "Failed to load scenario from database.");
@@ -275,6 +287,21 @@ export default function OrgChart({
       }
     };
   }, [datasetId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Keep the ref in sync so the visibility handler below always sees the latest value
+  useEffect(() => { lockAcquiredRef.current = lockAcquired; }, [lockAcquired]);
+
+  // Fire an immediate dataset-lock heartbeat when the user returns to this tab so
+  // the 90s TTL doesn't expire while the browser throttles background intervals.
+  useEffect(() => {
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible" && lockAcquiredRef.current && datasetId) {
+        datasetLockHeartbeat(datasetId).catch(() => {});
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibility);
+    return () => document.removeEventListener("visibilitychange", handleVisibility);
+  }, [datasetId]);
 
   useEffect(() => {
     if (!datasetId) {
@@ -676,6 +703,7 @@ export default function OrgChart({
     const next = localUpdater(snapshot);
     setRecords(next);
     setSummary(buildLocalSummary(next, fteCol, flcCol));
+    setNodeIssuesMap(validateRecordsClient(next, { empCol, mgrCol }));
     if (!inDbMode) return;
     try {
       const resp = await dbCall();
@@ -737,7 +765,7 @@ export default function OrgChart({
     );
   };
 
-  const handleEdit = async (empId, updates) => {
+  const handleEdit = async (empId, updates, effectiveDate = null) => {
     await applyAndPersist(
       (recs) =>
         recs.map((r) => {
@@ -748,11 +776,11 @@ export default function OrgChart({
           }
           return next;
         }),
-      () => dbEditEmployee(activeScenarioId, empId, updates)
+      () => dbEditEmployee(activeScenarioId, empId, updates, effectiveDate)
     );
   };
 
-  const handleFlag = async (empId, flagged) => {
+  const handleFlag = async (empId, flagged, effectiveDate = null) => {
     const subtree = collectDescendants(String(empId), index.childrenByParent);
     await applyAndPersist(
       (recs) =>
@@ -761,7 +789,7 @@ export default function OrgChart({
             ? { ...r, is_flagged_removed: flagged }
             : r
         ),
-      () => dbFlagEmployee(activeScenarioId, empId, flagged)
+      () => dbFlagEmployee(activeScenarioId, empId, flagged, effectiveDate)
     );
   };
 
@@ -806,10 +834,10 @@ export default function OrgChart({
       (recs) => [...recs, synthesized],
       () => dbAddEmployee(activeScenarioId, payload)
     );
-    setAddChildFor(null);
+    setAddChildFor(null); // effective_date forwarded via payload.effective_date
   };
 
-  const handleClone = async (sourceEmpId, newEmpId) => {
+  const handleClone = async (sourceEmpId, newEmpId, effectiveDate = null) => {
     if (!inDbMode) return;
     const source = records.find((r) => String(idOf(r)) === String(sourceEmpId));
     if (!source) return;
@@ -832,6 +860,7 @@ export default function OrgChart({
           source_emp_id: sourceEmpId,
           new_emp_id: newEmpId,
           new_mgr_id: mgrId,
+          effective_date: effectiveDate || null,
         })
     );
     setSelectedId(newEmpId);
@@ -960,6 +989,18 @@ export default function OrgChart({
     };
     applyTransform();
   }, [applyTransform]);
+
+  const panToNode = useCallback((empId) => {
+    const pos = layout.nodes.get(String(empId));
+    if (!pos || !viewportRef.current) return;
+    const vw = viewportRef.current.clientWidth || 1200;
+    const vh = viewportRef.current.clientHeight || 800;
+    const z = zoomRef.current;
+    const targetX = vw / 2 - (pos.x + 80) * z;
+    const targetY = vh / 3 - (pos.y + 60) * z;
+    setPan(targetX, targetY);
+    setSelectedId(String(empId));
+  }, [layout, setPan]);
 
   const onWheel = (e) => {
     if (!e.ctrlKey && !e.metaKey) return;
@@ -1134,6 +1175,29 @@ export default function OrgChart({
       setError(e.message || "Failed to undo.");
     }
   };
+
+  useEffect(() => {
+    if (!onGuardStateChange) return;
+    const active = (scenarios || []).find((s) => s.id === activeScenarioId);
+    onGuardStateChange({
+      inDbMode,
+      datasetId,
+      activeScenarioId,
+      scenarioName: active?.name || null,
+      changeLogLength: changeLog?.length ?? 0,
+      editMode,
+      lockAcquired,
+    });
+  }, [
+    onGuardStateChange,
+    inDbMode,
+    datasetId,
+    activeScenarioId,
+    scenarios,
+    changeLog,
+    editMode,
+    lockAcquired,
+  ]);
 
   const openCompare = async () => {
     if (!datasetId) return;
@@ -1703,6 +1767,37 @@ export default function OrgChart({
           dbGenerateRateCard={dbGenerateRateCard}
           dbPatchRateCardRow={dbPatchRateCardRow}
           dbSetScenarioRateCard={dbSetScenarioRateCard}
+          onValidate={inDbMode && activeScenarioId
+            ? async () => {
+                const result = await dbValidateScenario(activeScenarioId);
+                const serverIssues = result?.issues ?? [];
+                // Merge server-side issues into the client-side map
+                setNodeIssuesMap((prev) => {
+                  const next = new Map(prev);
+                  for (const issue of serverIssues) {
+                    const key = String(issue.emp_id);
+                    const existing = next.get(key) || [];
+                    const duplicate = existing.some(
+                      (e) => e.type === issue.issue_type
+                    );
+                    if (!duplicate) {
+                      next.set(key, [
+                        ...existing,
+                        {
+                          type: issue.issue_type,
+                          severity: issue.severity,
+                          description: issue.description,
+                          relatedEmpIds: issue.related_emp_ids || [],
+                        },
+                      ]);
+                    }
+                  }
+                  return next;
+                });
+                return result;
+              }
+            : undefined}
+          onJumpToNode={panToNode}
         />
       )}
 
@@ -1759,7 +1854,10 @@ export default function OrgChart({
             backgroundSize: "30px 30px",
           }}
           onClick={(e) => {
-            if (!e.target.closest(".org-node-card")) setSelectedId(null);
+            if (!e.target.closest(".org-node-card")) {
+              setSelectedId(null);
+              setMultiSelectedIds(new Set());
+            }
           }}
         >
           <DndContext
@@ -1835,13 +1933,26 @@ export default function OrgChart({
                   position={pos}
                   stats={stats.get(id)}
                   selected={selectedId === id}
+                  isMultiSelected={multiSelectedIds.has(id)}
+                  issues={nodeIssuesMap.get(id) || null}
                   editMode={editMode}
                   empCol={empCol}
                   jobTitleCol={jobTitleCol}
                   fteCol={fteCol}
                   flcCol={flcCol}
                   countryCol={countryCol}
-                  onSelect={setSelectedId}
+                  onSelect={(eid, e) => {
+                    if (e?.shiftKey) {
+                      setMultiSelectedIds((prev) => {
+                        const next = new Set(prev);
+                        next.has(eid) ? next.delete(eid) : next.add(eid);
+                        return next;
+                      });
+                    } else {
+                      setMultiSelectedIds(new Set());
+                      setSelectedId(eid);
+                    }
+                  }}
                   onStartEdit={(eid) => setSelectedId(eid)}
                   onFlagToggle={handleFlag}
                   onAddChild={(eid) => setAddChildFor(eid)}
@@ -1898,6 +2009,28 @@ export default function OrgChart({
           </DragOverlay>
           </DndContext>
 
+          {/* Inline validation sidebar — always present when there are issues */}
+          <ValidationSidebar
+            nodeIssuesMap={nodeIssuesMap}
+            onJumpToNode={panToNode}
+          />
+
+          {/* Bulk action bar — floats at bottom when multi-select is active */}
+          <BulkActionBar
+            multiSelectedIds={multiSelectedIds}
+            onClearSelection={() => setMultiSelectedIds(new Set())}
+            onBulkFlag={async (empIds, flagged) => {
+              if (!activeScenarioId) return;
+              await dbBulkFlag(activeScenarioId, empIds, flagged);
+              await reloadScenario();
+            }}
+            onBulkEditProperty={async (empIds, field, value) => {
+              if (!activeScenarioId) return;
+              await dbBulkEditProperty(activeScenarioId, empIds, field, value);
+              await reloadScenario();
+            }}
+          />
+
           {/* Floating pan controls. Each click shifts the stage by a fixed
               screen-pixel amount so users can scroll wide / tall trees
               without click-dragging. */}
@@ -1946,6 +2079,10 @@ export default function OrgChart({
             flcCol={flcCol}
             rateCardActive={!!activeScenario?.rate_card_id}
             onApplyRateCard={handleApplyRateCard}
+            issues={nodeIssuesMap.get(String(idOf(selectedRecord))) || null}
+            records={records}
+            onMoveEmployee={handleMove}
+            onEditEmployee={handleEdit}
           />
         )}
 

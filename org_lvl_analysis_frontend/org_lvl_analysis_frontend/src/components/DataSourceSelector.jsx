@@ -122,6 +122,16 @@ export default function DataSourceSelector({
         {showToggle && (
           <div className="inline-flex bg-gray-100 rounded-lg p-1 shadow-sm">
             <ToggleBtn
+                active={view === "upload"}
+                onClick={() => setView("upload")}
+                icon={
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                  </svg>
+                }
+                label="Upload New"
+              />
+            <ToggleBtn
               active={view === "picker"}
               onClick={() => setView("picker")}
               icon={
@@ -136,16 +146,7 @@ export default function DataSourceSelector({
               }
               loading={listLoading}
             />
-            <ToggleBtn
-              active={view === "upload"}
-              onClick={() => setView("upload")}
-              icon={
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-                </svg>
-              }
-              label="Upload New"
-            />
+            
           </div>
         )}
       </div>

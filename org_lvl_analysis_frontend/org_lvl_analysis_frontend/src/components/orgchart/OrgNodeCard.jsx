@@ -30,6 +30,8 @@ function OrgNodeCardImpl({
   position,
   stats,
   selected,
+  isMultiSelected,
+  issues,
   editMode,
   jobTitleCol,
   empCol,
@@ -56,6 +58,10 @@ function OrgNodeCardImpl({
   const moved = !!mutationState?.moved;
   const edited = !!mutationState?.edited;
   const cloned = !!mutationState?.cloned;
+
+  const hasError   = issues?.some((i) => i.severity === "error");
+  const hasWarning = !hasError && issues?.some((i) => i.severity === "warning");
+  const issueCount = issues?.length ?? 0;
   const level = Number(record.Level) || 0;
   const header = headerColorForLevel(level);
   const headerLbl = headerLabel(record, level, jobTitleCol);
@@ -89,10 +95,16 @@ function OrgNodeCardImpl({
 
   const borderColor = selected
     ? AM.gold
+    : isMultiSelected
+    ? "#2563eb"
     : isValidTarget
     ? AM.gold
     : isInvalidTarget
     ? AM.danger
+    : hasError
+    ? AM.danger
+    : hasWarning
+    ? "#d97706"
     : flagged
     ? AM.danger
     : added
@@ -122,7 +134,7 @@ function OrgNodeCardImpl({
       {...attributes}
       onClick={(e) => {
         e.stopPropagation();
-        onSelect?.(empId);
+        onSelect?.(empId, e);
       }}
       className="org-node-card"
       style={{
@@ -157,6 +169,61 @@ function OrgNodeCardImpl({
         />
       )}
 
+      {/* Issue badge — top-left corner */}
+      {issueCount > 0 && (
+        <div
+          title={`${issueCount} validation issue${issueCount !== 1 ? "s" : ""}`}
+          style={{
+            position: "absolute",
+            top: 6,
+            left: 6,
+            minWidth: 18,
+            height: 18,
+            borderRadius: 9,
+            background: hasError ? AM.danger : "#d97706",
+            color: "#fff",
+            fontSize: 9,
+            fontWeight: 800,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: "0 5px",
+            zIndex: 5,
+            pointerEvents: "none",
+            boxShadow: "0 1px 3px rgba(0,0,0,0.25)",
+            fontFamily: "'IBM Plex Sans', sans-serif",
+          }}
+        >
+          {issueCount}
+        </div>
+      )}
+
+      {/* Multi-select checkbox overlay */}
+      {isMultiSelected && (
+        <div
+          style={{
+            position: "absolute",
+            top: 6,
+            right: 6,
+            width: 18,
+            height: 18,
+            borderRadius: 4,
+            background: "#2563eb",
+            border: "2px solid #fff",
+            boxShadow: "0 1px 3px rgba(37,99,235,0.4)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 5,
+            pointerEvents: "none",
+          }}
+        >
+          <svg width={11} height={11} viewBox="0 0 12 12" fill="none" stroke="#fff" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="2,6 5,9 10,3" />
+          </svg>
+        </div>
+      )}
+
       {/* The actual rounded card visual. overflow:hidden clips the inner
           header/toolbar to the rounded corners; the ports above sit outside
           this clipped region. */}
@@ -169,6 +236,12 @@ function OrgNodeCardImpl({
           border: `2px ${borderStyle} ${borderColor}`,
           boxShadow: selected
             ? `0 0 0 3px ${AM.gold}33, 0 4px 14px rgba(1,36,74,0.15)`
+            : isMultiSelected
+            ? "0 0 0 3px #2563eb33, 0 4px 14px rgba(37,99,235,0.15)"
+            : hasError
+            ? "0 0 0 3px rgba(220,38,38,0.2), 0 4px 14px rgba(220,38,38,0.12)"
+            : hasWarning
+            ? "0 0 0 3px rgba(217,119,6,0.2), 0 4px 10px rgba(217,119,6,0.1)"
             : "0 1px 4px rgba(1,36,74,0.08)",
           transition: "border-color 0.15s, box-shadow 0.15s",
           overflow: "hidden",
@@ -427,6 +500,8 @@ const OrgNodeCard = React.memo(OrgNodeCardImpl, (prev, next) => {
   if (prev.position.x !== next.position.x || prev.position.y !== next.position.y) return false;
   if (prev.stats !== next.stats) return false;
   if (prev.selected !== next.selected) return false;
+  if (prev.isMultiSelected !== next.isMultiSelected) return false;
+  if (prev.issues !== next.issues) return false;
   if (prev.editMode !== next.editMode) return false;
   if (prev.collapsed !== next.collapsed) return false;
   if (prev.hasChildren !== next.hasChildren) return false;

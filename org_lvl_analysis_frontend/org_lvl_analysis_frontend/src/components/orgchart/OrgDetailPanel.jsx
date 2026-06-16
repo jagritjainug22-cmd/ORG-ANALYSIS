@@ -26,12 +26,17 @@ export default function OrgDetailPanel({
   onAutoCloneConsumed,
   rateCardActive = false,
   onApplyRateCard,
+  issues = null,
+  records = [],
+  onMoveEmployee,
+  onEditEmployee,
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState({});
   const [cloning, setCloning] = useState(false);
   const [cloneId, setCloneId] = useState("");
   const [cloneError, setCloneError] = useState("");
+  const [effectiveDate, setEffectiveDate] = useState("");
 
   const empId = record ? String(record.__emp_id ?? record[empCol] ?? "") : "";
 
@@ -41,6 +46,7 @@ export default function OrgDetailPanel({
     setCloning(false);
     setCloneId("");
     setCloneError("");
+    setEffectiveDate("");
   }, [record?.__emp_id]);
 
   useEffect(() => {
@@ -62,6 +68,7 @@ export default function OrgDetailPanel({
     fteCol && [fteCol, "FTE"],
     flcCol && [flcCol, "Cost (FLC)"],
     countryCol && [countryCol, "Country"],
+    ["Change Reason", "Change Reason"],
   ].filter(Boolean);
 
   const startEdit = () => {
@@ -79,9 +86,10 @@ export default function OrgDetailPanel({
       if (draft[f] !== record[f]) updates[f] = draft[f];
     });
     if (Object.keys(updates).length) {
-      onSave?.(empId, updates);
+      onSave?.(empId, updates, effectiveDate || null);
     }
     setEditing(false);
+    setEffectiveDate("");
   };
 
   const suggestCloneId = () => makeCloneSuggestion(empId, existingEmpIds);
@@ -103,10 +111,11 @@ export default function OrgDetailPanel({
       setCloneError("That employee ID already exists");
       return;
     }
-    onClone?.(empId, nextId);
+    onClone?.(empId, nextId, effectiveDate || null);
     setCloning(false);
     setCloneId("");
     setCloneError("");
+    setEffectiveDate("");
   };
 
   const allFields = Object.entries(record).filter(
@@ -188,6 +197,21 @@ export default function OrgDetailPanel({
           </div>
         </div>
 
+        {/* Validation issues banner */}
+        {issues && issues.length > 0 && (
+          <ValidationIssueBanner
+            issues={issues}
+            record={record}
+            empCol={empCol}
+            mgrCol={mgrCol}
+            records={records}
+            onMoveEmployee={onMoveEmployee}
+            onEditEmployee={onEditEmployee}
+            onFlagToggle={onFlagToggle}
+            empId={empId}
+          />
+        )}
+
         {editMode && (
           <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
             {!editing && !cloning ? (
@@ -207,7 +231,7 @@ export default function OrgDetailPanel({
                   Clone position
                 </button>
                 <button
-                  onClick={() => onFlagToggle?.(empId, !flagged)}
+                  onClick={() => { onFlagToggle?.(empId, !flagged, effectiveDate || null); setEffectiveDate(""); }}
                   style={flagged ? successBtn() : dangerBtn()}
                 >
                   {flagged ? "Restore" : "Flag"}
@@ -275,6 +299,39 @@ export default function OrgDetailPanel({
           </div>
         )}
 
+        {editMode && !editing && !cloning && (
+          <div style={{ marginBottom: 12 }}>
+            <label
+              style={{
+                display: "block",
+                fontSize: 10,
+                fontWeight: 600,
+                color: AM.textSecondary,
+                textTransform: "uppercase",
+                letterSpacing: "0.6px",
+                marginBottom: 4,
+              }}
+            >
+              Effective Date
+            </label>
+            <input
+              type="date"
+              value={effectiveDate}
+              onChange={(e) => setEffectiveDate(e.target.value)}
+              placeholder="When does this change take effect?"
+              style={{
+                width: "100%",
+                border: `1px solid ${AM.border}`,
+                borderRadius: 6,
+                padding: "6px 10px",
+                fontSize: 12,
+                outline: "none",
+                fontFamily: "'IBM Plex Sans', sans-serif",
+              }}
+            />
+          </div>
+        )}
+
         {editMode && flcCol && rateCardActive && !editing && !cloning && (
           <div style={{ marginBottom: 12 }}>
             <button
@@ -326,6 +383,35 @@ export default function OrgDetailPanel({
                 />
               </div>
             ))}
+            <div style={{ marginBottom: 10 }}>
+              <label
+                style={{
+                  display: "block",
+                  fontSize: 10,
+                  fontWeight: 600,
+                  color: AM.textSecondary,
+                  textTransform: "uppercase",
+                  letterSpacing: "0.6px",
+                  marginBottom: 4,
+                }}
+              >
+                Effective Date
+              </label>
+              <input
+                type="date"
+                value={effectiveDate}
+                onChange={(e) => setEffectiveDate(e.target.value)}
+                style={{
+                  width: "100%",
+                  border: `1px solid ${AM.border}`,
+                  borderRadius: 6,
+                  padding: "6px 10px",
+                  fontSize: 12,
+                  outline: "none",
+                  fontFamily: "'IBM Plex Sans', sans-serif",
+                }}
+              />
+            </div>
           </div>
         )}
 
@@ -442,5 +528,263 @@ function ghostBtn(disabled = false) {
     fontSize: 12,
     fontWeight: 600,
     cursor: disabled ? "not-allowed" : "pointer",
+  };
+}
+
+/* --------------------------------------------------------------------------
+ * Validation issue banner + contextual fix actions
+ * -------------------------------------------------------------------------- */
+
+const ISSUE_LABELS = {
+  closed_manager_has_reports: "Closed manager has open reports",
+  orphaned_position:          "Orphaned position",
+  circular_reference:         "Circular reference",
+  duplicate_id:               "Duplicate ID",
+  self_report:                "Self-report",
+  missing_change_reason:      "Missing Change Reason",
+};
+
+function ValidationIssueBanner({
+  issues,
+  record,
+  empCol,
+  mgrCol,
+  records,
+  onMoveEmployee,
+  onEditEmployee,
+  onFlagToggle,
+  empId,
+}) {
+  const hasError = issues.some((i) => i.severity === "error");
+  const bgColor  = hasError ? "#fef2f2" : "#fffbeb";
+  const border   = hasError ? "#fca5a5" : "#fcd34d";
+  const titleClr = hasError ? AM.danger : "#92400e";
+
+  // Collect active manager options (non-flagged, non-self)
+  const managerOptions = records
+    ? records
+        .filter((r) => {
+          const rid = String(r.__emp_id ?? r[empCol] ?? "");
+          return rid !== empId && !r.is_flagged_removed;
+        })
+        .map((r) => ({
+          id: String(r.__emp_id ?? r[empCol] ?? ""),
+          label: String(r["Job Title"] || r.__emp_id || r[empCol] || ""),
+        }))
+        .slice(0, 200)
+    : [];
+
+  return (
+    <div
+      style={{
+        background: bgColor,
+        border: `1px solid ${border}`,
+        borderRadius: 8,
+        padding: "10px 12px",
+        marginBottom: 14,
+        fontSize: 12,
+        fontFamily: "'IBM Plex Sans', sans-serif",
+      }}
+    >
+      <div style={{ fontWeight: 700, color: titleClr, marginBottom: 8, fontSize: 11, textTransform: "uppercase", letterSpacing: "0.5px" }}>
+        {issues.length} Validation Issue{issues.length !== 1 ? "s" : ""}
+      </div>
+      {issues.map((issue, i) => (
+        <IssueFixRow
+          key={i}
+          issue={issue}
+          empId={empId}
+          record={record}
+          empCol={empCol}
+          mgrCol={mgrCol}
+          managerOptions={managerOptions}
+          onMoveEmployee={onMoveEmployee}
+          onEditEmployee={onEditEmployee}
+          onFlagToggle={onFlagToggle}
+        />
+      ))}
+    </div>
+  );
+}
+
+function IssueFixRow({
+  issue,
+  empId,
+  record,
+  empCol,
+  mgrCol,
+  managerOptions,
+  onMoveEmployee,
+  onEditEmployee,
+  onFlagToggle,
+}) {
+  const [newReason, setNewReason] = useState("");
+  const [newMgr, setNewMgr] = useState("");
+  const [newId, setNewId] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const label = ISSUE_LABELS[issue.type] || issue.type;
+  const isError = issue.severity === "error";
+  const dotColor = isError ? AM.danger : "#d97706";
+
+  const applyMgrChange = async (targetEmpId, newMgrId) => {
+    if (!newMgrId || saving) return;
+    setSaving(true);
+    try {
+      await onMoveEmployee?.(targetEmpId, newMgrId);
+    } finally {
+      setSaving(false);
+      setNewMgr("");
+    }
+  };
+
+  const applyReasonChange = async () => {
+    if (!newReason.trim() || saving) return;
+    setSaving(true);
+    try {
+      await onEditEmployee?.(empId, { "Change Reason": newReason.trim() });
+    } finally {
+      setSaving(false);
+      setNewReason("");
+    }
+  };
+
+  const applyIdChange = async () => {
+    if (!newId.trim() || saving) return;
+    setSaving(true);
+    try {
+      await onEditEmployee?.(empId, { [empCol]: newId.trim() });
+    } finally {
+      setSaving(false);
+      setNewId("");
+    }
+  };
+
+  return (
+    <div style={{ marginBottom: 10, paddingBottom: 10, borderBottom: `1px solid rgba(0,0,0,0.07)` }}>
+      <div style={{ display: "flex", alignItems: "flex-start", gap: 7, marginBottom: 5 }}>
+        <span style={{ width: 6, height: 6, borderRadius: "50%", background: dotColor, flexShrink: 0, marginTop: 5 }} />
+        <div>
+          <div style={{ fontWeight: 700, fontSize: 11, color: AM.textPrimary }}>{label}</div>
+          <div style={{ fontSize: 10, color: AM.textSecondary, marginTop: 1 }}>{issue.description}</div>
+        </div>
+      </div>
+
+      {/* Fix actions per issue type */}
+      {issue.type === "missing_change_reason" && (
+        <div style={{ display: "flex", gap: 5, marginTop: 4 }}>
+          <input
+            value={newReason}
+            onChange={(e) => setNewReason(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") applyReasonChange(); }}
+            placeholder="e.g. Outsource, Redundancy…"
+            style={miniInput()}
+          />
+          <button onClick={applyReasonChange} disabled={!newReason.trim() || saving} style={miniBtn(false)}>
+            Save
+          </button>
+        </div>
+      )}
+
+      {(issue.type === "orphaned_position" || issue.type === "self_report" || issue.type === "circular_reference") && (
+        <div style={{ display: "flex", gap: 5, marginTop: 4 }}>
+          <select
+            value={newMgr}
+            onChange={(e) => setNewMgr(e.target.value)}
+            style={{ ...miniInput(), appearance: "none", paddingRight: 8 }}
+          >
+            <option value="">Move to manager…</option>
+            {managerOptions.map((o) => (
+              <option key={o.id} value={o.id}>{o.id} — {o.label}</option>
+            ))}
+          </select>
+          <button onClick={() => applyMgrChange(empId, newMgr)} disabled={!newMgr || saving} style={miniBtn(false)}>
+            Apply
+          </button>
+        </div>
+      )}
+
+      {issue.type === "closed_manager_has_reports" && issue.relatedEmpIds?.length > 0 && (
+        <div style={{ marginTop: 4 }}>
+          <div style={{ fontSize: 10, color: AM.textMuted, marginBottom: 4 }}>
+            Reassign {issue.relatedEmpIds.length} report{issue.relatedEmpIds.length !== 1 ? "s" : ""} to:
+          </div>
+          <div style={{ display: "flex", gap: 5 }}>
+            <select
+              value={newMgr}
+              onChange={(e) => setNewMgr(e.target.value)}
+              style={{ ...miniInput(), appearance: "none", paddingRight: 8 }}
+            >
+              <option value="">Select new manager…</option>
+              {managerOptions.map((o) => (
+                <option key={o.id} value={o.id}>{o.id} — {o.label}</option>
+              ))}
+            </select>
+            <button
+              onClick={async () => {
+                if (!newMgr || saving) return;
+                setSaving(true);
+                try {
+                  for (const rid of issue.relatedEmpIds) {
+                    await onMoveEmployee?.(rid, newMgr);
+                  }
+                } finally {
+                  setSaving(false);
+                  setNewMgr("");
+                }
+              }}
+              disabled={!newMgr || saving}
+              style={miniBtn(false)}
+            >
+              {saving ? "…" : "Reassign all"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {issue.type === "duplicate_id" && (
+        <div style={{ display: "flex", gap: 5, marginTop: 4 }}>
+          <input
+            value={newId}
+            onChange={(e) => setNewId(e.target.value)}
+            placeholder="New unique ID…"
+            style={miniInput()}
+            onKeyDown={(e) => { if (e.key === "Enter") applyIdChange(); }}
+          />
+          <button onClick={applyIdChange} disabled={!newId.trim() || saving} style={miniBtn(false)}>
+            Save
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function miniInput() {
+  return {
+    flex: 1,
+    border: `1px solid ${AM.border}`,
+    borderRadius: 6,
+    padding: "4px 8px",
+    fontSize: 11,
+    fontFamily: "'IBM Plex Sans', sans-serif",
+    outline: "none",
+    minWidth: 0,
+    background: AM.white,
+  };
+}
+
+function miniBtn(disabled) {
+  return {
+    background: disabled ? AM.borderLight : AM.navy,
+    color: disabled ? AM.textMuted : AM.white,
+    border: "none",
+    borderRadius: 6,
+    padding: "4px 10px",
+    fontSize: 11,
+    fontWeight: 600,
+    cursor: disabled ? "not-allowed" : "pointer",
+    whiteSpace: "nowrap",
+    flexShrink: 0,
   };
 }

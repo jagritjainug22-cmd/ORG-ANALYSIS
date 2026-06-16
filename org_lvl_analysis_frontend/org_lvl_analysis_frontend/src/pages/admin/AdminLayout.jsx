@@ -1,6 +1,7 @@
 import React from "react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { useAuth } from "../../contexts/AuthContext";
+import { useConfirmLogout } from "../../hooks/useConfirmLogout";
 
 const NAV_ITEMS = [
   {
@@ -18,7 +19,8 @@ const NAV_ITEMS = [
 ];
 
 export default function AdminLayout() {
-  const { user, handleLogout } = useAuth();
+  const { user } = useAuth();
+  const confirmLogout = useConfirmLogout();
   const navigate = useNavigate();
 
   return (
@@ -53,7 +55,7 @@ export default function AdminLayout() {
               <span>{user?.username} (Admin)</span>
             </div>
             <button
-              onClick={() => { handleLogout(); navigate("/login"); }}
+              onClick={(e) => confirmLogout(e)}
               className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white rounded-lg font-medium shadow-md hover:shadow-lg transition-all duration-200"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

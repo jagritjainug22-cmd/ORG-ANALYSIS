@@ -1,6 +1,7 @@
-import React, { useEffect, useMemo, useState } from "react";
+﻿import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
+import { useConfirmLogout } from "../hooks/useConfirmLogout";
 import { fetchProjects, fetchProjectDetail } from "../api/backend";
 
 const AVATAR_COLORS = [
@@ -67,7 +68,8 @@ function StackedAvatars({ members, count }) {
 }
 
 export default function ProjectSelector() {
-  const { user, handleLogout } = useAuth();
+  const { user } = useAuth();
+  const confirmLogout = useConfirmLogout();
   const navigate = useNavigate();
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -216,7 +218,7 @@ export default function ProjectSelector() {
         <span className="inline-flex items-center gap-1">
           {children}
           <span className={`text-[10px] ${active ? "text-am-600" : "text-gray-300"}`}>
-            {active ? (sortDir === "asc" ? "▲" : "▼") : "▲▼"}
+            {active ? (sortDir === "asc" ? "â–²" : "â–¼") : "â–²â–¼"}
           </span>
         </span>
       </th>
@@ -254,7 +256,7 @@ export default function ProjectSelector() {
               </span>
             </div>
             <button
-              onClick={() => { handleLogout(); navigate("/login"); }}
+              onClick={(e) => confirmLogout(e)}
               className="inline-flex items-center gap-2 px-3 py-2 text-gray-600 hover:text-red-600 hover:bg-red-50 rounded-md text-sm font-medium transition"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -527,8 +529,8 @@ export default function ProjectSelector() {
                               title={
                                 blocked
                                   ? archived
-                                    ? "Archived — contact admin to reactivate"
-                                    : "Expired — contact admin to extend"
+                                    ? "Archived â€” contact admin to reactivate"
+                                    : "Expired â€” contact admin to extend"
                                   : "Open project"
                               }
                             >

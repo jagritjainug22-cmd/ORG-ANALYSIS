@@ -516,6 +516,83 @@ def _migrate_v6(conn: PgConnection) -> None:
 
 
 
+def _migrate_v7(conn: PgConnection) -> None:
+    """v7: activity analysis — configs, activities, allocations, levers."""
+    c = conn.cursor()
+    c.execute(
+        f"""
+        CREATE TABLE IF NOT EXISTS activity_configs (
+            id                 {_ID_PK},
+            dataset_id         INTEGER NOT NULL REFERENCES datasets(id) ON DELETE CASCADE,
+            name               TEXT NOT NULL,
+            role_grouping_col  TEXT NOT NULL,
+            created_at         TEXT NOT NULL,
+            updated_at         TEXT NOT NULL
+        )
+        """
+    )
+    c.execute("CREATE INDEX IF NOT EXISTS idx_act_configs_ds ON activity_configs(dataset_id)")
+
+    c.execute(
+        f"""
+        CREATE TABLE IF NOT EXISTS activities (
+            id           {_ID_PK},
+            config_id    INTEGER NOT NULL REFERENCES activity_configs(id) ON DELETE CASCADE,
+            name         TEXT NOT NULL,
+            process_name TEXT NOT NULL DEFAULT '',
+            description  TEXT NOT NULL DEFAULT '',
+            sort_order   INTEGER NOT NULL DEFAULT 0
+        )
+        """
+    )
+    c.execute("CREATE INDEX IF NOT EXISTS idx_activities_cfg ON activities(config_id)")
+
+    c.execute(
+        f"""
+        CREATE TABLE IF NOT EXISTS role_activity_allocations (
+            id          {_ID_PK},
+            config_id   INTEGER NOT NULL REFERENCES activity_configs(id) ON DELETE CASCADE,
+            role_value  TEXT NOT NULL,
+            activity_id INTEGER NOT NULL REFERENCES activities(id) ON DELETE CASCADE,
+            time_pct    DOUBLE PRECISION NOT NULL DEFAULT 0,
+            UNIQUE (config_id, role_value, activity_id)
+        )
+        """
+    )
+    c.execute("CREATE INDEX IF NOT EXISTS idx_raa_cfg ON role_activity_allocations(config_id)")
+
+    c.execute(
+        f"""
+        CREATE TABLE IF NOT EXISTS activity_levers (
+            id             {_ID_PK},
+            config_id      INTEGER NOT NULL REFERENCES activity_configs(id) ON DELETE CASCADE,
+            activity_id    INTEGER NOT NULL REFERENCES activities(id) ON DELETE CASCADE,
+            lever_type     TEXT NOT NULL,
+            reduction_pct  DOUBLE PRECISION NOT NULL DEFAULT 0,
+            effective_date TEXT NOT NULL,
+            UNIQUE (config_id, activity_id, lever_type, effective_date)
+        )
+        """
+    )
+    c.execute("CREATE INDEX IF NOT EXISTS idx_al_cfg ON activity_levers(config_id)")
+
+
+def _migrate_v8(conn: PgConnection) -> None:
+    """v8: effective_date on change_log for action-date phasing."""
+    c = conn.cursor()
+    cols = [
+        row["column_name"]
+        for row in c.execute(
+            """
+            SELECT column_name FROM information_schema.columns
+            WHERE table_schema = 'public' AND table_name = 'change_log'
+            """
+        ).fetchall()
+    ]
+    if "effective_date" not in cols:
+        c.execute("ALTER TABLE change_log ADD COLUMN effective_date TEXT")
+
+
 _MIGRATIONS = [
     (1, "projects + assignments + audit_log tables", _migrate_v1),
     (2, "project_id on datasets + Legacy project backfill", _migrate_v2),
@@ -523,6 +600,8 @@ _MIGRATIONS = [
     (4, "dataset_locks table", _migrate_v4),
     (5, "dataset_user_views table", _migrate_v5),
     (6, "rate cards + scenario rate-card settings", _migrate_v6),
+    (7, "activity analysis tables", _migrate_v7),
+    (8, "effective_date on change_log", _migrate_v8),
 ]
 
 
@@ -977,6 +1056,110 @@ def get_scenario_records(scenario_id: int) -> List[Dict[str, Any]]:
         return records
 
 
+def bulk_flag_employees(
+    scenario_id: int,
+    emp_ids: List[str],
+    flagged: bool,
+    username: str = "",
+    effective_date: Optional[str] = None,
+) -> int:
+    """Flag or restore a list of employees WITHOUT cascading to descendants.
+    Returns the count of affected records."""
+    if not emp_ids:
+        return 0
+    now = datetime.utcnow().isoformat()
+    placeholders = ",".join("?" * len(emp_ids))
+    with _connect() as conn:
+        c = conn.cursor()
+        c.execute(
+            f"UPDATE scenario_records SET is_flagged_removed = ? "
+            f"WHERE scenario_id = ? AND emp_id IN ({placeholders})",
+            [1 if flagged else 0, scenario_id] + list(emp_ids),
+        )
+        affected = c.rowcount
+        for eid in emp_ids:
+            c.execute(
+                """
+                INSERT INTO change_log
+                    (scenario_id, action, emp_id, timestamp, username, effective_date)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (scenario_id, "flag_remove" if flagged else "unflag_restore",
+                 eid, now, username, effective_date),
+            )
+        c.execute("UPDATE scenarios SET updated_at = ? WHERE id = ?", (now, scenario_id))
+        conn.commit()
+    return affected
+
+
+def bulk_edit_property(
+    scenario_id: int,
+    emp_ids: List[str],
+    field: str,
+    value: Any,
+    username: str = "",
+    effective_date: Optional[str] = None,
+) -> int:
+    """Set a single field to value across multiple employees.
+    Returns the count of updated records."""
+    if not emp_ids:
+        return 0
+    now = datetime.utcnow().isoformat()
+    with _connect() as conn:
+        c = conn.cursor()
+        updated = 0
+        for eid in emp_ids:
+            row = c.execute(
+                "SELECT data_json FROM scenario_records WHERE scenario_id = ? AND emp_id = ?",
+                (scenario_id, eid),
+            ).fetchone()
+            if not row:
+                continue
+            data = json.loads(row["data_json"])
+            old_value = data.get(field)
+            data[field] = value
+            c.execute(
+                "UPDATE scenario_records SET data_json = ? WHERE scenario_id = ? AND emp_id = ?",
+                (json.dumps(data, default=str), scenario_id, eid),
+            )
+            c.execute(
+                """
+                INSERT INTO change_log
+                    (scenario_id, action, emp_id, field, old_value, new_value,
+                     timestamp, username, effective_date)
+                VALUES (?, 'edit', ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (scenario_id, eid, field, _to_str(old_value), _to_str(value),
+                 now, username, effective_date),
+            )
+            updated += 1
+        c.execute("UPDATE scenarios SET updated_at = ? WHERE id = ?", (now, scenario_id))
+        conn.commit()
+    return updated
+
+
+def get_scenario_records_merged(scenario_id: int) -> List[Dict[str, Any]]:
+    """Alias for validate_scenario compatibility — returns records with flat fields."""
+    rows = []
+    with _connect_ro() as conn:
+        for r in conn.execute(
+            """
+            SELECT emp_id, mgr_id, level, fte, flc,
+                   is_flagged_removed, is_added, data_json
+            FROM scenario_records WHERE scenario_id = ?
+            """,
+            (scenario_id,),
+        ).fetchall():
+            rows.append({
+                "emp_id": r["emp_id"],
+                "mgr_id": r["mgr_id"],
+                "is_flagged_removed": bool(r["is_flagged_removed"]),
+                "is_added": bool(r["is_added"]),
+                "data_json": r["data_json"],
+            })
+    return rows
+
+
 def promote_scenario(scenario_id: int) -> None:
     """Promote a scenario to be the new baseline.
 
@@ -1023,6 +1206,7 @@ def move_employee(
     emp_id: str,
     new_mgr_id: Optional[str],
     username: str = "",
+    effective_date: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Reassign an employee to a new manager. Returns the updated record."""
     now = datetime.utcnow().isoformat()
@@ -1045,10 +1229,10 @@ def move_employee(
         c.execute(
             """
             INSERT INTO change_log
-                (scenario_id, action, emp_id, old_mgr_id, new_mgr_id, timestamp, username)
-            VALUES (?, 'move', ?, ?, ?, ?, ?)
+                (scenario_id, action, emp_id, old_mgr_id, new_mgr_id, timestamp, username, effective_date)
+            VALUES (?, 'move', ?, ?, ?, ?, ?, ?)
             """,
-            (scenario_id, emp_id, old_mgr_id, new_mgr_id, now, username),
+            (scenario_id, emp_id, old_mgr_id, new_mgr_id, now, username, effective_date),
         )
         c.execute("UPDATE scenarios SET updated_at = ? WHERE id = ?", (now, scenario_id))
         conn.commit()
@@ -1063,6 +1247,7 @@ def edit_employee(
     emp_id: str,
     updates: Dict[str, Any],
     username: str = "",
+    effective_date: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Edit arbitrary fields on an employee. Updates JSON blob + hot columns."""
     now = datetime.utcnow().isoformat()
@@ -1090,10 +1275,10 @@ def edit_employee(
             c.execute(
                 """
                 INSERT INTO change_log
-                    (scenario_id, action, emp_id, field, old_value, new_value, timestamp, username)
-                VALUES (?, 'edit', ?, ?, ?, ?, ?, ?)
+                    (scenario_id, action, emp_id, field, old_value, new_value, timestamp, username, effective_date)
+                VALUES (?, 'edit', ?, ?, ?, ?, ?, ?, ?)
                 """,
-                (scenario_id, emp_id, field, _to_str(old_value), _to_str(new_value), now, username),
+                (scenario_id, emp_id, field, _to_str(old_value), _to_str(new_value), now, username, effective_date),
             )
             # Mirror updates to hot columns where applicable
             if field == "Level":
@@ -1128,6 +1313,7 @@ def add_employee(
     fte: Optional[float] = None,
     flc: Optional[float] = None,
     username: str = "",
+    effective_date: Optional[str] = None,
 ) -> Dict[str, Any]:
     now = datetime.utcnow().isoformat()
     with _connect() as conn:
@@ -1144,10 +1330,10 @@ def add_employee(
         c.execute(
             """
             INSERT INTO change_log
-                (scenario_id, action, emp_id, new_mgr_id, timestamp, username)
-            VALUES (?, 'add', ?, ?, ?, ?)
+                (scenario_id, action, emp_id, new_mgr_id, timestamp, username, effective_date)
+            VALUES (?, 'add', ?, ?, ?, ?, ?)
             """,
-            (scenario_id, emp_id, mgr_id, now, username),
+            (scenario_id, emp_id, mgr_id, now, username, effective_date),
         )
         c.execute("UPDATE scenarios SET updated_at = ? WHERE id = ?", (now, scenario_id))
         conn.commit()
@@ -1166,6 +1352,7 @@ def clone_employee(
     new_emp_id: str,
     new_mgr_id: Optional[str] = None,
     username: str = "",
+    effective_date: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Clone an existing position into a new scenario record (is_added=1)."""
     now = datetime.utcnow().isoformat()
@@ -1219,10 +1406,10 @@ def clone_employee(
         c.execute(
             """
             INSERT INTO change_log
-                (scenario_id, action, emp_id, field, old_value, new_mgr_id, timestamp, username)
-            VALUES (?, 'clone', ?, 'source_emp_id', ?, ?, ?, ?)
+                (scenario_id, action, emp_id, field, old_value, new_mgr_id, timestamp, username, effective_date)
+            VALUES (?, 'clone', ?, 'source_emp_id', ?, ?, ?, ?, ?)
             """,
-            (scenario_id, new_emp_id, source_emp_id, mgr_id, now, username),
+            (scenario_id, new_emp_id, source_emp_id, mgr_id, now, username, effective_date),
         )
         c.execute("UPDATE scenarios SET updated_at = ? WHERE id = ?", (now, scenario_id))
         conn.commit()
@@ -1240,6 +1427,7 @@ def flag_employee(
     emp_id: str,
     flagged: bool,
     username: str = "",
+    effective_date: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Flag/unflag an employee and cascade to all descendants."""
     now = datetime.utcnow().isoformat()
@@ -1277,10 +1465,10 @@ def flag_employee(
         c.execute(
             """
             INSERT INTO change_log
-                (scenario_id, action, emp_id, timestamp, username)
-            VALUES (?, ?, ?, ?, ?)
+                (scenario_id, action, emp_id, timestamp, username, effective_date)
+            VALUES (?, ?, ?, ?, ?, ?)
             """,
-            (scenario_id, "flag_remove" if flagged else "unflag_restore", emp_id, now, username),
+            (scenario_id, "flag_remove" if flagged else "unflag_restore", emp_id, now, username, effective_date),
         )
         c.execute("UPDATE scenarios SET updated_at = ? WHERE id = ?", (now, scenario_id))
         conn.commit()
@@ -1290,6 +1478,166 @@ def flag_employee(
         data["__mgr_id"] = root_row["mgr_id"]
         data["is_flagged_removed"] = flagged
         return data
+
+
+def bulk_set_effective_date(
+    scenario_id: int,
+    change_ids: List[int],
+    effective_date: Optional[str],
+) -> int:
+    """Set (or clear) effective_date on a list of change_log rows. Returns count updated."""
+    if not change_ids:
+        return 0
+    placeholders = ",".join("?" * len(change_ids))
+    with _connect() as conn:
+        c = conn.cursor()
+        c.execute(
+            f"UPDATE change_log SET effective_date = ? "
+            f"WHERE scenario_id = ? AND id IN ({placeholders})",
+            [effective_date, scenario_id] + list(change_ids),
+        )
+        conn.commit()
+        return c.rowcount
+
+
+def get_phasing_view(
+    scenario_id: int,
+    fy_start_month: int = 1,
+) -> Dict[str, Any]:
+    """
+    Group change_log rows by effective_date month and return:
+      - monthly buckets with incremental and cumulative HC/cost deltas
+      - summary: full_year_savings, in_year_savings, months_remaining_in_fy
+    Changes without an effective_date are placed in an 'Undated' bucket.
+    """
+    from datetime import date
+    import calendar
+
+    today = date.today()
+    current_year = today.year
+    current_month = today.month
+
+    # FY end month = month before fy_start_month
+    fy_end_month = ((fy_start_month - 2) % 12) + 1
+    # Months remaining in FY (inclusive of current month)
+    if fy_start_month <= current_month:
+        fy_end_year = current_year if fy_end_month >= fy_start_month else current_year + 1
+    else:
+        fy_end_year = current_year
+    # Simpler: count remaining months from today to end of FY
+    if fy_start_month == 1:
+        months_remaining = 12 - current_month + 1
+    else:
+        # months until fy_end_month
+        end = date(fy_end_year, fy_end_month, calendar.monthrange(fy_end_year, fy_end_month)[1])
+        diff = (end.year - today.year) * 12 + (end.month - today.month) + 1
+        months_remaining = max(0, min(diff, 12))
+
+    with _connect_ro() as conn:
+        rows = conn.execute(
+            """
+            SELECT cl.id, cl.action, cl.emp_id, cl.effective_date,
+                   sr.flc, sr.fte
+            FROM change_log cl
+            LEFT JOIN scenario_records sr
+                ON sr.scenario_id = cl.scenario_id AND sr.emp_id = cl.emp_id
+            WHERE cl.scenario_id = ?
+              AND cl.action IN ('add', 'flag_remove', 'clone')
+            ORDER BY cl.effective_date, cl.id
+            """,
+            (scenario_id,),
+        ).fetchall()
+
+    # Group into month buckets
+    buckets: Dict[str, Dict[str, Any]] = {}
+    full_year_savings = 0.0
+    in_year_savings = 0.0
+
+    for r in rows:
+        ed = r["effective_date"]
+        if ed:
+            try:
+                d = date.fromisoformat(ed[:10])
+                bucket_key = d.strftime("%Y-%m")
+                bucket_label = d.strftime("%b %Y")
+                eff_month = d.month
+                eff_year = d.year
+            except (ValueError, TypeError):
+                bucket_key = "undated"
+                bucket_label = "Undated"
+                eff_month = None
+                eff_year = None
+        else:
+            bucket_key = "undated"
+            bucket_label = "Undated"
+            eff_month = None
+            eff_year = None
+
+        if bucket_key not in buckets:
+            buckets[bucket_key] = {
+                "month": bucket_key,
+                "label": bucket_label,
+                "adds_count": 0,
+                "removes_count": 0,
+                "edits_count": 0,
+                "net_hc_delta": 0,
+                "cost_delta": 0.0,
+            }
+
+        flc = r["flc"] or 0.0
+        is_remove = r["action"] == "flag_remove"
+        is_add = r["action"] in ("add", "clone")
+
+        if is_remove:
+            buckets[bucket_key]["removes_count"] += 1
+            buckets[bucket_key]["net_hc_delta"] -= 1
+            buckets[bucket_key]["cost_delta"] -= flc
+            # Cost savings from this removal
+            if eff_month is not None:
+                # Full year = full annual FLC
+                full_year_savings += flc
+                # In-year = prorated months from effective month to FY end
+                if eff_year == today.year or (fy_start_month > 1 and eff_year == today.year + 1):
+                    rem = max(0, months_remaining - max(0, eff_month - current_month))
+                    in_year_savings += flc * rem / 12
+                else:
+                    in_year_savings += flc  # already in next FY cycle
+            else:
+                # Undated: treat as immediate for in-year calc
+                full_year_savings += flc
+                in_year_savings += flc * months_remaining / 12
+        elif is_add:
+            buckets[bucket_key]["adds_count"] += 1
+            buckets[bucket_key]["net_hc_delta"] += 1
+            buckets[bucket_key]["cost_delta"] += flc
+
+    # Build sorted list with running cumulative
+    sorted_keys = sorted(k for k in buckets if k != "undated")
+    if "undated" in buckets:
+        sorted_keys.append("undated")
+
+    cumulative_hc = 0
+    cumulative_cost = 0.0
+    monthly = []
+    for key in sorted_keys:
+        b = buckets[key]
+        cumulative_hc += b["net_hc_delta"]
+        cumulative_cost += b["cost_delta"]
+        monthly.append({
+            **b,
+            "cumulative_hc_delta": cumulative_hc,
+            "cumulative_cost_delta": cumulative_cost,
+        })
+
+    return {
+        "monthly": monthly,
+        "summary": {
+            "full_year_savings": round(full_year_savings, 2),
+            "in_year_savings": round(in_year_savings, 2),
+            "months_remaining_in_fy": months_remaining,
+            "fy_start_month": fy_start_month,
+        },
+    }
 
 
 def delete_scenario_record(scenario_id: int, emp_id: str, username: str = "") -> None:
@@ -2203,3 +2551,195 @@ def _to_float(v: Any) -> Optional[float]:
     except (TypeError, ValueError):
         return None
 
+
+
+# ---------------------------------------------------------------------------
+# Activity Analysis
+# ---------------------------------------------------------------------------
+
+def create_activity_config(dataset_id: int, name: str, role_grouping_col: str) -> Dict[str, Any]:
+    now = datetime.utcnow().isoformat()
+    with _connect() as conn:
+        c = conn.cursor()
+        c.execute(
+            "INSERT INTO activity_configs (dataset_id, name, role_grouping_col, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+            (dataset_id, name.strip(), role_grouping_col.strip(), now, now),
+        )
+        new_id = c.lastrowid
+        conn.commit()
+    return get_activity_config(new_id)
+
+
+def get_activity_configs(dataset_id: int) -> List[Dict[str, Any]]:
+    with _connect_ro() as conn:
+        rows = conn.execute(
+            "SELECT * FROM activity_configs WHERE dataset_id = ? ORDER BY created_at DESC",
+            (dataset_id,),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def get_activity_config(config_id: int) -> Optional[Dict[str, Any]]:
+    with _connect_ro() as conn:
+        row = conn.execute("SELECT * FROM activity_configs WHERE id = ?", (config_id,)).fetchone()
+        if not row:
+            return None
+        cfg = dict(row)
+        activities_rows = conn.execute(
+            "SELECT * FROM activities WHERE config_id = ? ORDER BY sort_order, id",
+            (config_id,),
+        ).fetchall()
+        cfg["activities"] = [dict(a) for a in activities_rows]
+        activity_ids = [a["id"] for a in cfg["activities"]]
+        if activity_ids:
+            placeholders = ",".join("?" * len(activity_ids))
+            alloc_rows = conn.execute(
+                f"SELECT * FROM role_activity_allocations WHERE config_id = ? AND activity_id IN ({placeholders})",
+                (config_id, *activity_ids),
+            ).fetchall()
+            lever_rows = conn.execute(
+                f"SELECT * FROM activity_levers WHERE config_id = ? AND activity_id IN ({placeholders})",
+                (config_id, *activity_ids),
+            ).fetchall()
+        else:
+            alloc_rows = []
+            lever_rows = []
+        cfg["allocations"] = [dict(a) for a in alloc_rows]
+        cfg["levers"] = [dict(l) for l in lever_rows]
+    return cfg
+
+
+def upsert_activities(config_id: int, activities_list: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Replace activities for a config (keeps IDs stable by name+process match)."""
+    now = datetime.utcnow().isoformat()
+    with _connect() as conn:
+        c = conn.cursor()
+        existing = {
+            (r["process_name"], r["name"]): r["id"]
+            for r in c.execute(
+                "SELECT id, name, process_name FROM activities WHERE config_id = ?",
+                (config_id,),
+            ).fetchall()
+        }
+        kept_ids: List[int] = []
+        for idx, act in enumerate(activities_list):
+            name = str(act.get("name") or "").strip()
+            process = str(act.get("process_name") or "").strip()
+            desc = str(act.get("description") or "").strip()
+            if not name:
+                continue
+            key = (process, name)
+            if key in existing:
+                aid = existing[key]
+                c.execute(
+                    "UPDATE activities SET description = ?, sort_order = ? WHERE id = ?",
+                    (desc, idx, aid),
+                )
+            else:
+                c.execute(
+                    "INSERT INTO activities (config_id, name, process_name, description, sort_order) VALUES (?, ?, ?, ?, ?)",
+                    (config_id, name, process, desc, idx),
+                )
+                aid = c.lastrowid
+            kept_ids.append(aid)
+        # Remove activities that are no longer in the list
+        if kept_ids:
+            placeholders = ",".join("?" * len(kept_ids))
+            c.execute(
+                f"DELETE FROM activities WHERE config_id = ? AND id NOT IN ({placeholders})",
+                (config_id, *kept_ids),
+            )
+        else:
+            c.execute("DELETE FROM activities WHERE config_id = ?", (config_id,))
+        c.execute("UPDATE activity_configs SET updated_at = ? WHERE id = ?", (now, config_id))
+        conn.commit()
+    cfg = get_activity_config(config_id)
+    return cfg["activities"] if cfg else []
+
+
+def upsert_role_allocations(config_id: int, allocations: List[Dict[str, Any]]) -> None:
+    """Bulk upsert role-activity allocations. Each row: {role_value, activity_id, time_pct}."""
+    now = datetime.utcnow().isoformat()
+    with _connect() as conn:
+        c = conn.cursor()
+        for row in allocations:
+            c.execute(
+                """
+                INSERT INTO role_activity_allocations (config_id, role_value, activity_id, time_pct)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT (config_id, role_value, activity_id) DO UPDATE SET time_pct = EXCLUDED.time_pct
+                """,
+                (config_id, str(row["role_value"]), int(row["activity_id"]), float(row.get("time_pct") or 0)),
+            )
+        c.execute("UPDATE activity_configs SET updated_at = ? WHERE id = ?", (now, config_id))
+        conn.commit()
+
+
+def get_role_allocation_matrix(config_id: int) -> Dict[str, Any]:
+    with _connect_ro() as conn:
+        activities = conn.execute(
+            "SELECT * FROM activities WHERE config_id = ? ORDER BY sort_order, id",
+            (config_id,),
+        ).fetchall()
+        allocs = conn.execute(
+            "SELECT * FROM role_activity_allocations WHERE config_id = ?",
+            (config_id,),
+        ).fetchall()
+    act_list = [dict(a) for a in activities]
+    alloc_map: Dict[str, Dict[int, float]] = {}
+    for a in allocs:
+        rv = a["role_value"]
+        if rv not in alloc_map:
+            alloc_map[rv] = {}
+        alloc_map[rv][int(a["activity_id"])] = float(a["time_pct"] or 0)
+    roles = sorted(alloc_map.keys())
+    matrix = []
+    for role in roles:
+        total = sum(alloc_map[role].values())
+        row_data = {"role_value": role, "total_pct": round(total, 4), "allocations": alloc_map[role]}
+        matrix.append(row_data)
+    return {"activities": act_list, "matrix": matrix}
+
+
+def upsert_activity_levers(config_id: int, levers: List[Dict[str, Any]]) -> None:
+    """Bulk upsert activity levers. Each row: {activity_id, lever_type, reduction_pct, effective_date}."""
+    valid_types = {"automation", "ai", "stop_work", "bpo"}
+    now = datetime.utcnow().isoformat()
+    with _connect() as conn:
+        c = conn.cursor()
+        for lv in levers:
+            lt = str(lv.get("lever_type") or "automation").lower()
+            if lt not in valid_types:
+                lt = "automation"
+            c.execute(
+                """
+                INSERT INTO activity_levers (config_id, activity_id, lever_type, reduction_pct, effective_date)
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT (config_id, activity_id, lever_type, effective_date)
+                    DO UPDATE SET reduction_pct = EXCLUDED.reduction_pct
+                """,
+                (
+                    config_id,
+                    int(lv["activity_id"]),
+                    lt,
+                    float(lv.get("reduction_pct") or 0),
+                    str(lv.get("effective_date") or ""),
+                ),
+            )
+        c.execute("UPDATE activity_configs SET updated_at = ? WHERE id = ?", (now, config_id))
+        conn.commit()
+
+
+def get_activity_levers(config_id: int) -> List[Dict[str, Any]]:
+    with _connect_ro() as conn:
+        rows = conn.execute(
+            "SELECT * FROM activity_levers WHERE config_id = ? ORDER BY activity_id, effective_date",
+            (config_id,),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def delete_activity_lever(lever_id: int) -> None:
+    with _connect() as conn:
+        conn.execute("DELETE FROM activity_levers WHERE id = ?", (lever_id,))
+        conn.commit()

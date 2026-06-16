@@ -1,7 +1,9 @@
-import React, { useState, useEffect, useLayoutEffect, useRef, useCallback } from "react";
+﻿import React, { useState, useEffect, useLayoutEffect, useRef, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
-import { setCurrentProjectId, fetchProjectDetail, cleanup, crosstab, orgchart, spansLayers, acquireLock, lockHeartbeat, releaseLock } from "../api/backend";
+import { useConfirmLogout } from "../hooks/useConfirmLogout";
+import { useWorkGuard } from "../contexts/WorkGuardContext";
+import { setCurrentProjectId, fetchProjectDetail, cleanup, crosstab, orgchart, spansLayers, acquireLock, lockHeartbeat, releaseLock, dbPromoteScenario, dbResetScenario, releaseDatasetLock } from "../api/backend";
 
 import Upload from "../components/Upload";
 import DataSourceSelector from "../components/DataSourceSelector";
@@ -12,6 +14,7 @@ import Hierarchy from "../components/Hierarchy";
 import SpansLayers from "../components/SpansLayers";
 import Crosstab from "../components/Crosstab";
 import OrgChart from "../components/OrgChart";
+import ActivityAnalysis from "../components/ActivityAnalysis";
 import ExportExcel from "../components/ExportExcel";
 
 const MODULES = [
@@ -46,13 +49,18 @@ const MODULES = [
   {
     id: "Org Chart", label: "Org Chart",
     icon: (<svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" /></svg>)
+  },
+  {
+    id: "Activity Analysis", label: "Activity Analysis",
+    icon: (<svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>)
   }
 ];
 
 export default function ProjectWorkspace() {
   const { projectId } = useParams();
   const navigate = useNavigate();
-  const { user, handleLogout } = useAuth();
+  const { user } = useAuth();
+  const confirmLogout = useConfirmLogout();
   const pid = parseInt(projectId, 10);
 
   // --- Project context ---
@@ -94,6 +102,63 @@ export default function ProjectWorkspace() {
   const [lockHolder, setLockHolder] = useState(null);
   const [lockAcquired, setLockAcquired] = useState(false);
   const heartbeatRef = useRef(null);
+  const orgGuardRef = useRef(null);
+  const { registerGuard, unregisterGuard } = useWorkGuard();
+
+  const handleOrgGuardStateChange = useCallback((state) => {
+    orgGuardRef.current = state;
+  }, []);
+
+  useEffect(() => {
+    registerGuard("org-chart", {
+      getLabel: () => {
+        const s = orgGuardRef.current;
+        if (!s?.inDbMode) return "Org Chart";
+        return s.scenarioName ? `Org Chart (${s.scenarioName})` : "Org Chart";
+      },
+      getDescription: () => {
+        const s = orgGuardRef.current;
+        if (!s?.inDbMode) return "";
+        const parts = [];
+        if ((s.changeLogLength ?? 0) > 0) {
+          parts.push(`${s.changeLogLength} change(s) in "${s.scenarioName || "scenario"}" not saved to baseline`);
+        }
+        if (s.editMode && s.lockAcquired) {
+          parts.push("Edit mode is active with dataset lock held");
+        }
+        return parts.join(" · ");
+      },
+      hasUnsavedWork: () => {
+        const s = orgGuardRef.current;
+        if (!s?.inDbMode || !s.datasetId) return false;
+        return (s.changeLogLength ?? 0) > 0 || (s.editMode && s.lockAcquired);
+      },
+      save: async () => {
+        const s = orgGuardRef.current;
+        if (!s?.inDbMode) return;
+        if ((s.changeLogLength ?? 0) > 0 && s.activeScenarioId) {
+          await dbPromoteScenario(s.activeScenarioId);
+        }
+        if (s.editMode && s.lockAcquired && s.datasetId) {
+          await releaseDatasetLock(s.datasetId).catch(() => {});
+        }
+        orgGuardRef.current = { ...s, changeLogLength: 0, editMode: false, lockAcquired: false };
+      },
+      revert: async () => {
+        const s = orgGuardRef.current;
+        if (!s?.inDbMode) return;
+        if ((s.changeLogLength ?? 0) > 0 && s.activeScenarioId) {
+          await dbResetScenario(s.activeScenarioId);
+        }
+        if (s.editMode && s.lockAcquired && s.datasetId) {
+          await releaseDatasetLock(s.datasetId).catch(() => {});
+        }
+        orgGuardRef.current = { ...s, changeLogLength: 0, editMode: false, lockAcquired: false };
+      },
+    });
+    return () => unregisterGuard("org-chart");
+  }, [registerGuard, unregisterGuard]);
+
 
   // Fetch project details for header display + access check
   useEffect(() => {
@@ -160,9 +225,19 @@ export default function ProjectWorkspace() {
       }
     }, 20_000);
 
+    // Fire an immediate heartbeat when the user returns to this tab so the
+    // 90s lock TTL doesn't expire while the browser throttles background intervals.
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") {
+        lockHeartbeat(pid).catch(() => tryAcquire());
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibility);
+
     return () => {
       cancelled = true;
       clearInterval(heartbeatRef.current);
+      document.removeEventListener("visibilitychange", handleVisibility);
       releaseLock(pid).catch(() => {});
     };
   }, [pid]);
@@ -182,9 +257,8 @@ export default function ProjectWorkspace() {
     }
   };
 
-  const doLogout = async () => {
-    await handleLogout();
-    navigate("/login");
+  const doLogout = (e) => {
+    confirmLogout(e);
   };
 
   // --- Access error screens ---
@@ -236,7 +310,7 @@ export default function ProjectWorkspace() {
 
   // --- CENTER PANE RENDER (same as old App.jsx) ---
   const renderActiveModule = () => {
-    if (!dfRecords && activeModule !== "Upload" && activeModule !== "Org Chart") {
+    if (!dfRecords && activeModule !== "Upload" && activeModule !== "Org Chart" && activeModule !== "Activity Analysis") {
       return (
         <div className="flex flex-col items-center justify-center h-64 text-gray-400">
           <svg className="w-16 h-16 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -348,8 +422,11 @@ export default function ProjectWorkspace() {
             setEmpCol={setEmpCol} setMgrCol={setMgrCol}
             setFteCol={setFteCol} setFlcCol={setFlcCol}
             setJobTitleCol={setJobTitleCol} setCountryCol={setCountryCol}
+            onGuardStateChange={handleOrgGuardStateChange}
           />
         );
+      case "Activity Analysis":
+        return <ActivityAnalysis datasetId={datasetId} />;
       default:
         return null;
     }
@@ -455,7 +532,7 @@ export default function ProjectWorkspace() {
       {/* TOP PANE (GLOBAL CONTROLS) */}
       <div
         className="px-8 py-4 bg-white border-b border-gray-200"
-        style={{ display: activeModule === "Org Chart" ? "none" : "block" }}
+        style={{ display: (activeModule === "Org Chart" || activeModule === "Activity Analysis") ? "none" : "block" }}
       >
         <div className="flex items-center gap-2 mb-2">
           <svg className="w-5 h-5 text-am-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -545,7 +622,7 @@ export default function ProjectWorkspace() {
 
         {/* CENTER PANE */}
         <main className="flex-1 overflow-auto bg-gray-50">
-          {activeModule === "Org Chart" ? (
+          {(activeModule === "Org Chart" || activeModule === "Activity Analysis") ? (
             <div className="h-full">{renderActiveModule()}</div>
           ) : (
             <div className="p-8">
@@ -559,7 +636,7 @@ export default function ProjectWorkspace() {
         {/* RIGHT PANE */}
         <aside
           className="w-72 bg-white border-l border-gray-200 shadow-sm"
-          style={{ display: activeModule === "Org Chart" ? "none" : "block" }}
+          style={{ display: (activeModule === "Org Chart" || activeModule === "Activity Analysis") ? "none" : "block" }}
         >
           <div className="p-4 border-b border-gray-200">
             <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Export & Stats</h3>

@@ -17,6 +17,10 @@ export const getCurrentUsername = () => currentUsername;
 export const setCurrentProjectId = (id) => { currentProjectId = id; };
 export const getCurrentProjectId = () => currentProjectId;
 
+// --- Auth lifecycle callbacks (registered by AuthContext) ---
+let _onTokenRefreshed = null;
+export const onTokenRefreshed = (fn) => { _onTokenRefreshed = fn; };
+
 const getProjectUrl = () => {
   if (!currentProjectId) throw new Error("No project selected");
   return `${BASE_URL}/projects/${currentProjectId}`;
@@ -33,6 +37,9 @@ const getHeaders = (additionalHeaders = {}) => {
   return headers;
 };
 
+let _lastRefreshFailAt = 0;
+const REFRESH_COOLDOWN_MS = 5_000;
+
 // --- Silent refresh ---
 const silentRefresh = async () => {
   if (refreshPromise) return refreshPromise;
@@ -44,11 +51,11 @@ const silentRefresh = async () => {
     .then((r) => {
       accessToken = r.data.access_token;
       currentUsername = r.data.user.username;
+      _onTokenRefreshed?.(r.data);
       return r.data;
     })
     .catch((err) => {
-      accessToken = null;
-      currentUsername = null;
+      _lastRefreshFailAt = Date.now();
       throw err;
     })
     .finally(() => { refreshPromise = null; });
@@ -68,13 +75,16 @@ axios.interceptors.response.use(
       !orig.url?.includes("/auth/login") &&
       !orig.url?.includes("/auth/refresh")
     ) {
+      if (Date.now() - _lastRefreshFailAt < REFRESH_COOLDOWN_MS) {
+        return Promise.reject(error);
+      }
       orig._retry = true;
       try {
         await silentRefresh();
         orig.headers["Authorization"] = `Bearer ${accessToken}`;
         return axios(orig);
       } catch {
-        // refresh failed -- let the 401 bubble up
+        // Refresh failed — do not force logout; user stays signed in until explicit logout.
       }
     }
     return Promise.reject(error);
@@ -390,13 +400,13 @@ export const dbDeleteScenario = async (scenarioId) => {
   return res.data;
 };
 
-export const dbMoveEmployee = async (scenarioId, empId, newMgrId) => {
-  const res = await axios.post(`${getProjectUrl()}/db/scenarios/${scenarioId}/move`, { emp_id: empId, new_mgr_id: newMgrId }, { headers: jsonHeaders() });
+export const dbMoveEmployee = async (scenarioId, empId, newMgrId, effectiveDate = null) => {
+  const res = await axios.post(`${getProjectUrl()}/db/scenarios/${scenarioId}/move`, { emp_id: empId, new_mgr_id: newMgrId, effective_date: effectiveDate }, { headers: jsonHeaders() });
   return res.data;
 };
 
-export const dbEditEmployee = async (scenarioId, empId, updates) => {
-  const res = await axios.post(`${getProjectUrl()}/db/scenarios/${scenarioId}/edit`, { emp_id: empId, updates }, { headers: jsonHeaders() });
+export const dbEditEmployee = async (scenarioId, empId, updates, effectiveDate = null) => {
+  const res = await axios.post(`${getProjectUrl()}/db/scenarios/${scenarioId}/edit`, { emp_id: empId, updates, effective_date: effectiveDate }, { headers: jsonHeaders() });
   return res.data;
 };
 
@@ -410,8 +420,41 @@ export const dbCloneEmployee = async (scenarioId, payload) => {
   return res.data;
 };
 
-export const dbFlagEmployee = async (scenarioId, empId, flagged = true) => {
-  const res = await axios.post(`${getProjectUrl()}/db/scenarios/${scenarioId}/flag`, { emp_id: empId, flagged }, { headers: jsonHeaders() });
+export const dbFlagEmployee = async (scenarioId, empId, flagged = true, effectiveDate = null) => {
+  const res = await axios.post(`${getProjectUrl()}/db/scenarios/${scenarioId}/flag`, { emp_id: empId, flagged, effective_date: effectiveDate }, { headers: jsonHeaders() });
+  return res.data;
+};
+
+export const dbBulkSetEffectiveDate = async (scenarioId, changeIds, effectiveDate) => {
+  const res = await axios.patch(`${getProjectUrl()}/db/scenarios/${scenarioId}/change_log/bulk_date`, { change_ids: changeIds, effective_date: effectiveDate || null }, { headers: jsonHeaders() });
+  return res.data;
+};
+
+export const dbGetPhasingView = async (scenarioId, fyStartMonth = 1) => {
+  const res = await axios.get(`${getProjectUrl()}/db/scenarios/${scenarioId}/phasing`, { params: { fy_start_month: fyStartMonth }, headers: jsonHeaders() });
+  return res.data;
+};
+
+export const dbValidateScenario = async (scenarioId) => {
+  const res = await axios.get(`${getProjectUrl()}/db/scenarios/${scenarioId}/validate`, { headers: jsonHeaders() });
+  return res.data;
+};
+
+export const dbBulkFlag = async (scenarioId, empIds, flagged, effectiveDate = null) => {
+  const res = await axios.post(
+    `${getProjectUrl()}/db/scenarios/${scenarioId}/bulk_flag`,
+    { emp_ids: empIds, flagged, effective_date: effectiveDate },
+    { headers: jsonHeaders() }
+  );
+  return res.data;
+};
+
+export const dbBulkEditProperty = async (scenarioId, empIds, field, value, effectiveDate = null) => {
+  const res = await axios.post(
+    `${getProjectUrl()}/db/scenarios/${scenarioId}/bulk_edit_property`,
+    { emp_ids: empIds, field, value, effective_date: effectiveDate },
+    { headers: jsonHeaders() }
+  );
   return res.data;
 };
 
@@ -595,6 +638,76 @@ export const adminAssignUser = (projectId, body) =>
 export const adminUnassignUser = (projectId, userId) =>
   axios.delete(`${BASE_URL}/admin/projects/${projectId}/assignments/${userId}`, { headers: getHeaders() }).then(r => r.data);
 
+// --- Datasets (admin) ---
+export const adminListProjectDatasets = (projectId) =>
+  axios.get(`${BASE_URL}/admin/projects/${projectId}/datasets`, { headers: getHeaders() }).then(r => r.data);
+
+export const adminDeleteProjectDataset = (projectId, datasetId) =>
+  axios.delete(`${BASE_URL}/admin/projects/${projectId}/datasets/${datasetId}`, { headers: getHeaders() }).then(r => r.data);
+
 // --- Audit Log ---
 export const adminGetAuditLog = (params = {}) =>
   axios.get(`${BASE_URL}/admin/audit-log`, { headers: getHeaders(), params }).then(r => r.data);
+
+
+// ===========================================================================
+// Activity Analysis
+// ===========================================================================
+
+export const activityListConfigs = (datasetId) =>
+  axios.get(`${getProjectUrl()}/activity/configs`, { headers: getHeaders(), params: { dataset_id: datasetId } }).then(r => r.data);
+
+export const activityCreateConfig = (body) =>
+  axios.post(`${getProjectUrl()}/activity/configs`, body, { headers: jsonHeaders() }).then(r => r.data);
+
+export const activityGetConfig = (configId) =>
+  axios.get(`${getProjectUrl()}/activity/configs/${configId}`, { headers: getHeaders() }).then(r => r.data);
+
+export const activityGetRoles = (configId) =>
+  axios.get(`${getProjectUrl()}/activity/configs/${configId}/roles`, { headers: getHeaders() }).then(r => r.data);
+
+export const activityUpsertActivities = (configId, activities) =>
+  axios.post(`${getProjectUrl()}/activity/configs/${configId}/activities`, { activities }, { headers: jsonHeaders() }).then(r => r.data);
+
+export const activityUploadActivities = (configId, file) => {
+  const fd = new FormData(); fd.append("file", file);
+  return axios.post(`${getProjectUrl()}/activity/configs/${configId}/activities/upload`, fd, { headers: getHeaders() }).then(r => r.data);
+};
+
+export const activityGetAllocations = (configId) =>
+  axios.get(`${getProjectUrl()}/activity/configs/${configId}/allocations`, { headers: getHeaders() }).then(r => r.data);
+
+export const activityUpsertAllocations = (configId, allocations) =>
+  axios.post(`${getProjectUrl()}/activity/configs/${configId}/allocations`, { allocations }, { headers: jsonHeaders() }).then(r => r.data);
+
+export const activityUploadAllocations = (configId, file) => {
+  const fd = new FormData(); fd.append("file", file);
+  return axios.post(`${getProjectUrl()}/activity/configs/${configId}/allocations/upload`, fd, { headers: getHeaders() }).then(r => r.data);
+};
+
+export const activityGetLevers = (configId) =>
+  axios.get(`${getProjectUrl()}/activity/configs/${configId}/levers`, { headers: getHeaders() }).then(r => r.data);
+
+export const activityUpsertLevers = (configId, levers) =>
+  axios.post(`${getProjectUrl()}/activity/configs/${configId}/levers`, { levers }, { headers: jsonHeaders() }).then(r => r.data);
+
+export const activityDeleteLever = (configId, leverId) =>
+  axios.delete(`${getProjectUrl()}/activity/configs/${configId}/levers/${leverId}`, { headers: getHeaders() }).then(r => r.data);
+
+export const activityUploadLevers = (configId, file) => {
+  const fd = new FormData(); fd.append("file", file);
+  return axios.post(`${getProjectUrl()}/activity/configs/${configId}/levers/upload`, fd, { headers: getHeaders() }).then(r => r.data);
+};
+
+export const activityCompute = (configId, params = {}) =>
+  axios.post(`${getProjectUrl()}/activity/configs/${configId}/compute`, {}, { headers: jsonHeaders(), params }).then(r => r.data);
+
+export const activityExportImpact = async (configId, configName = "activity") => {
+  const res = await axios.get(`${getProjectUrl()}/activity/configs/${configId}/impact/export`, {
+    headers: getHeaders(), responseType: "blob",
+  });
+  const url = URL.createObjectURL(res.data);
+  const a = document.createElement("a");
+  a.href = url; a.download = `orgsight_activity_${configName}.xlsx`; a.click();
+  URL.revokeObjectURL(url);
+};

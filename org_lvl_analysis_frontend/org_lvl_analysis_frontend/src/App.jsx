@@ -1,4 +1,4 @@
-import React from "react";
+﻿import React from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
 import { useAuth } from "./contexts/AuthContext";
 
@@ -134,6 +134,7 @@ function RequireAdmin({ children }) {
   return children;
 }
 
+
 export default function App() {
   const { isAuthenticated, mustChangePassword, loading } = useAuth();
 
@@ -168,7 +169,7 @@ export default function App() {
         <ProjectWorkspace />
       } />
 
-      {/* Admin routes — only role=admin can access */}
+      {/* Admin routes â€” only role=admin can access */}
       <Route path="/admin" element={<RequireAdmin><AdminLayout /></RequireAdmin>}>
         <Route index element={<Navigate to="/admin/users" replace />} />
         <Route path="users" element={<UserManagement />} />

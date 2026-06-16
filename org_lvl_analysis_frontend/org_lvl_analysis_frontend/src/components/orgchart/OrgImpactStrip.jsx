@@ -2,10 +2,11 @@ import React, { useEffect, useMemo, useState } from "react";
 import { AM } from "./orgChartTheme";
 import { fmtCompactCurrency, fmtNumber } from "./orgChartLayout";
 import { dbGetScenarioSummaryByDim } from "../../api/backend";
+import PhasingView from "./PhasingView";
 
 /**
  * Collapsed: thin strip at bottom summarising live deltas.
- * Expanded: Baseline vs To-Be totals, dimensional breakdown table, change log.
+ * Expanded: tabs for Summary/Phasing, dimensional breakdown table, change log.
  */
 export default function OrgImpactStrip({
   summary,
@@ -15,6 +16,7 @@ export default function OrgImpactStrip({
   onExportChanges,
 }) {
   const [expanded, setExpanded] = useState(false);
+  const [activeTab, setActiveTab] = useState("summary"); // "summary" | "phasing"
   const [selectedDim, setSelectedDim] = useState("");
   const [breakdown, setBreakdown] = useState(null);
   const [breakdownLoading, setBreakdownLoading] = useState(false);
@@ -149,190 +151,236 @@ export default function OrgImpactStrip({
       </button>
 
       {expanded && (
-        <div style={{ borderTop: `1px solid ${AM.borderLight}`, padding: 20 }}>
-          {/* Totals row */}
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14, marginBottom: 18 }}>
-            <ComparisonCard
-              label="Baseline"
-              headcount={summary.baseline.headcount}
-              fte={summary.baseline.total_fte}
-              cost={summary.baseline.total_cost}
-              tone="neutral"
-            />
-            <ComparisonCard
-              label="Current (To-Be)"
-              headcount={summary.current.headcount}
-              fte={summary.current.total_fte}
-              cost={summary.current.total_cost}
-              tone="primary"
-            />
-            <ComparisonCard
-              label="Delta"
-              headcount={deltaHc}
-              fte={deltaFte}
-              cost={deltaCost}
-              tone={deltaCost < 0 ? "success" : deltaCost > 0 ? "warning" : "neutral"}
-              isDelta
-            />
+        <div style={{ borderTop: `1px solid ${AM.borderLight}` }}>
+          {/* Tab bar */}
+          <div style={{
+            display: "flex", borderBottom: `1px solid ${AM.borderLight}`,
+            background: AM.white, paddingLeft: 20,
+          }}>
+            {[{ id: "summary", label: "Summary" }, { id: "phasing", label: "Phasing" }].map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                style={{
+                  background: "transparent",
+                  border: "none",
+                  borderBottom: activeTab === tab.id ? `2px solid ${AM.navy}` : "2px solid transparent",
+                  color: activeTab === tab.id ? AM.navy : AM.textMuted,
+                  fontWeight: activeTab === tab.id ? 700 : 500,
+                  fontSize: 12,
+                  padding: "10px 16px",
+                  cursor: "pointer",
+                  marginBottom: -1,
+                  fontFamily: "inherit",
+                }}
+              >
+                {tab.label}
+              </button>
+            ))}
           </div>
 
-          {/* Dimensional breakdown */}
-          {showDimBreakdown && (
-            <div style={{ marginBottom: 18 }}>
-              <div style={{
-                display: "flex", alignItems: "center", justifyContent: "space-between",
-                marginBottom: 10, flexWrap: "wrap", gap: 10,
-              }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                  <span style={sectionLabel()}>Breakdown by</span>
-                  <select
-                    value={selectedDim}
-                    onChange={(e) => setSelectedDim(e.target.value)}
-                    style={{
-                      border: `1px solid ${AM.border}`,
-                      borderRadius: 6,
-                      padding: "5px 10px",
-                      fontSize: 12,
-                      fontWeight: 600,
-                      color: AM.navy,
-                      background: AM.white,
-                      cursor: "pointer",
-                    }}
-                  >
-                    {dims.map((d) => (
-                      <option key={d} value={d}>{d}</option>
-                    ))}
-                  </select>
-                  {breakdownLoading && (
-                    <span style={{ fontSize: 11, color: AM.textMuted }}>Loading…</span>
-                  )}
+          <div style={{ padding: 20 }}>
+            {activeTab === "summary" && (
+              <>
+                {/* Totals row */}
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14, marginBottom: 18 }}>
+                  <ComparisonCard
+                    label="Baseline"
+                    headcount={summary.baseline.headcount}
+                    fte={summary.baseline.total_fte}
+                    cost={summary.baseline.total_cost}
+                    tone="neutral"
+                  />
+                  <ComparisonCard
+                    label="Current (To-Be)"
+                    headcount={summary.current.headcount}
+                    fte={summary.current.total_fte}
+                    cost={summary.current.total_cost}
+                    tone="primary"
+                  />
+                  <ComparisonCard
+                    label="Delta"
+                    headcount={deltaHc}
+                    fte={deltaFte}
+                    cost={deltaCost}
+                    tone={deltaCost < 0 ? "success" : deltaCost > 0 ? "warning" : "neutral"}
+                    isDelta
+                  />
                 </div>
-                {onExportChanges && (
-                  <button
-                    onClick={onExportChanges}
-                    style={{
-                      border: `1px solid ${AM.border}`,
-                      background: AM.white,
-                      color: AM.navy,
-                      borderRadius: 6,
-                      padding: "5px 12px",
-                      fontSize: 11,
-                      fontWeight: 600,
-                      cursor: "pointer",
-                    }}
-                  >
-                    ↓ Export full report (Excel)
-                  </button>
+
+                {/* Dimensional breakdown */}
+                {showDimBreakdown && (
+                  <div style={{ marginBottom: 18 }}>
+                    <div style={{
+                      display: "flex", alignItems: "center", justifyContent: "space-between",
+                      marginBottom: 10, flexWrap: "wrap", gap: 10,
+                    }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                        <span style={sectionLabel()}>Breakdown by</span>
+                        <select
+                          value={selectedDim}
+                          onChange={(e) => setSelectedDim(e.target.value)}
+                          style={{
+                            border: `1px solid ${AM.border}`,
+                            borderRadius: 6,
+                            padding: "5px 10px",
+                            fontSize: 12,
+                            fontWeight: 600,
+                            color: AM.navy,
+                            background: AM.white,
+                            cursor: "pointer",
+                          }}
+                        >
+                          {dims.map((d) => (
+                            <option key={d} value={d}>{d}</option>
+                          ))}
+                        </select>
+                        {breakdownLoading && (
+                          <span style={{ fontSize: 11, color: AM.textMuted }}>Loading…</span>
+                        )}
+                      </div>
+                      {onExportChanges && (
+                        <button
+                          onClick={onExportChanges}
+                          style={{
+                            border: `1px solid ${AM.border}`,
+                            background: AM.white,
+                            color: AM.navy,
+                            borderRadius: 6,
+                            padding: "5px 12px",
+                            fontSize: 11,
+                            fontWeight: 600,
+                            cursor: "pointer",
+                          }}
+                        >
+                          ↓ Export full report (Excel)
+                        </button>
+                      )}
+                    </div>
+
+                    {breakdownError && (
+                      <div style={{ fontSize: 12, color: AM.danger, marginBottom: 8 }}>{breakdownError}</div>
+                    )}
+
+                    {!breakdownLoading && breakdown && (
+                      <div style={{ border: `1px solid ${AM.border}`, borderRadius: 8, overflow: "hidden" }}>
+                        <div style={{ overflow: "auto", maxHeight: 260 }}>
+                          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
+                            <thead>
+                              <tr style={{ background: AM.navy, color: AM.white }}>
+                                <SortTh label={selectedDim} sortKey="dimension_value" current={sortKey} asc={sortAsc} onSort={toggleSort} />
+                                <SortTh label="Baseline HC" sortKey="baseline_hc" current={sortKey} asc={sortAsc} onSort={toggleSort} right />
+                                <SortTh label="Baseline FTE" sortKey="baseline_fte" current={sortKey} asc={sortAsc} onSort={toggleSort} right />
+                                <SortTh label="Baseline Cost" sortKey="baseline_cost" current={sortKey} asc={sortAsc} onSort={toggleSort} right />
+                                <SortTh label="To-Be HC" sortKey="tobe_hc" current={sortKey} asc={sortAsc} onSort={toggleSort} right />
+                                <SortTh label="To-Be FTE" sortKey="tobe_fte" current={sortKey} asc={sortAsc} onSort={toggleSort} right />
+                                <SortTh label="To-Be Cost" sortKey="tobe_cost" current={sortKey} asc={sortAsc} onSort={toggleSort} right />
+                                <SortTh label="Δ HC" sortKey="delta_hc" current={sortKey} asc={sortAsc} onSort={toggleSort} right />
+                                <SortTh label="Δ FTE" sortKey="delta_fte" current={sortKey} asc={sortAsc} onSort={toggleSort} right />
+                                <SortTh label="Δ Cost" sortKey="delta_cost" current={sortKey} asc={sortAsc} onSort={toggleSort} right highlight />
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {sortedRows.map((row) => (
+                                <tr key={row.dimension_value} style={{ borderTop: `1px solid ${AM.borderLight}` }}>
+                                  <Td>{row.dimension_value}</Td>
+                                  <Td right mono>{fmtNumber(row.baseline_hc)}</Td>
+                                  <Td right mono>{fmtNumber(row.baseline_fte)}</Td>
+                                  <Td right mono>{fmtCompactCurrency(row.baseline_cost)}</Td>
+                                  <Td right mono>{fmtNumber(row.tobe_hc)}</Td>
+                                  <Td right mono>{fmtNumber(row.tobe_fte)}</Td>
+                                  <Td right mono>{fmtCompactCurrency(row.tobe_cost)}</Td>
+                                  <DeltaTd value={row.delta_hc} fmt="number" />
+                                  <DeltaTd value={row.delta_fte} fmt="number" decimals={1} />
+                                  <DeltaTd value={row.delta_cost} fmt="currency" />
+                                </tr>
+                              ))}
+                              {breakdown.totals && (
+                                <tr style={{ borderTop: `2px solid ${AM.border}`, background: AM.borderLight, fontWeight: 700 }}>
+                                  <Td bold>Total</Td>
+                                  <Td right mono bold>{fmtNumber(breakdown.totals.baseline_hc)}</Td>
+                                  <Td right mono bold>{fmtNumber(breakdown.totals.baseline_fte)}</Td>
+                                  <Td right mono bold>{fmtCompactCurrency(breakdown.totals.baseline_cost)}</Td>
+                                  <Td right mono bold>{fmtNumber(breakdown.totals.tobe_hc)}</Td>
+                                  <Td right mono bold>{fmtNumber(breakdown.totals.tobe_fte)}</Td>
+                                  <Td right mono bold>{fmtCompactCurrency(breakdown.totals.tobe_cost)}</Td>
+                                  <DeltaTd value={breakdown.totals.delta_hc} fmt="number" bold />
+                                  <DeltaTd value={breakdown.totals.delta_fte} fmt="number" decimals={1} bold />
+                                  <DeltaTd value={breakdown.totals.delta_cost} fmt="currency" bold />
+                                </tr>
+                              )}
+                            </tbody>
+                          </table>
+                        </div>
+                        <div style={{ padding: "6px 12px", fontSize: 10, color: AM.textMuted, borderTop: `1px solid ${AM.borderLight}` }}>
+                          Click column headers to sort. Moves between {selectedDim} values appear as deltas on both sides.
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 )}
-              </div>
 
-              {breakdownError && (
-                <div style={{ fontSize: 12, color: AM.danger, marginBottom: 8 }}>{breakdownError}</div>
-              )}
-
-              {!breakdownLoading && breakdown && (
-                <div style={{ border: `1px solid ${AM.border}`, borderRadius: 8, overflow: "hidden" }}>
-                  <div style={{ overflow: "auto", maxHeight: 260 }}>
-                    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
+                {/* Change log */}
+                <div style={{
+                  fontSize: 11, fontWeight: 600, color: AM.textMuted,
+                  textTransform: "uppercase", letterSpacing: "0.7px", marginBottom: 8,
+                }}>
+                  Change Log
+                </div>
+                {(!changes || changes.length === 0) ? (
+                  <div style={{ fontSize: 12, color: AM.textMuted, fontStyle: "italic" }}>
+                    No changes yet. Toggle Edit Mode and drag a card to move someone, or use the flag button to remove a role.
+                  </div>
+                ) : (
+                  <div style={{ maxHeight: 220, overflow: "auto", border: `1px solid ${AM.borderLight}`, borderRadius: 6 }}>
+                    <table style={{ width: "100%", fontSize: 11, borderCollapse: "collapse" }}>
                       <thead>
-                        <tr style={{ background: AM.navy, color: AM.white }}>
-                          <SortTh label={selectedDim} sortKey="dimension_value" current={sortKey} asc={sortAsc} onSort={toggleSort} />
-                          <SortTh label="Baseline HC" sortKey="baseline_hc" current={sortKey} asc={sortAsc} onSort={toggleSort} right />
-                          <SortTh label="Baseline FTE" sortKey="baseline_fte" current={sortKey} asc={sortAsc} onSort={toggleSort} right />
-                          <SortTh label="Baseline Cost" sortKey="baseline_cost" current={sortKey} asc={sortAsc} onSort={toggleSort} right />
-                          <SortTh label="To-Be HC" sortKey="tobe_hc" current={sortKey} asc={sortAsc} onSort={toggleSort} right />
-                          <SortTh label="To-Be FTE" sortKey="tobe_fte" current={sortKey} asc={sortAsc} onSort={toggleSort} right />
-                          <SortTh label="To-Be Cost" sortKey="tobe_cost" current={sortKey} asc={sortAsc} onSort={toggleSort} right />
-                          <SortTh label="Δ HC" sortKey="delta_hc" current={sortKey} asc={sortAsc} onSort={toggleSort} right />
-                          <SortTh label="Δ FTE" sortKey="delta_fte" current={sortKey} asc={sortAsc} onSort={toggleSort} right />
-                          <SortTh label="Δ Cost" sortKey="delta_cost" current={sortKey} asc={sortAsc} onSort={toggleSort} right highlight />
+                        <tr style={{ background: AM.borderLight }}>
+                          <Th>When</Th>
+                          <Th>Action</Th>
+                          <Th>Employee</Th>
+                          <Th>From → To</Th>
+                          <Th>Field / Value</Th>
+                          <Th>Effective Date</Th>
                         </tr>
                       </thead>
                       <tbody>
-                        {sortedRows.map((row) => (
-                          <tr key={row.dimension_value} style={{ borderTop: `1px solid ${AM.borderLight}` }}>
-                            <Td>{row.dimension_value}</Td>
-                            <Td right mono>{fmtNumber(row.baseline_hc)}</Td>
-                            <Td right mono>{fmtNumber(row.baseline_fte)}</Td>
-                            <Td right mono>{fmtCompactCurrency(row.baseline_cost)}</Td>
-                            <Td right mono>{fmtNumber(row.tobe_hc)}</Td>
-                            <Td right mono>{fmtNumber(row.tobe_fte)}</Td>
-                            <Td right mono>{fmtCompactCurrency(row.tobe_cost)}</Td>
-                            <DeltaTd value={row.delta_hc} fmt="number" />
-                            <DeltaTd value={row.delta_fte} fmt="number" decimals={1} />
-                            <DeltaTd value={row.delta_cost} fmt="currency" />
+                        {changes.slice().reverse().map((c) => (
+                          <tr key={c.id} style={{ borderTop: `1px solid ${AM.borderLight}` }}>
+                            <Td>{formatTime(c.timestamp)}</Td>
+                            <Td><ActionPill action={c.action} /></Td>
+                            <Td mono>{c.emp_id}</Td>
+                            <Td mono>
+                              {c.action === "move"
+                                ? `${c.old_mgr_id || "—"} → ${c.new_mgr_id || "—"}`
+                                : "—"}
+                            </Td>
+                            <Td>
+                              {c.action === "edit"
+                                ? `${c.field}: ${truncate(c.old_value)} → ${truncate(c.new_value)}`
+                                : "—"}
+                            </Td>
+                            <Td>
+                              {c.effective_date
+                                ? <span style={{ color: AM.navy, fontWeight: 600 }}>{formatDate(c.effective_date)}</span>
+                                : <span style={{ color: AM.textMuted, fontStyle: "italic" }}>Undated</span>}
+                            </Td>
                           </tr>
                         ))}
-                        {breakdown.totals && (
-                          <tr style={{ borderTop: `2px solid ${AM.border}`, background: AM.borderLight, fontWeight: 700 }}>
-                            <Td bold>Total</Td>
-                            <Td right mono bold>{fmtNumber(breakdown.totals.baseline_hc)}</Td>
-                            <Td right mono bold>{fmtNumber(breakdown.totals.baseline_fte)}</Td>
-                            <Td right mono bold>{fmtCompactCurrency(breakdown.totals.baseline_cost)}</Td>
-                            <Td right mono bold>{fmtNumber(breakdown.totals.tobe_hc)}</Td>
-                            <Td right mono bold>{fmtNumber(breakdown.totals.tobe_fte)}</Td>
-                            <Td right mono bold>{fmtCompactCurrency(breakdown.totals.tobe_cost)}</Td>
-                            <DeltaTd value={breakdown.totals.delta_hc} fmt="number" bold />
-                            <DeltaTd value={breakdown.totals.delta_fte} fmt="number" decimals={1} bold />
-                            <DeltaTd value={breakdown.totals.delta_cost} fmt="currency" bold />
-                          </tr>
-                        )}
                       </tbody>
                     </table>
                   </div>
-                  <div style={{ padding: "6px 12px", fontSize: 10, color: AM.textMuted, borderTop: `1px solid ${AM.borderLight}` }}>
-                    Click column headers to sort. Moves between {selectedDim} values appear as deltas on both sides.
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
+                )}
+              </>
+            )}
 
-          {/* Change log */}
-          <div style={{
-            fontSize: 11, fontWeight: 600, color: AM.textMuted,
-            textTransform: "uppercase", letterSpacing: "0.7px", marginBottom: 8,
-          }}>
-            Change Log
+            {activeTab === "phasing" && scenarioId && (
+              <PhasingView
+                scenarioId={scenarioId}
+                changes={changes || []}
+              />
+            )}
           </div>
-          {(!changes || changes.length === 0) ? (
-            <div style={{ fontSize: 12, color: AM.textMuted, fontStyle: "italic" }}>
-              No changes yet. Toggle Edit Mode and drag a card to move someone, or use the flag button to remove a role.
-            </div>
-          ) : (
-            <div style={{ maxHeight: 220, overflow: "auto", border: `1px solid ${AM.borderLight}`, borderRadius: 6 }}>
-              <table style={{ width: "100%", fontSize: 11, borderCollapse: "collapse" }}>
-                <thead>
-                  <tr style={{ background: AM.borderLight }}>
-                    <Th>When</Th>
-                    <Th>Action</Th>
-                    <Th>Employee</Th>
-                    <Th>From → To</Th>
-                    <Th>Field / Value</Th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {changes.slice().reverse().map((c) => (
-                    <tr key={c.id} style={{ borderTop: `1px solid ${AM.borderLight}` }}>
-                      <Td>{formatTime(c.timestamp)}</Td>
-                      <Td><ActionPill action={c.action} /></Td>
-                      <Td mono>{c.emp_id}</Td>
-                      <Td mono>
-                        {c.action === "move"
-                          ? `${c.old_mgr_id || "—"} → ${c.new_mgr_id || "—"}`
-                          : "—"}
-                      </Td>
-                      <Td>
-                        {c.action === "edit"
-                          ? `${c.field}: ${truncate(c.old_value)} → ${truncate(c.new_value)}`
-                          : "—"}
-                      </Td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
         </div>
       )}
     </div>
@@ -518,6 +566,15 @@ function formatTime(ts) {
     return new Date(ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   } catch {
     return ts;
+  }
+}
+
+function formatDate(iso) {
+  if (!iso) return "";
+  try {
+    return new Date(iso + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+  } catch {
+    return iso;
   }
 }
 

@@ -2,6 +2,7 @@ import React, { useEffect, useState, useCallback } from "react";
 import {
   adminListProjects, adminCreateProject, adminUpdateProject, adminArchiveProject,
   adminHardDeleteProject, adminListAssignments, adminAssignUser, adminUnassignUser, adminListUsers,
+  adminListProjectDatasets, adminDeleteProjectDataset,
 } from "../../api/backend";
 import ConfirmDialog from "../../components/ConfirmDialog";
 
@@ -213,12 +214,168 @@ function AssignmentPanel({ project, onClose }) {
   );
 }
 
+function fmtRows(n) {
+  if (n == null) return "0";
+  return Number(n).toLocaleString();
+}
+
+function fmtDate(iso) {
+  if (!iso) return "—";
+  try {
+    return new Date(iso).toLocaleString(undefined, {
+      month: "short", day: "numeric", year: "numeric",
+      hour: "2-digit", minute: "2-digit",
+    });
+  } catch {
+    return iso;
+  }
+}
+
+function DatasetPanel({ project, onClose }) {
+  const [datasets, setDatasets] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [confirmDelete, setConfirmDelete] = useState(null);
+  const [deleting, setDeleting] = useState(false);
+
+  const load = useCallback(() => {
+    setLoading(true);
+    adminListProjectDatasets(project.id)
+      .then((data) => {
+        setDatasets(data.datasets || []);
+        setError(null);
+      })
+      .catch((err) => setError(err.response?.data?.detail || "Failed to load datasets."))
+      .finally(() => setLoading(false));
+  }, [project.id]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const handleDelete = async () => {
+    if (!confirmDelete) return;
+    setDeleting(true);
+    try {
+      await adminDeleteProjectDataset(project.id, confirmDelete.id);
+      setConfirmDelete(null);
+      load();
+    } catch (err) {
+      setError(err.response?.data?.detail || "Failed to delete dataset.");
+      setConfirmDelete(null);
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+      <div className="bg-white rounded-xl shadow-2xl border border-gray-200 w-full max-w-2xl mx-4 max-h-[80vh] flex flex-col">
+        {/* Header */}
+        <div className="px-6 py-4 border-b bg-gray-50 flex items-center justify-between flex-shrink-0">
+          <div>
+            <h3 className="text-lg font-semibold text-gray-800">Datasets: {project.name}</h3>
+            <p className="text-xs text-gray-500 mt-0.5">
+              {datasets === null ? "Loading…" : `${datasets.length} dataset${datasets.length !== 1 ? "s" : ""} in this project`}
+            </p>
+          </div>
+          <button onClick={onClose} className="p-1 hover:bg-gray-200 rounded-lg transition">
+            <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="flex-1 overflow-auto px-6 py-4">
+          {error && (
+            <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">{error}</div>
+          )}
+
+          {loading ? (
+            <div className="flex justify-center py-10">
+              <div className="w-6 h-6 border-4 border-am-100 border-t-am-500 rounded-full animate-spin" />
+            </div>
+          ) : !datasets || datasets.length === 0 ? (
+            <div className="text-center py-10">
+              <div className="w-12 h-12 mx-auto rounded-full bg-gray-100 flex items-center justify-center mb-3">
+                <svg className="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4" />
+                </svg>
+              </div>
+              <p className="text-sm font-medium text-gray-600">No datasets in this project</p>
+              <p className="text-xs text-gray-400 mt-1">Datasets are created when users run the Hierarchy step.</p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {datasets.map((d) => (
+                <div
+                  key={d.id}
+                  className="flex items-center gap-4 p-4 bg-gray-50 rounded-lg border border-gray-100 hover:border-gray-200 transition"
+                >
+                  {/* Accent dot */}
+                  <div className="w-2 h-2 rounded-full bg-[#01244a] flex-shrink-0" />
+
+                  {/* Info */}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-semibold text-sm text-gray-800 truncate" title={d.name}>
+                        {d.name}
+                      </span>
+                      <span className="text-[11px] text-gray-400 font-mono">#{d.id}</span>
+                    </div>
+                    <div className="mt-0.5 flex items-center gap-2 text-xs text-gray-500 flex-wrap">
+                      <span>{fmtRows(d.row_count)} rows</span>
+                      <span className="text-gray-300">·</span>
+                      <span>uploaded by {d.username || "unknown"}</span>
+                      <span className="text-gray-300">·</span>
+                      <span>{fmtDate(d.upload_time)}</span>
+                    </div>
+                  </div>
+
+                  {/* Delete button */}
+                  <button
+                    onClick={() => setConfirmDelete(d)}
+                    className="flex-shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-red-600 bg-red-50 hover:bg-red-100 rounded-lg transition"
+                  >
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                    Delete
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="px-6 py-3 border-t bg-gray-50 flex justify-end flex-shrink-0">
+          <button onClick={onClose} className="px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition">
+            Close
+          </button>
+        </div>
+      </div>
+
+      <ConfirmDialog
+        open={!!confirmDelete}
+        title="Delete Dataset"
+        message={`Permanently delete "${confirmDelete?.name}"? This will remove all scenarios, change logs, and records for this dataset. This action cannot be undone.`}
+        confirmText={confirmDelete?.name}
+        confirmLabel={deleting ? "Deleting…" : "Delete Forever"}
+        destructive
+        onConfirm={handleDelete}
+        onCancel={() => setConfirmDelete(null)}
+      />
+    </div>
+  );
+}
+
 export default function ProjectManagement() {
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editProject, setEditProject] = useState(null);
   const [assignProject, setAssignProject] = useState(null);
+  const [datasetProject, setDatasetProject] = useState(null);
   const [confirmArchive, setConfirmArchive] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(null);
 
@@ -326,6 +483,10 @@ export default function ProjectManagement() {
                           className="px-3 py-1.5 text-xs font-medium text-am-600 bg-am-50 hover:bg-am-100 rounded-lg transition-all">
                           Members
                         </button>
+                        <button onClick={() => setDatasetProject(p)}
+                          className="px-3 py-1.5 text-xs font-medium text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition-all">
+                          Datasets
+                        </button>
                         <button onClick={() => { setEditProject(p); setShowForm(true); }}
                           className="px-3 py-1.5 text-xs font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-all">
                           Edit
@@ -354,6 +515,10 @@ export default function ProjectManagement() {
 
       {assignProject && (
         <AssignmentPanel project={assignProject} onClose={() => { setAssignProject(null); load(); }} />
+      )}
+
+      {datasetProject && (
+        <DatasetPanel project={datasetProject} onClose={() => setDatasetProject(null)} />
       )}
 
       <ConfirmDialog

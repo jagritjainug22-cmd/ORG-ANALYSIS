@@ -1,11 +1,13 @@
-import React, { useState } from "react";
+﻿import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
+import { useConfirmLogout } from "../hooks/useConfirmLogout";
 import { changePassword, login as loginApi } from "../api/backend";
 
 export default function ChangePassword() {
   const navigate = useNavigate();
-  const { user, handlePasswordChanged, handleLogout } = useAuth();
+  const { user, handlePasswordChanged } = useAuth();
+  const confirmLogout = useConfirmLogout();
   const [currentPass, setCurrentPass] = useState("");
   const [newPass, setNewPass] = useState("");
   const [confirmPass, setConfirmPass] = useState("");

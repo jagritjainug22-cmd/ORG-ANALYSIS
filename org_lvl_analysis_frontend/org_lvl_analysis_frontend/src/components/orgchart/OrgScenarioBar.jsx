@@ -33,11 +33,14 @@ export default function OrgScenarioBar({
   dbGenerateRateCard,
   dbPatchRateCardRow,
   dbSetScenarioRateCard,
+  onValidate,
+  onJumpToNode,
 }) {
   const [createOpen, setCreateOpen] = useState(false);
   const [rateCardModalOpen, setRateCardModalOpen] = useState(false);
   const [renamingId, setRenamingId] = useState(null);
   const [renameDraft, setRenameDraft] = useState("");
+  const [validating, setValidating] = useState(false);
 
   const active = scenarios.find((s) => s.id === activeScenarioId);
   const isBaseline = active?.name === "Baseline";
@@ -59,6 +62,16 @@ export default function OrgScenarioBar({
   const changeQuartile = async (q) => {
     if (!active || !active.rate_card_id || !dbSetScenarioRateCard) return;
     await onScenarioRateCardChange?.(active.id, active.rate_card_id, q);
+  };
+
+  const handleValidate = async () => {
+    if (!onValidate) return;
+    setValidating(true);
+    try {
+      await onValidate();
+    } finally {
+      setValidating(false);
+    }
   };
 
   return (
@@ -272,6 +285,16 @@ export default function OrgScenarioBar({
       <button onClick={onCompare} style={ghostPill()} title="Compare all scenarios">
         Compare
       </button>
+      {onValidate && (
+        <button
+          onClick={handleValidate}
+          disabled={validating}
+          style={ghostPill()}
+          title="Run full server-side validation sweep on the to-be scenario state"
+        >
+          {validating ? "Validating…" : "Full Validate"}
+        </button>
+      )}
       {active && !isBaseline && (
         <button
           onClick={() => {
@@ -318,6 +341,7 @@ export default function OrgScenarioBar({
         dbPatchRateCardRow={dbPatchRateCardRow}
         onCreated={onRateCardCreated}
       />
+
     </div>
   );
 }

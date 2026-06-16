@@ -10,11 +10,15 @@ CSRF protection:
   form POSTs that would auto-attach the cookie without passing CORS preflight)
 """
 
+import logging
 import os
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from psycopg import OperationalError
 from pydantic import BaseModel
 from typing import Optional
+
+logger = logging.getLogger(__name__)
 
 IS_PRODUCTION = os.environ.get("ENVIRONMENT") == "production"
 
@@ -109,20 +113,34 @@ async def refresh(request: Request, response: Response):
     if not raw_token:
         raise HTTPException(status_code=401, detail="No refresh token")
 
-    token_record = token_service.validate_refresh_token(raw_token)
+    try:
+        token_record = token_service.validate_refresh_token(raw_token)
+    except OperationalError:
+        logger.warning("auth/refresh: DB unavailable during token validation")
+        raise HTTPException(status_code=503, detail="Database temporarily unavailable")
+
     if not token_record:
         _clear_refresh_cookie(response)
         raise HTTPException(status_code=401, detail="Invalid or expired refresh token")
 
-    from services import db_service
-    user = db_service.get_user_by_id(token_record["user_id"])
+    try:
+        from services import db_service
+        user = db_service.get_user_by_id(token_record["user_id"])
+    except OperationalError:
+        logger.warning("auth/refresh: DB unavailable during user lookup")
+        raise HTTPException(status_code=503, detail="Database temporarily unavailable")
+
     if not user or not user["is_active"]:
         token_service.revoke_refresh_token(raw_token)
         _clear_refresh_cookie(response)
         raise HTTPException(status_code=401, detail="User account is deactivated")
 
-    # Rotate refresh token (revoke old, issue new)
-    new_refresh_raw = token_service.rotate_refresh_token(raw_token, user["id"])
+    try:
+        new_refresh_raw = token_service.rotate_refresh_token(raw_token, user["id"])
+    except OperationalError:
+        logger.warning("auth/refresh: DB unavailable during token rotation")
+        raise HTTPException(status_code=503, detail="Database temporarily unavailable")
+
     _set_refresh_cookie(response, new_refresh_raw)
 
     access_token = token_service.create_access_token(user)

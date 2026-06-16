@@ -28,6 +28,7 @@ export default function OrgAddChildModal({
   const [propValues, setPropValues] = useState({});
   const [rateCardDerived, setRateCardDerived] = useState(false);
   const [lookupNote, setLookupNote] = useState("");
+  const [effectiveDate, setEffectiveDate] = useState("");
   const [error, setError] = useState("");
 
   const propertyCols = useMemo(
@@ -91,6 +92,7 @@ export default function OrgAddChildModal({
     setPropValues({});
     setRateCardDerived(false);
     setLookupNote("");
+    setEffectiveDate("");
     setError("");
   };
 
@@ -120,6 +122,7 @@ export default function OrgAddChildModal({
       fte: Number(fte) || 0,
       flc: Number(flc) || 0,
       rate_card_derived: rateCardDerived,
+      effective_date: effectiveDate || null,
     });
     reset();
   };
@@ -223,6 +226,14 @@ export default function OrgAddChildModal({
               <input value={country} onChange={(e) => setCountry(e.target.value)} style={inputStyle()} />
             </Field>
           )}
+          <Field label="Effective date">
+            <input
+              type="date"
+              value={effectiveDate}
+              onChange={(e) => setEffectiveDate(e.target.value)}
+              style={inputStyle()}
+            />
+          </Field>
           {error && (
             <div style={{ color: AM.danger, fontSize: 11, fontWeight: 600 }}>{error}</div>
           )}

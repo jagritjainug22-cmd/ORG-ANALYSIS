@@ -1,5 +1,7 @@
+import json
+from typing import Any, Dict, List, Optional
+
 import pandas as pd
-from typing import Dict, Any, Optional
 
 
 def detect_circular_references(df: pd.DataFrame, emp_col: str, mgr_col: str) -> list:
@@ -116,3 +118,110 @@ def validate_org_data(
         "df_with_flags": df,
         "top_manager": top_manager,
     }
+
+
+def validate_scenario(scenario_id: int, dataset_id: int) -> List[Dict[str, Any]]:
+    """
+    Run post-hoc validation checks on a scenario's merged state and return
+    a list of issues. Each issue has:
+      {emp_id, issue_type, description, severity}
+
+    Checks:
+      1. closed_manager_has_reports   — flagged manager still has active direct reports
+      2. orphaned_add                 — added position's manager does not exist / is flagged
+      3. self_report                  — emp_id == mgr_id
+      4. missing_change_reason        — flagged/added position has no Change Reason set
+    """
+    # Import here to avoid circular imports at module level
+    from services.db_service import get_scenario_records_merged  # type: ignore
+
+    records = get_scenario_records_merged(scenario_id)
+    if not records:
+        return []
+
+    # Build lookup maps
+    active_by_id: Dict[str, Dict] = {}
+    flagged_ids: set = set()
+    added_ids: set = set()
+
+    for r in records:
+        eid = str(r.get("emp_id", ""))
+        if not eid:
+            continue
+        active_by_id[eid] = r
+        if r.get("is_flagged_removed"):
+            flagged_ids.add(eid)
+        if r.get("is_added"):
+            added_ids.add(eid)
+
+    active_ids = set(active_by_id.keys()) - flagged_ids
+    issues: List[Dict[str, Any]] = []
+
+    for r in records:
+        eid = str(r.get("emp_id", ""))
+        mgr = str(r.get("mgr_id") or "")
+        is_flagged = eid in flagged_ids
+        is_added = eid in added_ids
+
+        # 1. Closed manager still has active direct reports
+        if is_flagged:
+            active_reports = [
+                c for c in records
+                if str(c.get("mgr_id") or "") == eid
+                and str(c.get("emp_id", "")) not in flagged_ids
+            ]
+            if active_reports:
+                issues.append({
+                    "emp_id": eid,
+                    "issue_type": "closed_manager_has_reports",
+                    "description": (
+                        f"Closed position has {len(active_reports)} open direct "
+                        f"report{'s' if len(active_reports) != 1 else ''}"
+                    ),
+                    "severity": "error",
+                    "related_emp_ids": [str(c["emp_id"]) for c in active_reports],
+                })
+
+        # 2. Orphaned add — manager is missing or flagged
+        if is_added and mgr:
+            mgr_rec = active_by_id.get(mgr)
+            if not mgr_rec or str(mgr_rec.get("emp_id", "")) in flagged_ids:
+                issues.append({
+                    "emp_id": eid,
+                    "issue_type": "orphaned_add",
+                    "description": f"Added position's manager ({mgr}) is closed or missing",
+                    "severity": "error",
+                    "related_emp_ids": [mgr] if mgr else [],
+                })
+
+        # 3. Self-report
+        if mgr and mgr == eid:
+            issues.append({
+                "emp_id": eid,
+                "issue_type": "self_report",
+                "description": "Position reports to itself",
+                "severity": "error",
+                "related_emp_ids": [],
+            })
+
+        # 4. Missing change reason on flagged or added positions
+        if is_flagged or is_added:
+            data = r.get("data_json", {})
+            if isinstance(data, str):
+                try:
+                    data = json.loads(data)
+                except Exception:
+                    data = {}
+            change_reason = data.get("Change Reason") or data.get("change_reason") or ""
+            if not str(change_reason).strip():
+                issues.append({
+                    "emp_id": eid,
+                    "issue_type": "missing_change_reason",
+                    "description": (
+                        f"{'Closed' if is_flagged else 'Added'} position has no Change Reason"
+                    ),
+                    "severity": "warning",
+                    "related_emp_ids": [],
+                })
+
+    return issues

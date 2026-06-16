@@ -18,7 +18,7 @@ from typing import Any, Dict, List, Optional
 
 import numpy as np
 import pandas as pd
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import ORJSONResponse, StreamingResponse
 from PIL import Image
@@ -45,7 +45,7 @@ from services.orgchart_render_service import render_scenario_svg, get_tree_struc
 from services.orgchart_service import build_org_tree, build_tree_preserve_ancestors, make_json_serializable
 from services.spans_layers_service import span_threshold, spans_and_layers
 from services.upload_service import read_excel_file
-from services.validation_service import validate_org_data
+from services.validation_service import validate_org_data, validate_scenario
 
 Image.MAX_IMAGE_PIXELS = None
 
@@ -68,10 +68,12 @@ class SaveBaselineBody(BaseModel):
 class MoveBody(BaseModel):
     emp_id: str
     new_mgr_id: Optional[str] = None
+    effective_date: Optional[str] = None
 
 class EditBody(BaseModel):
     emp_id: str
     updates: Dict
+    effective_date: Optional[str] = None
 
 class AddBody(BaseModel):
     record: Dict
@@ -80,15 +82,33 @@ class AddBody(BaseModel):
     level: Optional[int] = None
     fte: Optional[float] = None
     flc: Optional[float] = None
+    effective_date: Optional[str] = None
 
 class FlagBody(BaseModel):
     emp_id: str
     flagged: bool = True
+    effective_date: Optional[str] = None
 
 class CloneBody(BaseModel):
     source_emp_id: str
     new_emp_id: str
     new_mgr_id: Optional[str] = None
+    effective_date: Optional[str] = None
+
+class BulkDateBody(BaseModel):
+    change_ids: List[int]
+    effective_date: Optional[str] = None
+
+class BulkFlagBody(BaseModel):
+    emp_ids: List[str]
+    flagged: bool = True
+    effective_date: Optional[str] = None
+
+class BulkEditPropertyBody(BaseModel):
+    emp_ids: List[str]
+    field: str
+    value: Any
+    effective_date: Optional[str] = None
 
 class ScenarioBody(BaseModel):
     name: str
@@ -1791,6 +1811,7 @@ def db_scenario_move(
         record = db_service.move_employee(
             scenario_id=scenario_id, emp_id=body.emp_id,
             new_mgr_id=body.new_mgr_id, username=username,
+            effective_date=body.effective_date,
         )
         return {"record": record, "summary": db_service.get_scenario_summary(scenario_id)}
     except ValueError as e:
@@ -1811,6 +1832,7 @@ def db_scenario_edit(
         record = db_service.edit_employee(
             scenario_id=scenario_id, emp_id=body.emp_id,
             updates=body.updates, username=username,
+            effective_date=body.effective_date,
         )
         return {"record": record, "summary": db_service.get_scenario_summary(scenario_id)}
     except ValueError as e:
@@ -1832,6 +1854,7 @@ def db_scenario_add(
             scenario_id=scenario_id, record=body.record,
             emp_id=body.emp_id, mgr_id=body.mgr_id, level=body.level,
             fte=body.fte, flc=body.flc, username=username,
+            effective_date=body.effective_date,
         )
         return {"record": record, "summary": db_service.get_scenario_summary(scenario_id)}
     except ValueError as e:
@@ -1855,6 +1878,7 @@ def db_scenario_clone(
             new_emp_id=body.new_emp_id,
             new_mgr_id=body.new_mgr_id,
             username=username,
+            effective_date=body.effective_date,
         )
         return {"record": record, "summary": db_service.get_scenario_summary(scenario_id)}
     except ValueError as e:
@@ -1875,10 +1899,94 @@ def db_scenario_flag(
         record = db_service.flag_employee(
             scenario_id=scenario_id, emp_id=body.emp_id,
             flagged=body.flagged, username=username,
+            effective_date=body.effective_date,
         )
         return {"record": record, "summary": db_service.get_scenario_summary(scenario_id)}
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.patch("/db/scenarios/{scenario_id}/change_log/bulk_date")
+def db_scenario_bulk_date(
+    scenario_id: int,
+    body: BulkDateBody,
+    project_id: int,
+    user: dict = Depends(require_project_access()),
+    _lock: dict = Depends(require_dataset_lock_holder()),
+):
+    """Bulk-assign (or clear) an effective_date on a list of change_log rows."""
+    _require_scenario_in_project(scenario_id, project_id)
+    count = db_service.bulk_set_effective_date(
+        scenario_id=scenario_id,
+        change_ids=body.change_ids,
+        effective_date=body.effective_date,
+    )
+    return {"updated": count}
+
+
+@router.get("/db/scenarios/{scenario_id}/phasing")
+def db_scenario_phasing(
+    scenario_id: int,
+    project_id: int,
+    fy_start_month: int = Query(default=1, ge=1, le=12),
+    user: dict = Depends(require_project_access()),
+):
+    """Return monthly phasing view for adds/removals with full-year and in-year savings."""
+    _require_scenario_in_project(scenario_id, project_id)
+    return db_service.get_phasing_view(scenario_id, fy_start_month=fy_start_month)
+
+
+@router.get("/db/scenarios/{scenario_id}/validate")
+def db_scenario_validate(
+    scenario_id: int,
+    project_id: int,
+    user: dict = Depends(require_project_access()),
+):
+    """Run post-hoc validation checks on the scenario's to-be state."""
+    _require_scenario_in_project(scenario_id, project_id)
+    issues = validate_scenario(scenario_id, project_id)
+    return {"issues": issues, "count": len(issues)}
+
+
+@router.post("/db/scenarios/{scenario_id}/bulk_flag")
+def db_scenario_bulk_flag(
+    scenario_id: int,
+    project_id: int,
+    body: BulkFlagBody,
+    user: dict = Depends(require_project_access()),
+    _lock: dict = Depends(require_dataset_lock_holder()),
+):
+    """Flag or restore a batch of employees in one transaction."""
+    _require_scenario_in_project(scenario_id, project_id)
+    affected = db_service.bulk_flag_employees(
+        scenario_id,
+        body.emp_ids,
+        body.flagged,
+        username=user["username"],
+        effective_date=body.effective_date,
+    )
+    return {"affected": affected}
+
+
+@router.post("/db/scenarios/{scenario_id}/bulk_edit_property")
+def db_scenario_bulk_edit_property(
+    scenario_id: int,
+    project_id: int,
+    body: BulkEditPropertyBody,
+    user: dict = Depends(require_project_access()),
+    _lock: dict = Depends(require_dataset_lock_holder()),
+):
+    """Set a single field to a value across multiple employees."""
+    _require_scenario_in_project(scenario_id, project_id)
+    affected = db_service.bulk_edit_property(
+        scenario_id,
+        body.emp_ids,
+        body.field,
+        body.value,
+        username=user["username"],
+        effective_date=body.effective_date,
+    )
+    return {"affected": affected}
 
 
 @router.post("/db/scenarios/{scenario_id}/promote")
@@ -2205,4 +2313,278 @@ def db_export_scenario_records(
         buf,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f'attachment; filename="orgsight_records_{safe_name}.xlsx"'},
+    )
+
+
+# ===========================================================================
+# Activity Analysis Endpoints
+# ===========================================================================
+
+class ActivityConfigBody(BaseModel):
+    name: str
+    role_grouping_col: str
+    dataset_id: int
+
+
+class ActivitiesBody(BaseModel):
+    activities: List[Dict[str, Any]]
+
+
+class AllocationsBody(BaseModel):
+    allocations: List[Dict[str, Any]]
+
+
+class LeversBody(BaseModel):
+    levers: List[Dict[str, Any]]
+
+
+def _require_activity_config_in_project(config_id: int, project_id: int):
+    from services import db_service
+    cfg = db_service.get_activity_config(config_id)
+    if not cfg:
+        raise HTTPException(status_code=404, detail="Activity config not found")
+    ds = db_service.get_dataset(cfg["dataset_id"])
+    if not ds or ds.get("project_id") != project_id:
+        raise HTTPException(status_code=403, detail="Activity config not in this project")
+    return cfg
+
+
+@router.post("/activity/configs")
+def create_activity_config(
+    body: ActivityConfigBody,
+    project_id: int,
+    _user: dict = Depends(require_project_access()),
+):
+    from services import db_service
+    _require_dataset_in_project(body.dataset_id, project_id)
+    cfg = db_service.create_activity_config(body.dataset_id, body.name, body.role_grouping_col)
+    return {"config": cfg}
+
+
+@router.get("/activity/configs")
+def list_activity_configs(
+    dataset_id: int,
+    project_id: int,
+    _user: dict = Depends(require_project_access()),
+):
+    from services import db_service
+    _require_dataset_in_project(dataset_id, project_id)
+    configs = db_service.get_activity_configs(dataset_id)
+    return {"configs": configs}
+
+
+@router.get("/activity/configs/{config_id}")
+def get_activity_config(
+    config_id: int,
+    project_id: int,
+    _user: dict = Depends(require_project_access()),
+):
+    cfg = _require_activity_config_in_project(config_id, project_id)
+    return {"config": cfg}
+
+
+@router.get("/activity/configs/{config_id}/roles")
+def get_activity_roles(
+    config_id: int,
+    project_id: int,
+    _user: dict = Depends(require_project_access()),
+):
+    from services import db_service, activity_service
+    cfg = _require_activity_config_in_project(config_id, project_id)
+    roles = activity_service.get_role_values(cfg["dataset_id"], cfg["role_grouping_col"])
+    return {"roles": roles}
+
+
+@router.post("/activity/configs/{config_id}/activities")
+def upsert_activities(
+    config_id: int,
+    body: ActivitiesBody,
+    project_id: int,
+    _user: dict = Depends(require_project_access()),
+):
+    from services import db_service
+    _require_activity_config_in_project(config_id, project_id)
+    activities = db_service.upsert_activities(config_id, body.activities)
+    return {"activities": activities}
+
+
+@router.post("/activity/configs/{config_id}/activities/upload")
+async def upload_activities(
+    config_id: int,
+    project_id: int,
+    file: UploadFile = File(...),
+    _user: dict = Depends(require_project_access()),
+):
+    from services import db_service
+    _require_activity_config_in_project(config_id, project_id)
+    content = await file.read()
+    df = pd.read_excel(BytesIO(content))
+    cols = {str(c).strip().lower(): c for c in df.columns}
+    name_col = next((cols[k] for k in ("activity", "activity name", "name") if k in cols), None)
+    process_col = next((cols[k] for k in ("process", "process name", "category") if k in cols), None)
+    desc_col = next((cols[k] for k in ("description", "desc") if k in cols), None)
+    if not name_col:
+        raise HTTPException(status_code=400, detail="Upload needs an 'Activity' or 'Name' column")
+    activities_list = []
+    for idx, row in df.iterrows():
+        name = str(row[name_col]).strip()
+        if not name or name.lower() in ("nan", "activity"):
+            continue
+        activities_list.append({
+            "name": name,
+            "process_name": str(row[process_col]).strip() if process_col else "",
+            "description": str(row[desc_col]).strip() if desc_col else "",
+        })
+    activities = db_service.upsert_activities(config_id, activities_list)
+    return {"activities": activities}
+
+
+@router.get("/activity/configs/{config_id}/allocations")
+def get_allocations(
+    config_id: int,
+    project_id: int,
+    _user: dict = Depends(require_project_access()),
+):
+    from services import db_service, activity_service
+    _require_activity_config_in_project(config_id, project_id)
+    matrix = db_service.get_role_allocation_matrix(config_id)
+    completeness = activity_service.get_allocation_completeness(config_id)
+    return {"matrix": matrix, "completeness": completeness}
+
+
+@router.post("/activity/configs/{config_id}/allocations")
+def upsert_allocations(
+    config_id: int,
+    body: AllocationsBody,
+    project_id: int,
+    _user: dict = Depends(require_project_access()),
+):
+    from services import db_service
+    _require_activity_config_in_project(config_id, project_id)
+    db_service.upsert_role_allocations(config_id, body.allocations)
+    matrix = db_service.get_role_allocation_matrix(config_id)
+    return {"matrix": matrix}
+
+
+@router.post("/activity/configs/{config_id}/allocations/upload")
+async def upload_allocations(
+    config_id: int,
+    project_id: int,
+    file: UploadFile = File(...),
+    _user: dict = Depends(require_project_access()),
+):
+    from services import db_service, activity_service
+    cfg = _require_activity_config_in_project(config_id, project_id)
+    content = await file.read()
+    df = pd.read_excel(BytesIO(content))
+    activities = cfg.get("activities") or []
+    if not activities:
+        raise HTTPException(status_code=400, detail="Define activities before uploading allocations")
+    allocs = activity_service.parse_allocation_upload(df, activities)
+    if not allocs:
+        raise HTTPException(status_code=400, detail="No valid allocations found in upload")
+    db_service.upsert_role_allocations(config_id, allocs)
+    matrix = db_service.get_role_allocation_matrix(config_id)
+    return {"matrix": matrix, "count": len(allocs)}
+
+
+@router.get("/activity/configs/{config_id}/levers")
+def get_levers(
+    config_id: int,
+    project_id: int,
+    _user: dict = Depends(require_project_access()),
+):
+    from services import db_service
+    _require_activity_config_in_project(config_id, project_id)
+    levers = db_service.get_activity_levers(config_id)
+    return {"levers": levers}
+
+
+@router.post("/activity/configs/{config_id}/levers")
+def upsert_levers(
+    config_id: int,
+    body: LeversBody,
+    project_id: int,
+    _user: dict = Depends(require_project_access()),
+):
+    from services import db_service
+    _require_activity_config_in_project(config_id, project_id)
+    db_service.upsert_activity_levers(config_id, body.levers)
+    return {"levers": db_service.get_activity_levers(config_id)}
+
+
+@router.delete("/activity/configs/{config_id}/levers/{lever_id}")
+def delete_lever(
+    config_id: int,
+    lever_id: int,
+    project_id: int,
+    _user: dict = Depends(require_project_access()),
+):
+    from services import db_service
+    _require_activity_config_in_project(config_id, project_id)
+    db_service.delete_activity_lever(lever_id)
+    return {"status": "deleted"}
+
+
+@router.post("/activity/configs/{config_id}/levers/upload")
+async def upload_levers(
+    config_id: int,
+    project_id: int,
+    file: UploadFile = File(...),
+    _user: dict = Depends(require_project_access()),
+):
+    from services import db_service, activity_service
+    cfg = _require_activity_config_in_project(config_id, project_id)
+    content = await file.read()
+    df = pd.read_excel(BytesIO(content))
+    activities = cfg.get("activities") or []
+    if not activities:
+        raise HTTPException(status_code=400, detail="Define activities before uploading levers")
+    try:
+        levers = activity_service.parse_lever_upload(df, activities)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    if not levers:
+        raise HTTPException(status_code=400, detail="No valid levers found in upload")
+    db_service.upsert_activity_levers(config_id, levers)
+    return {"levers": db_service.get_activity_levers(config_id), "count": len(levers)}
+
+
+@router.post("/activity/configs/{config_id}/compute")
+def compute_activity_impact(
+    config_id: int,
+    project_id: int,
+    function_col: Optional[str] = Query(None),
+    _user: dict = Depends(require_project_access()),
+):
+    from services import activity_service
+    cfg = _require_activity_config_in_project(config_id, project_id)
+    try:
+        impact = activity_service.compute_impact(
+            config_id, cfg["dataset_id"],
+            function_col=function_col or None,
+        )
+        return {"impact": impact}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.get("/activity/configs/{config_id}/impact/export")
+def export_activity_impact(
+    config_id: int,
+    project_id: int,
+    _user: dict = Depends(require_project_access()),
+):
+    from services import activity_service
+    cfg = _require_activity_config_in_project(config_id, project_id)
+    try:
+        impact = activity_service.compute_impact(config_id, cfg["dataset_id"])
+        excel_bytes = activity_service.impact_to_excel(impact, cfg["name"])
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    safe_name = "".join(c for c in cfg["name"] if c.isalnum() or c in "-_ ").strip().replace(" ", "_") or "activity"
+    return StreamingResponse(
+        BytesIO(excel_bytes),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="orgsight_activity_{safe_name}.xlsx"'},
     )

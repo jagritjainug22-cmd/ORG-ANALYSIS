@@ -427,6 +427,53 @@ async def remove_user_from_project(
 
 
 # ---------------------------------------------------------------------------
+# Dataset management (admin view per-project)
+# ---------------------------------------------------------------------------
+
+@router.get("/projects/{project_id}/datasets")
+async def admin_list_project_datasets(
+    project_id: int,
+    admin: dict = Depends(require_admin),
+):
+    project = project_service.get_project(project_id)
+    if not project:
+        raise HTTPException(404, detail="Project not found")
+    datasets = db_service.list_datasets(project_id=project_id)
+    return {"datasets": datasets}
+
+
+@router.delete("/projects/{project_id}/datasets/{dataset_id}")
+async def admin_delete_project_dataset(
+    project_id: int,
+    dataset_id: int,
+    request: Request,
+    admin: dict = Depends(require_admin),
+):
+    project = project_service.get_project(project_id)
+    if not project:
+        raise HTTPException(404, detail="Project not found")
+
+    dataset = db_service.get_dataset(dataset_id)
+    if not dataset:
+        raise HTTPException(404, detail="Dataset not found")
+    if dataset.get("project_id") != project_id:
+        raise HTTPException(404, detail="Dataset does not belong to this project")
+
+    db_service.delete_dataset(dataset_id)
+
+    write_audit_log(
+        user_id=admin["id"],
+        action="dataset.delete",
+        resource_type="dataset",
+        resource_id=dataset_id,
+        details={"name": dataset.get("name"), "project_id": project_id},
+        ip_address=request.client.host if request.client else None,
+    )
+
+    return {"status": "deleted", "dataset_id": dataset_id}
+
+
+# ---------------------------------------------------------------------------
 # Audit log
 # ---------------------------------------------------------------------------
 

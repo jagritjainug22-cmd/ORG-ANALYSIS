@@ -996,42 +996,70 @@ function Step4Impact({ config, datasetId }) {
       {impact && (
         <>
           {/* Summary metrics */}
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 20 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14, marginBottom: 22 }}>
             {[
-              { label: "Baseline FTE", value: fmtPct(0) === "—" ? fmt(impact.baseline_fte) : fmt(impact.baseline_fte), unit: "FTE" },
-              { label: "Total Savings (FTE)", value: fmt(impact.total_savings_fte), unit: "FTE", green: true },
-              { label: "Baseline Cost", value: fmtCurr(impact.baseline_cost), unit: "" },
-              { label: "Total Savings", value: fmtCurr(impact.total_savings_cost), unit: "", green: true },
+              { label: "Baseline FTE", value: fmt(impact.baseline_fte), unit: "FTE", accent: C.navy, accentBg: C.blueL, icon: "👥" },
+              { label: "Total Savings (FTE)", value: fmt(impact.total_savings_fte), unit: "FTE", green: true, accent: C.success, accentBg: C.successL, icon: "✂" },
+              { label: "Baseline Cost", value: fmtCurr(impact.baseline_cost), unit: "", accent: C.navy, accentBg: C.blueL, icon: "💰" },
+              { label: "Total Savings", value: fmtCurr(impact.total_savings_cost), unit: "", green: true, accent: C.success, accentBg: C.successL, icon: "📉" },
             ].map(m => (
-              <Card key={m.label} style={{ padding: 16, textAlign: "center" }}>
-                <div style={{ fontSize: 10, color: C.textMuted, textTransform: "uppercase", fontWeight: 700, marginBottom: 6 }}>{m.label}</div>
-                <div style={{ fontSize: 24, fontWeight: 800, color: m.green ? C.success : C.navy }}>
+              <div key={m.label} style={{
+                background: C.white,
+                border: `1px solid ${C.border}`,
+                borderRadius: 10,
+                padding: "16px 20px",
+                position: "relative",
+                overflow: "hidden",
+                boxShadow: "0 1px 4px rgba(1,36,74,0.06)",
+              }}>
+                {/* Accent strip */}
+                <div style={{
+                  position: "absolute", top: 0, left: 0, right: 0, height: 3,
+                  background: m.accent,
+                  borderRadius: "10px 10px 0 0",
+                }} />
+                <div style={{ fontSize: 9, fontWeight: 800, color: C.textMuted, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 8 }}>{m.label}</div>
+                <div style={{ fontSize: 28, fontWeight: 800, color: m.green ? C.success : C.navy, lineHeight: 1, letterSpacing: "-0.5px" }}>
                   {m.value}
                 </div>
-                {m.unit && <div style={{ fontSize: 11, color: C.textMuted, marginTop: 2 }}>{m.unit}</div>}
-              </Card>
+                {m.unit && <div style={{ fontSize: 11, color: C.textMuted, marginTop: 4, fontWeight: 600 }}>{m.unit}</div>}
+              </div>
             ))}
           </div>
 
           {/* Tabs */}
-          <div style={{ display: "flex", gap: 0, borderBottom: `2px solid ${C.border}`, marginBottom: 16, flexWrap: "wrap" }}>
-            {TABS.map(t => (
-              <button key={t.id} onClick={() => setActiveTab(t.id)} style={{
-                padding: "8px 14px", border: "none", background: "none",
-                fontSize: 12, fontWeight: activeTab === t.id ? 700 : 500,
-                color: activeTab === t.id ? C.navy : C.textSec,
-                borderBottom: activeTab === t.id ? `2px solid ${C.navy}` : "2px solid transparent",
-                cursor: "pointer", marginBottom: -2, display: "flex", alignItems: "center", gap: 5,
-              }}>
-                {t.label}
-                {t.isNew && (
-                  <span style={{
-                    fontSize: 9, fontWeight: 800, padding: "1px 5px", borderRadius: 4,
-                    background: C.gold, color: C.white, letterSpacing: "0.04em",
-                  }}>NEW</span>
-                )}
-              </button>
-            ))}
+          <div style={{
+            display: "flex", gap: 2, borderBottom: `2px solid ${C.border}`,
+            marginBottom: 20, flexWrap: "wrap", background: "transparent",
+          }}>
+            {TABS.map(t => {
+              const isActive = activeTab === t.id;
+              return (
+                <button key={t.id} onClick={() => setActiveTab(t.id)} style={{
+                  padding: "9px 16px",
+                  border: "none",
+                  background: isActive ? C.white : "transparent",
+                  fontSize: 12,
+                  fontWeight: isActive ? 700 : 500,
+                  color: isActive ? C.navy : C.textSec,
+                  borderBottom: isActive ? `2px solid ${C.navy}` : "2px solid transparent",
+                  borderRadius: "6px 6px 0 0",
+                  cursor: "pointer",
+                  marginBottom: -2,
+                  display: "flex", alignItems: "center", gap: 6,
+                  transition: "color 0.15s, background 0.15s",
+                  outline: "none",
+                }}>
+                  {t.label}
+                  {t.isNew && (
+                    <span style={{
+                      fontSize: 9, fontWeight: 800, padding: "1px 5px", borderRadius: 4,
+                      background: C.gold, color: C.white, letterSpacing: "0.05em",
+                    }}>NEW</span>
+                  )}
+                </button>
+              );
+            })}
           </div>
 
           {/* Tab content */}
@@ -1049,140 +1077,181 @@ function Step4Impact({ config, datasetId }) {
   );
 }
 
+function TrendChart({ title, accentColor, accentBg, values, displayMonths, changes, pctChanges, hoverTemplate, textFormatter, yAxisFmt, yAxisPrefix }) {
+  const plotConfig = { displayModeBar: false, responsive: true };
+  const layout = {
+    height: 260,
+    margin: { t: 20, b: 40, l: 62, r: 24 },
+    xaxis: {
+      tickfont: { size: 10, family: "'Inter', 'Segoe UI', sans-serif", color: C.textSec },
+      showgrid: false,
+      tickangle: -30,
+      linecolor: C.border,
+      linewidth: 1,
+    },
+    yaxis: {
+      tickfont: { size: 10, family: "'Inter', 'Segoe UI', sans-serif", color: C.textSec },
+      showgrid: true,
+      gridcolor: C.borderL,
+      gridwidth: 1,
+      tickformat: yAxisFmt,
+      tickprefix: yAxisPrefix || "",
+      zeroline: false,
+    },
+    paper_bgcolor: "transparent",
+    plot_bgcolor: "transparent",
+    showlegend: false,
+  };
+
+  const savingsMask = changes.map(v => v !== null && v < 0);
+  const lastSavingsIdx = savingsMask.reduce((last, v, i) => v ? i : last, -1);
+
+  return (
+    <div style={{
+      background: C.white,
+      border: `1px solid ${C.border}`,
+      borderRadius: 10,
+      overflow: "hidden",
+      boxShadow: "0 1px 4px rgba(1,36,74,0.06)",
+    }}>
+      {/* Chart header */}
+      <div style={{
+        display: "flex", alignItems: "center", gap: 10,
+        padding: "14px 20px 0",
+      }}>
+        <div style={{
+          width: 3, height: 20, borderRadius: 2,
+          background: accentColor, flexShrink: 0,
+        }} />
+        <div style={{ fontSize: 13, fontWeight: 700, color: C.navy }}>{title}</div>
+        {lastSavingsIdx >= 0 && (
+          <div style={{
+            marginLeft: "auto", fontSize: 11, fontWeight: 700,
+            color: C.success, background: C.successL,
+            padding: "2px 10px", borderRadius: 12,
+          }}>
+            {pctChanges[lastSavingsIdx] != null ? `${Math.abs(pctChanges.filter(v => v != null).reduce((s, v) => s + v, 0)).toFixed(1)}% total reduction` : ""}
+          </div>
+        )}
+      </div>
+
+      {/* Plot */}
+      <div style={{ padding: "0 8px" }}>
+        <Plot
+          data={[
+            {
+              x: displayMonths, y: values,
+              type: "scatter", mode: "lines+markers+text",
+              line: { color: accentColor, width: 2.5, shape: "spline", smoothing: 0.4 },
+              marker: { color: accentColor, size: 7, line: { color: C.white, width: 1.5 } },
+              fill: "tozeroy",
+              fillcolor: accentBg,
+              text: values.map(textFormatter),
+              textposition: "top center",
+              textfont: { size: 9, family: "'Inter', 'Segoe UI', sans-serif", color: C.navy },
+              hovertemplate: hoverTemplate,
+            }
+          ]}
+          layout={layout}
+          config={plotConfig}
+          style={{ width: "100%" }}
+        />
+      </div>
+
+      {/* Data table */}
+      <div style={{ overflowX: "auto", borderTop: `1px solid ${C.borderL}` }}>
+        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 10 }}>
+          <thead>
+            <tr style={{ background: C.navy, color: C.white }}>
+              <th style={{ padding: "6px 12px", textAlign: "left", whiteSpace: "nowrap", fontWeight: 700, letterSpacing: "0.04em", fontSize: 9, textTransform: "uppercase" }}>Month</th>
+              {displayMonths.map(m => (
+                <th key={m} style={{ padding: "6px 8px", textAlign: "center", whiteSpace: "nowrap", fontWeight: 600, fontSize: 10 }}>{m}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            <tr style={{ background: "#f7f9fc" }}>
+              <td style={{ padding: "5px 12px", fontWeight: 700, color: C.textSec, fontSize: 10, whiteSpace: "nowrap" }}>Change</td>
+              {changes.map((v, i) => (
+                <td key={i} style={{
+                  padding: "5px 8px", textAlign: "center", fontFamily: "'IBM Plex Mono', monospace", fontSize: 10,
+                  color: v === null ? C.textMuted : v < 0 ? C.success : v > 0 ? C.danger : C.textMuted,
+                  fontWeight: v !== null && v !== 0 ? 700 : 400,
+                }}>
+                  {v === null ? "—" : (v >= 0 ? "+" : "") + (yAxisPrefix ? `${yAxisPrefix}${Math.abs(v) >= 1_000_000 ? (v / 1_000_000).toFixed(1) + "M" : Math.abs(v) >= 1_000 ? (v / 1_000).toFixed(0) + "K" : v.toFixed(1)}` : v.toFixed(1))}
+                </td>
+              ))}
+            </tr>
+            <tr>
+              <td style={{ padding: "5px 12px", fontWeight: 700, color: C.textSec, fontSize: 10, whiteSpace: "nowrap" }}>Change %</td>
+              {pctChanges.map((v, i) => (
+                <td key={i} style={{
+                  padding: "5px 8px", textAlign: "center", fontFamily: "'IBM Plex Mono', monospace", fontSize: 10,
+                  color: v === null ? C.textMuted : v < 0 ? C.success : v > 0 ? C.danger : C.textMuted,
+                  fontWeight: v !== null && v !== 0 ? 700 : 400,
+                }}>
+                  {v === null ? "—" : `${v >= 0 ? "+" : ""}${v.toFixed(1)}%`}
+                </td>
+              ))}
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 function TrendTab({ impact }) {
   const months = impact.months || [];
   if (months.length === 0) return <div style={{ color: C.textMuted, padding: 20 }}>No time data</div>;
 
-  const fteValues = months.map(m => impact.fte_trend[m] || 0);
+  const fteValues  = months.map(m => impact.fte_trend[m]  || 0);
   const costValues = months.map(m => impact.cost_trend[m] || 0);
 
   const formatMonth = (m) => {
     const [y, mo] = m.split("-");
     const names = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
-    return `${names[parseInt(mo) - 1]} ${y.slice(2)}`;
+    return `${names[parseInt(mo) - 1]} ${String(y).slice(2)}`;
   };
   const displayMonths = months.map(formatMonth);
 
-  const fteChanges = fteValues.map((v, i) => i === 0 ? null : v - fteValues[i - 1]);
-  const ftePctChanges = fteValues.map((v, i) => i === 0 ? null : fteValues[i - 1] ? ((v - fteValues[i - 1]) / fteValues[i - 1]) * 100 : 0);
-  const costChanges = costValues.map((v, i) => i === 0 ? null : v - costValues[i - 1]);
+  const fteChanges    = fteValues.map((v, i)  => i === 0 ? null : v - fteValues[i - 1]);
+  const ftePctChanges = fteValues.map((v, i)  => i === 0 ? null : fteValues[i - 1]  ? ((v - fteValues[i - 1])  / fteValues[i - 1])  * 100 : 0);
+  const costChanges    = costValues.map((v, i) => i === 0 ? null : v - costValues[i - 1]);
   const costPctChanges = costValues.map((v, i) => i === 0 ? null : costValues[i - 1] ? ((v - costValues[i - 1]) / costValues[i - 1]) * 100 : 0);
 
-  const plotConfig = { displayModeBar: false, responsive: true };
-  const plotLayout = (yAxisFmt) => ({
-    height: 220,
-    margin: { t: 10, b: 36, l: 56, r: 10 },
-    xaxis: { tickfont: { size: 10, family: "Inter, sans-serif" }, showgrid: false, tickangle: -30 },
-    yaxis: { tickfont: { size: 10, family: "Inter, sans-serif" }, showgrid: true, gridcolor: C.borderL, tickformat: yAxisFmt },
-    paper_bgcolor: "transparent",
-    plot_bgcolor: "transparent",
-    showlegend: false,
-  });
-
-  const dataTableStyle = { width: "100%", borderCollapse: "collapse", fontSize: 10, marginTop: 8 };
-  const thStyle = { padding: "4px 6px", textAlign: "center", whiteSpace: "nowrap", fontWeight: 600 };
-  const tdStyle = (val) => ({
-    padding: "4px 6px", textAlign: "center",
-    color: val !== null && val < 0 ? C.success : C.textMuted,
-  });
-
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24 }}>
-      {/* FTE Chart */}
-      <div>
-        <div style={{ fontWeight: 700, color: C.navy, fontSize: 13, marginBottom: 6 }}>FTE Remaining Over Time</div>
-        <Plot
-          data={[{
-            x: displayMonths, y: fteValues,
-            type: "scatter", mode: "lines+markers+text",
-            line: { color: C.gold, width: 2.5 },
-            marker: { color: C.gold, size: 7 },
-            text: fteValues.map(v => v.toFixed(1)),
-            textposition: "top center",
-            textfont: { size: 9, color: C.navy },
-            hovertemplate: "%{x}: %{y:.1f} FTE<extra></extra>",
-          }]}
-          layout={plotLayout(",")}
-          config={plotConfig}
-          style={{ width: "100%" }}
-        />
-        <div style={{ overflowX: "auto" }}>
-          <table style={dataTableStyle}>
-            <tbody>
-              <tr style={{ background: C.navy, color: C.white }}>
-                <td style={{ ...thStyle, textAlign: "left", width: 72 }}>Month</td>
-                {displayMonths.map(m => <td key={m} style={thStyle}>{m}</td>)}
-              </tr>
-              <tr style={{ background: "#f7f8fb" }}>
-                <td style={{ padding: "4px 6px", fontWeight: 600, color: C.textSec, fontSize: 10 }}>Change</td>
-                {fteChanges.map((v, i) => (
-                  <td key={i} style={tdStyle(v)}>
-                    {v === null ? "—" : (v >= 0 ? "+" : "") + v.toFixed(1)}
-                  </td>
-                ))}
-              </tr>
-              <tr>
-                <td style={{ padding: "4px 6px", fontWeight: 600, color: C.textSec, fontSize: 10 }}>Change%</td>
-                {ftePctChanges.map((v, i) => (
-                  <td key={i} style={tdStyle(v)}>
-                    {v === null ? "—" : `${v.toFixed(1)}%`}
-                  </td>
-                ))}
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* Cost Chart */}
-      <div>
-        <div style={{ fontWeight: 700, color: C.navy, fontSize: 13, marginBottom: 6 }}>Cost Remaining Over Time</div>
-        <Plot
-          data={[{
-            x: displayMonths, y: costValues,
-            type: "scatter", mode: "lines+markers+text",
-            line: { color: C.blue, width: 2.5 },
-            marker: { color: C.blue, size: 7 },
-            text: costValues.map(v => {
-              if (Math.abs(v) >= 1_000_000) return `$${(v / 1_000_000).toFixed(1)}M`;
-              if (Math.abs(v) >= 1_000) return `$${(v / 1_000).toFixed(0)}K`;
-              return `$${v.toFixed(0)}`;
-            }),
-            textposition: "top center",
-            textfont: { size: 9, color: C.navy },
-            hovertemplate: "%{x}: $%{y:,.0f}<extra></extra>",
-          }]}
-          layout={{ ...plotLayout(".2s"), yaxis: { ...plotLayout(".2s").yaxis, tickprefix: "$" } }}
-          config={plotConfig}
-          style={{ width: "100%" }}
-        />
-        <div style={{ overflowX: "auto" }}>
-          <table style={dataTableStyle}>
-            <tbody>
-              <tr style={{ background: C.navy, color: C.white }}>
-                <td style={{ ...thStyle, textAlign: "left", width: 90 }}>Month</td>
-                {displayMonths.map(m => <td key={m} style={thStyle}>{m}</td>)}
-              </tr>
-              <tr style={{ background: "#f7f8fb" }}>
-                <td style={{ padding: "4px 6px", fontWeight: 600, color: C.textSec, fontSize: 10 }}>Change ($M)</td>
-                {costChanges.map((v, i) => (
-                  <td key={i} style={tdStyle(v)}>
-                    {v === null ? "—" : `${v >= 0 ? "+" : ""}${(v / 1_000_000).toFixed(1)}`}
-                  </td>
-                ))}
-              </tr>
-              <tr>
-                <td style={{ padding: "4px 6px", fontWeight: 600, color: C.textSec, fontSize: 10 }}>Change%</td>
-                {costPctChanges.map((v, i) => (
-                  <td key={i} style={tdStyle(v)}>
-                    {v === null ? "—" : `${v.toFixed(1)}%`}
-                  </td>
-                ))}
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
+    <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+      <TrendChart
+        title="FTE Remaining Over Time"
+        accentColor={C.gold}
+        accentBg="rgba(197,168,74,0.08)"
+        values={fteValues}
+        displayMonths={displayMonths}
+        changes={fteChanges}
+        pctChanges={ftePctChanges}
+        hoverTemplate="%{x}: %{y:.1f} FTE<extra></extra>"
+        textFormatter={v => v.toFixed(1)}
+        yAxisFmt=","
+        yAxisPrefix=""
+      />
+      <TrendChart
+        title="Cost Remaining Over Time"
+        accentColor={C.blue}
+        accentBg="rgba(0,133,202,0.07)"
+        values={costValues}
+        displayMonths={displayMonths}
+        changes={costChanges}
+        pctChanges={costPctChanges}
+        hoverTemplate="%{x}: $%{y:,.0f}<extra></extra>"
+        textFormatter={v => {
+          if (Math.abs(v) >= 1_000_000) return `$${(v / 1_000_000).toFixed(1)}M`;
+          if (Math.abs(v) >= 1_000)     return `$${(v / 1_000).toFixed(0)}K`;
+          return `$${v.toFixed(0)}`;
+        }}
+        yAxisFmt=".2s"
+        yAxisPrefix="$"
+      />
     </div>
   );
 }

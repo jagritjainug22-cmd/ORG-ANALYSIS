@@ -100,87 +100,189 @@ export default function OrgImpactStrip({
 
   const showDimBreakdown = scenarioId && dims.length > 0;
 
+  const closeModal = () => setExpanded(false);
+
   return (
-    <div
-      style={{
-        position: "sticky",
-        bottom: 0,
-        background: AM.white,
-        borderTop: `1px solid ${AM.border}`,
-        boxShadow: "0 -2px 8px rgba(1,36,74,0.05)",
-        zIndex: 5,
-        fontFamily: "'IBM Plex Sans', system-ui, sans-serif",
-      }}
-    >
-      <button
-        onClick={() => setExpanded((v) => !v)}
+    <>
+      {/* ── Sticky bottom strip (always visible) ── */}
+      <div
         style={{
-          width: "100%",
-          background: "transparent",
-          border: "none",
-          padding: "10px 24px",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          cursor: "pointer",
-          color: AM.textPrimary,
+          position: "sticky",
+          bottom: 0,
+          background: AM.white,
+          borderTop: `1px solid ${AM.border}`,
+          boxShadow: "0 -2px 8px rgba(1,36,74,0.05)",
+          zIndex: 5,
+          fontFamily: "'IBM Plex Sans', system-ui, sans-serif",
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: 16, fontSize: 12 }}>
-          <ImpactPill icon={<TrendIcon />} label={`${changeCount} change${changeCount === 1 ? "" : "s"}`} />
-          <Divider />
-          <ImpactPill
-            label={`${deltaFte >= 0 ? "+" : ""}${fmtNumber(deltaFte.toFixed(1))} FTE`}
-            tone={deltaFte === 0 ? "neutral" : deltaFte < 0 ? "success" : "warning"}
-          />
-          <ImpactPill
-            label={`${deltaCost >= 0 ? "+" : ""}${fmtCompactCurrency(deltaCost)} net`}
-            tone={deltaCost === 0 ? "neutral" : deltaCost < 0 ? "success" : "warning"}
-          />
-          {flaggedCount > 0 && (
+        <button
+          onClick={() => setExpanded((v) => !v)}
+          style={{
+            width: "100%",
+            background: "transparent",
+            border: "none",
+            padding: "10px 24px",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            cursor: "pointer",
+            color: AM.textPrimary,
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 16, fontSize: 12 }}>
+            <ImpactPill icon={<TrendIcon />} label={`${changeCount} change${changeCount === 1 ? "" : "s"}`} />
+            <Divider />
             <ImpactPill
-              label={`${flaggedCount} flagged · ${fmtCompactCurrency(flaggedCost)} saved`}
-              tone="danger"
+              label={`${deltaFte >= 0 ? "+" : ""}${fmtNumber(deltaFte.toFixed(1))} FTE`}
+              tone={deltaFte === 0 ? "neutral" : deltaFte < 0 ? "success" : "warning"}
             />
-          )}
-        </div>
-        <span style={{ fontSize: 11, color: AM.textSecondary, display: "flex", alignItems: "center", gap: 6 }}>
-          {expanded ? "Hide details" : "Show details"}
-          <Chevron up={expanded} />
-        </span>
-      </button>
+            <ImpactPill
+              label={`${deltaCost >= 0 ? "+" : ""}${fmtCompactCurrency(deltaCost)} net`}
+              tone={deltaCost === 0 ? "neutral" : deltaCost < 0 ? "success" : "warning"}
+            />
+            {flaggedCount > 0 && (
+              <ImpactPill
+                label={`${flaggedCount} flagged · ${fmtCompactCurrency(flaggedCost)} saved`}
+                tone="danger"
+              />
+            )}
+          </div>
+          <span style={{ fontSize: 11, color: AM.textSecondary, display: "flex", alignItems: "center", gap: 6 }}>
+            {expanded ? "Hide details" : "Show details"}
+            <Chevron up={expanded} />
+          </span>
+        </button>
+      </div>
 
+      {/* ── Modal overlay ── */}
       {expanded && (
-        <div style={{ borderTop: `1px solid ${AM.borderLight}` }}>
-          {/* Tab bar */}
-          <div style={{
-            display: "flex", borderBottom: `1px solid ${AM.borderLight}`,
-            background: AM.white, paddingLeft: 20,
-          }}>
-            {[{ id: "summary", label: "Summary" }, { id: "phasing", label: "Phasing" }].map((tab) => (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 1200,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            fontFamily: "'IBM Plex Sans', system-ui, sans-serif",
+          }}
+        >
+          {/* Backdrop */}
+          <div
+            onClick={closeModal}
+            style={{
+              position: "absolute",
+              inset: 0,
+              background: "rgba(1,36,74,0.35)",
+              backdropFilter: "blur(2px)",
+            }}
+          />
+
+          {/* Modal box */}
+          <div
+            style={{
+              position: "relative",
+              width: "min(92vw, 1000px)",
+              maxHeight: "85vh",
+              display: "flex",
+              flexDirection: "column",
+              background: AM.white,
+              borderRadius: 12,
+              boxShadow: "0 20px 60px rgba(1,36,74,0.22)",
+              overflow: "hidden",
+            }}
+          >
+            {/* Modal header */}
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                padding: "14px 20px",
+                borderBottom: `1px solid ${AM.borderLight}`,
+                flexShrink: 0,
+              }}
+            >
+              {/* Pills summary */}
+              <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+                <ImpactPill icon={<TrendIcon />} label={`${changeCount} change${changeCount === 1 ? "" : "s"}`} />
+                <Divider />
+                <ImpactPill
+                  label={`${deltaFte >= 0 ? "+" : ""}${fmtNumber(deltaFte.toFixed(1))} FTE`}
+                  tone={deltaFte === 0 ? "neutral" : deltaFte < 0 ? "success" : "warning"}
+                />
+                <ImpactPill
+                  label={`${deltaCost >= 0 ? "+" : ""}${fmtCompactCurrency(deltaCost)} net`}
+                  tone={deltaCost === 0 ? "neutral" : deltaCost < 0 ? "success" : "warning"}
+                />
+                {flaggedCount > 0 && (
+                  <ImpactPill
+                    label={`${flaggedCount} flagged · ${fmtCompactCurrency(flaggedCost)} saved`}
+                    tone="danger"
+                  />
+                )}
+              </div>
+
+              {/* Close button */}
               <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
+                onClick={closeModal}
+                title="Close"
                 style={{
                   background: "transparent",
                   border: "none",
-                  borderBottom: activeTab === tab.id ? `2px solid ${AM.navy}` : "2px solid transparent",
-                  color: activeTab === tab.id ? AM.navy : AM.textMuted,
-                  fontWeight: activeTab === tab.id ? 700 : 500,
-                  fontSize: 12,
-                  padding: "10px 16px",
                   cursor: "pointer",
-                  marginBottom: -1,
-                  fontFamily: "inherit",
+                  padding: 6,
+                  borderRadius: 6,
+                  color: AM.textMuted,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  flexShrink: 0,
+                  marginLeft: 12,
                 }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = AM.borderLight; e.currentTarget.style.color = AM.navy; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = AM.textMuted; }}
               >
-                {tab.label}
+                <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
+                  <path d="M18 6L6 18M6 6l12 12" />
+                </svg>
               </button>
-            ))}
-          </div>
+            </div>
 
-          <div style={{ padding: 20 }}>
-            {activeTab === "summary" && (
+            {/* Tab bar */}
+            <div style={{
+              display: "flex",
+              borderBottom: `1px solid ${AM.borderLight}`,
+              background: AM.white,
+              paddingLeft: 20,
+              flexShrink: 0,
+            }}>
+              {[{ id: "summary", label: "Summary" }, { id: "phasing", label: "Phasing" }].map((tab) => (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id)}
+                  style={{
+                    background: "transparent",
+                    border: "none",
+                    borderBottom: activeTab === tab.id ? `2px solid ${AM.navy}` : "2px solid transparent",
+                    color: activeTab === tab.id ? AM.navy : AM.textMuted,
+                    fontWeight: activeTab === tab.id ? 700 : 500,
+                    fontSize: 12,
+                    padding: "10px 16px",
+                    cursor: "pointer",
+                    marginBottom: -1,
+                    fontFamily: "inherit",
+                  }}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+
+            {/* Scrollable content */}
+            <div style={{ padding: 20, overflowY: "auto", flex: 1 }}>
+              {activeTab === "summary" && (
               <>
                 {/* Totals row */}
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14, marginBottom: 18 }}>
@@ -382,8 +484,9 @@ export default function OrgImpactStrip({
             )}
           </div>
         </div>
+      </div>
       )}
-    </div>
+    </>
   );
 }
 

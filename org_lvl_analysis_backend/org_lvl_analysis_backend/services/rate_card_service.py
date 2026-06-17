@@ -16,7 +16,9 @@ def build_composite_key(record: Dict[str, Any], property_cols: List[str]) -> str
         if val is None or str(val).strip() == "":
             parts.append("—")
         else:
-            parts.append(str(val).strip().replace("_", "-"))
+            # Normalize: lowercase + trim + replace underscores so
+            # "Data Analyst" == "data analyst" == " Data Analyst "
+            parts.append(str(val).strip().lower().replace("_", "-"))
     return "_".join(parts)
 
 

@@ -1141,6 +1141,47 @@ def bulk_flag_employees(
     return affected
 
 
+def bulk_move_employees(
+    scenario_id: int,
+    emp_ids: List[str],
+    new_mgr_id: Optional[str],
+    username: str = "",
+    effective_date: Optional[str] = None,
+) -> int:
+    """Reassign multiple employees to a new manager in one transaction.
+    Returns the count of affected records."""
+    if not emp_ids:
+        return 0
+    now = datetime.utcnow().isoformat()
+    affected = 0
+    with _connect() as conn:
+        c = conn.cursor()
+        for eid in emp_ids:
+            row = c.execute(
+                "SELECT mgr_id FROM scenario_records WHERE scenario_id = ? AND emp_id = ?",
+                (scenario_id, eid),
+            ).fetchone()
+            if not row:
+                continue
+            old_mgr_id = row["mgr_id"]
+            c.execute(
+                "UPDATE scenario_records SET mgr_id = ? WHERE scenario_id = ? AND emp_id = ?",
+                (new_mgr_id, scenario_id, eid),
+            )
+            c.execute(
+                """
+                INSERT INTO change_log
+                    (scenario_id, action, emp_id, old_mgr_id, new_mgr_id, timestamp, username, effective_date)
+                VALUES (?, 'move', ?, ?, ?, ?, ?, ?)
+                """,
+                (scenario_id, eid, old_mgr_id, new_mgr_id, now, username, effective_date),
+            )
+            affected += 1
+        c.execute("UPDATE scenarios SET updated_at = ? WHERE id = ?", (now, scenario_id))
+        conn.commit()
+    return affected
+
+
 def bulk_edit_property(
     scenario_id: int,
     emp_ids: List[str],

@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useMemo, useRef, useEffect } from "react";
 import { AM } from "./orgChartTheme";
 
 /**
@@ -9,6 +9,7 @@ import { AM } from "./orgChartTheme";
  *   • Flag for Removal  — POST /bulk_flag  { flagged: true }
  *   • Restore           — POST /bulk_flag  { flagged: false }
  *   • Set Change Reason — POST /bulk_edit_property { field: "Change Reason", value }
+ *   • Move To...        — POST /bulk_move  { new_mgr_id }
  *   • Clear selection
  */
 export default function BulkActionBar({
@@ -16,11 +17,50 @@ export default function BulkActionBar({
   onClearSelection,
   onBulkFlag,
   onBulkEditProperty,
+  onBulkMove,
+  allRecords = [],
+  empCol = "__emp_id",
+  jobTitleCol,
   loading = false,
 }) {
   const [changeReason, setChangeReason] = useState("");
   const [reasonOpen, setReasonOpen] = useState(false);
+  const [moveOpen, setMoveOpen] = useState(false);
+  const [moveQuery, setMoveQuery] = useState("");
+  const [moveDropdownOpen, setMoveDropdownOpen] = useState(false);
+  const moveInputRef = useRef(null);
   const count = multiSelectedIds.size;
+
+  // When move panel opens, focus the input
+  useEffect(() => {
+    if (moveOpen) {
+      setTimeout(() => moveInputRef.current?.focus(), 50);
+    }
+  }, [moveOpen]);
+
+  // Build a searchable list of potential target nodes (exclude selected nodes themselves)
+  const targetOptions = useMemo(() => {
+    if (!moveOpen || !allRecords.length) return [];
+    return allRecords
+      .filter((r) => {
+        const eid = String(r.__emp_id ?? r[empCol] ?? "");
+        return eid && !multiSelectedIds.has(eid) && !r.is_flagged_removed;
+      })
+      .map((r) => {
+        const eid = String(r.__emp_id ?? r[empCol] ?? "");
+        const title = jobTitleCol ? (r[jobTitleCol] || "").toString().trim() : "";
+        return { eid, title, label: title ? `${title} — ${eid}` : eid };
+      })
+      .sort((a, b) => a.label.localeCompare(b.label));
+  }, [moveOpen, allRecords, multiSelectedIds, empCol, jobTitleCol]);
+
+  const filteredTargets = useMemo(() => {
+    if (!moveQuery.trim()) return targetOptions.slice(0, 10);
+    const q = moveQuery.toLowerCase();
+    return targetOptions.filter(
+      (o) => o.label.toLowerCase().includes(q) || o.eid.toLowerCase().includes(q)
+    ).slice(0, 10);
+  }, [targetOptions, moveQuery]);
 
   if (count === 0) return null;
 
@@ -41,6 +81,29 @@ export default function BulkActionBar({
     setReasonOpen(false);
     onClearSelection?.();
   };
+
+  const handleSelectTarget = async (targetId) => {
+    setMoveDropdownOpen(false);
+    setMoveOpen(false);
+    setMoveQuery("");
+    await onBulkMove?.(Array.from(multiSelectedIds), targetId);
+    onClearSelection?.();
+  };
+
+  const handleCloseMove = () => {
+    setMoveOpen(false);
+    setMoveQuery("");
+    setMoveDropdownOpen(false);
+  };
+
+  const handleCloseReason = () => {
+    setReasonOpen(false);
+    setChangeReason("");
+  };
+
+  // Only one panel open at a time
+  const openMove = () => { setReasonOpen(false); setChangeReason(""); setMoveOpen(true); };
+  const openReason = () => { handleCloseMove(); setReasonOpen(true); };
 
   return (
     <div
@@ -82,26 +145,30 @@ export default function BulkActionBar({
       </span>
 
       {/* Flag for Removal */}
-      <BarBtn
-        tone="danger"
-        onClick={handleFlagRemoval}
-        disabled={loading}
-        title="Flag all selected for removal"
-      >
-        <FlagIcon /> Flag for Removal
-      </BarBtn>
+      {!reasonOpen && !moveOpen && (
+        <BarBtn
+          tone="danger"
+          onClick={handleFlagRemoval}
+          disabled={loading}
+          title="Flag all selected for removal"
+        >
+          <FlagIcon /> Flag for Removal
+        </BarBtn>
+      )}
 
       {/* Restore */}
-      <BarBtn
-        tone="success"
-        onClick={handleRestore}
-        disabled={loading}
-        title="Restore all selected positions"
-      >
-        <RestoreIcon /> Restore
-      </BarBtn>
+      {!reasonOpen && !moveOpen && (
+        <BarBtn
+          tone="success"
+          onClick={handleRestore}
+          disabled={loading}
+          title="Restore all selected positions"
+        >
+          <RestoreIcon /> Restore
+        </BarBtn>
+      )}
 
-      {/* Change Reason */}
+      {/* Change Reason panel */}
       {reasonOpen ? (
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
           <input
@@ -110,7 +177,7 @@ export default function BulkActionBar({
             onChange={(e) => setChangeReason(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "Enter") handleApplyReason();
-              if (e.key === "Escape") setReasonOpen(false);
+              if (e.key === "Escape") handleCloseReason();
             }}
             placeholder="e.g. Outsource, Redundancy…"
             style={{
@@ -128,15 +195,109 @@ export default function BulkActionBar({
           <BarBtn tone="gold" onClick={handleApplyReason} disabled={loading || !changeReason.trim()}>
             Apply
           </BarBtn>
-          <BarBtn onClick={() => setReasonOpen(false)} disabled={loading}>
+          <BarBtn onClick={handleCloseReason} disabled={loading}>
             Cancel
           </BarBtn>
         </div>
-      ) : (
-        <BarBtn onClick={() => setReasonOpen(true)} disabled={loading} title="Set Change Reason for selected">
+      ) : !moveOpen ? (
+        <BarBtn onClick={openReason} disabled={loading} title="Set Change Reason for selected">
           <ReasonIcon /> Set Reason
         </BarBtn>
-      )}
+      ) : null}
+
+      {/* Move To... panel */}
+      {moveOpen ? (
+        <div style={{ position: "relative", display: "flex", alignItems: "center", gap: 6 }}>
+          <MoveIcon style={{ color: "rgba(255,255,255,0.7)", flexShrink: 0 }} />
+          <span style={{ fontSize: 11, color: "rgba(255,255,255,0.7)", whiteSpace: "nowrap" }}>
+            Move to:
+          </span>
+          <div style={{ position: "relative" }}>
+            <input
+              ref={moveInputRef}
+              value={moveQuery}
+              onChange={(e) => { setMoveQuery(e.target.value); setMoveDropdownOpen(true); }}
+              onFocus={() => setMoveDropdownOpen(true)}
+              onKeyDown={(e) => {
+                if (e.key === "Escape") handleCloseMove();
+                if (e.key === "Enter" && filteredTargets.length === 1) {
+                  handleSelectTarget(filteredTargets[0].eid);
+                }
+              }}
+              placeholder="Search by name or ID…"
+              style={{
+                background: "rgba(255,255,255,0.12)",
+                border: "1px solid rgba(255,255,255,0.3)",
+                borderRadius: 8,
+                color: AM.white,
+                fontSize: 12,
+                fontWeight: 500,
+                padding: "4px 10px",
+                outline: "none",
+                width: 240,
+              }}
+            />
+            {moveDropdownOpen && filteredTargets.length > 0 && (
+              <div
+                style={{
+                  position: "absolute",
+                  bottom: "calc(100% + 6px)",
+                  left: 0,
+                  minWidth: 280,
+                  background: "#fff",
+                  border: `1px solid ${AM.border}`,
+                  borderRadius: 8,
+                  boxShadow: "0 4px 20px rgba(1,36,74,0.18)",
+                  zIndex: 400,
+                  overflow: "hidden",
+                }}
+              >
+                {filteredTargets.map((opt) => (
+                  <button
+                    key={opt.eid}
+                    onMouseDown={(e) => { e.preventDefault(); handleSelectTarget(opt.eid); }}
+                    style={{
+                      display: "block",
+                      width: "100%",
+                      padding: "8px 12px",
+                      textAlign: "left",
+                      background: "none",
+                      border: "none",
+                      borderBottom: `1px solid ${AM.borderLight}`,
+                      cursor: "pointer",
+                      fontSize: 12,
+                      fontFamily: "'IBM Plex Sans', sans-serif",
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.background = AM.borderLight)}
+                    onMouseLeave={(e) => (e.currentTarget.style.background = "none")}
+                  >
+                    {opt.title ? (
+                      <>
+                        <span style={{ fontWeight: 700, color: AM.navy }}>{opt.title}</span>
+                        <span style={{ marginLeft: 6, color: AM.textMuted, fontSize: 11 }}>{opt.eid}</span>
+                      </>
+                    ) : (
+                      <span style={{ fontWeight: 600, color: AM.navy }}>{opt.eid}</span>
+                    )}
+                  </button>
+                ))}
+                {filteredTargets.length === 0 && moveQuery && (
+                  <div style={{ padding: "10px 12px", fontSize: 12, color: AM.textMuted }}>
+                    No matches found
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+          <BarBtn onClick={handleCloseMove} disabled={loading}>
+            Cancel
+          </BarBtn>
+        </div>
+      ) : !reasonOpen ? (
+        <BarBtn onClick={openMove} disabled={loading} title="Move all selected to a new manager">
+          <MoveIcon /> Move To…
+        </BarBtn>
+      ) : null}
 
       <div style={{ width: 1, background: "rgba(255,255,255,0.18)", height: 20, marginLeft: 4 }} />
 
@@ -212,4 +373,13 @@ function RestoreIcon() {
 }
 function ReasonIcon() {
   return <SVG><path d="M12 20h9" /><path d="M16.5 3.5a2.121 2.121 0 1 1 3 3L7 19l-4 1 1-4Z" /></SVG>;
+}
+function MoveIcon(props) {
+  return (
+    <SVG {...props}>
+      <path d="M5 9l-3 3 3 3" />
+      <path d="M19 9l3 3-3 3" />
+      <path d="M2 12h20" />
+    </SVG>
+  );
 }

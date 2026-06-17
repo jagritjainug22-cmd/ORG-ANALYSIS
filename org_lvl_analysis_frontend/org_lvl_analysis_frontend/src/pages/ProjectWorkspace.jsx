@@ -89,6 +89,7 @@ export default function ProjectWorkspace() {
   // --- UI STATE ---
   const [activeModule, setActiveModule] = useState("Upload");
   const [filteredRowCount, setFilteredRowCount] = useState(null);
+  const [colConfigCollapsed, setColConfigCollapsed] = useState(false);
   const [treeData, setTreeData] = useState(null);
   const [errorMsg, setErrorMsg] = useState(null);
 
@@ -632,63 +633,96 @@ export default function ProjectWorkspace() {
 
       {/* TOP PANE (GLOBAL CONTROLS) */}
       <div
-        className="px-8 py-4 bg-white border-b border-gray-200"
+        className="bg-white border-b border-gray-200"
         style={{ display: (activeModule === "Org Chart" || activeModule === "Activity Analysis") ? "none" : "block" }}
       >
-        <div className="flex items-center gap-2 mb-2">
-          <svg className="w-5 h-5 text-am-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        {/* Header row — always visible, acts as toggle */}
+        <button
+          onClick={() => setColConfigCollapsed((v) => !v)}
+          className="w-full px-8 py-3 flex items-center gap-2 hover:bg-gray-50 transition-colors group"
+        >
+          <svg className="w-4 h-4 text-am-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
           </svg>
           <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">Column Configuration</h2>
-        </div>
-        {columns ? (
-          <div className="grid grid-cols-6 gap-4">
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1.5">Employee Column</label>
-              <select className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-am-500 focus:border-am-500 outline-none transition-all bg-white hover:border-gray-400" value={empCol} onChange={(e) => setEmpCol(e.target.value)}>
-                <option value="">Select column...</option>
-                {columns.map((c) => <option key={c}>{c}</option>)}
-              </select>
+          {/* Collapsed summary pills */}
+          {colConfigCollapsed && columns && (
+            <div className="flex items-center gap-1.5 ml-3 flex-wrap">
+              {empCol && <span className="px-2 py-0.5 bg-am-50 text-am-700 rounded text-xs font-medium border border-am-200">{empCol}</span>}
+              {mgrCol && <span className="px-2 py-0.5 bg-am-50 text-am-700 rounded text-xs font-medium border border-am-200">{mgrCol}</span>}
+              {fteCol && <span className="px-2 py-0.5 bg-gray-100 text-gray-600 rounded text-xs font-medium">{fteCol}</span>}
+              {flcCol && <span className="px-2 py-0.5 bg-gray-100 text-gray-600 rounded text-xs font-medium">{flcCol}</span>}
+              {countryCol && <span className="px-2 py-0.5 bg-gray-100 text-gray-600 rounded text-xs font-medium">{countryCol}</span>}
+              {jobTitleCol && <span className="px-2 py-0.5 bg-gray-100 text-gray-600 rounded text-xs font-medium">{jobTitleCol}</span>}
             </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1.5">Manager Column</label>
-              <select className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-am-500 focus:border-am-500 outline-none transition-all bg-white hover:border-gray-400" value={mgrCol} onChange={(e) => setMgrCol(e.target.value)}>
-                <option value="">Select column...</option>
-                {columns.map((c) => <option key={c}>{c}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1.5">FTE Column</label>
-              <select className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-am-500 focus:border-am-500 outline-none transition-all bg-white hover:border-gray-400" value={fteCol} onChange={(e) => setFteCol(e.target.value)}>
-                <option value="">Select column...</option>
-                {columns.map((c) => <option key={c}>{c}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1.5">FLC Column</label>
-              <select className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-am-500 focus:border-am-500 outline-none transition-all bg-white hover:border-gray-400" value={flcCol} onChange={(e) => setFlcCol(e.target.value)}>
-                <option value="">Select column...</option>
-                {columns.map((c) => <option key={c}>{c}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1.5">Country Column <span className="text-gray-400">(Optional)</span></label>
-              <select className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-am-500 focus:border-am-500 outline-none transition-all bg-white hover:border-gray-400" value={countryCol} onChange={(e) => setCountryCol(e.target.value)}>
-                <option value="">Select column...</option>
-                {columns.map((c) => <option key={c}>{c}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1.5">Job Title Column <span className="text-gray-400">(Optional)</span></label>
-              <select className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-am-500 focus:border-am-500 outline-none transition-all bg-white hover:border-gray-400" value={jobTitleCol} onChange={(e) => setJobTitleCol(e.target.value)}>
-                <option value="">Select column...</option>
-                {columns.map((c) => <option key={c}>{c}</option>)}
-              </select>
-            </div>
+          )}
+          <svg
+            className={`w-4 h-4 text-gray-400 ml-auto flex-shrink-0 transition-transform duration-200 ${colConfigCollapsed ? "-rotate-90" : "rotate-0"}`}
+            fill="none" stroke="currentColor" viewBox="0 0 24 24"
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+          </svg>
+        </button>
+
+        {/* Collapsible body */}
+        <div
+          style={{
+            overflow: "hidden",
+            maxHeight: colConfigCollapsed ? "0px" : "200px",
+            transition: "max-height 0.25s ease",
+          }}
+        >
+          <div className="px-8 pb-4">
+            {columns ? (
+              <div className="grid grid-cols-6 gap-4">
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1.5">Employee Column</label>
+                  <select className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-am-500 focus:border-am-500 outline-none transition-all bg-white hover:border-gray-400" value={empCol} onChange={(e) => setEmpCol(e.target.value)}>
+                    <option value="">Select column...</option>
+                    {columns.map((c) => <option key={c}>{c}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1.5">Manager Column</label>
+                  <select className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-am-500 focus:border-am-500 outline-none transition-all bg-white hover:border-gray-400" value={mgrCol} onChange={(e) => setMgrCol(e.target.value)}>
+                    <option value="">Select column...</option>
+                    {columns.map((c) => <option key={c}>{c}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1.5">FTE Column</label>
+                  <select className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-am-500 focus:border-am-500 outline-none transition-all bg-white hover:border-gray-400" value={fteCol} onChange={(e) => setFteCol(e.target.value)}>
+                    <option value="">Select column...</option>
+                    {columns.map((c) => <option key={c}>{c}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1.5">FLC Column</label>
+                  <select className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-am-500 focus:border-am-500 outline-none transition-all bg-white hover:border-gray-400" value={flcCol} onChange={(e) => setFlcCol(e.target.value)}>
+                    <option value="">Select column...</option>
+                    {columns.map((c) => <option key={c}>{c}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1.5">Country Column <span className="text-gray-400">(Optional)</span></label>
+                  <select className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-am-500 focus:border-am-500 outline-none transition-all bg-white hover:border-gray-400" value={countryCol} onChange={(e) => setCountryCol(e.target.value)}>
+                    <option value="">Select column...</option>
+                    {columns.map((c) => <option key={c}>{c}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1.5">Job Title Column <span className="text-gray-400">(Optional)</span></label>
+                  <select className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-am-500 focus:border-am-500 outline-none transition-all bg-white hover:border-gray-400" value={jobTitleCol} onChange={(e) => setJobTitleCol(e.target.value)}>
+                    <option value="">Select column...</option>
+                    {columns.map((c) => <option key={c}>{c}</option>)}
+                  </select>
+                </div>
+              </div>
+            ) : (
+              <p className="text-sm text-gray-400 italic">Upload data to configure columns</p>
+            )}
           </div>
-        ) : (
-          <p className="text-sm text-gray-400 italic">Upload data to configure columns</p>
-        )}
+        </div>
       </div>
 
       {/* BODY */}

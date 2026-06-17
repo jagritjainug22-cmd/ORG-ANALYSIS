@@ -44,6 +44,7 @@ import {
   dbValidateScenario,
   dbBulkFlag,
   dbBulkEditProperty,
+  dbBulkMove,
 } from "../api/backend";
 import {
   CARD_WIDTH,
@@ -222,7 +223,7 @@ export default function OrgChart({
       setRecords(loaded);
       setSummary(scResp.summary || null);
       setChangeLog(logResp.changes || []);
-      setNodeIssuesMap(validateRecordsClient(loaded, { empCol, mgrCol }));
+      setNodeIssuesMap(validateRecordsClient(loaded, { empCol, mgrCol, jobTitleCol }));
     } catch (e) {
       console.error("Failed to load scenario:", e);
       setError(e.message || "Failed to load scenario from database.");
@@ -704,7 +705,7 @@ export default function OrgChart({
     const next = localUpdater(snapshot);
     setRecords(next);
     setSummary(buildLocalSummary(next, fteCol, flcCol));
-    setNodeIssuesMap(validateRecordsClient(next, { empCol, mgrCol }));
+    setNodeIssuesMap(validateRecordsClient(next, { empCol, mgrCol, jobTitleCol }));
     if (!inDbMode) return;
     try {
       const resp = await dbCall();
@@ -2030,6 +2031,22 @@ export default function OrgChart({
               await dbBulkEditProperty(activeScenarioId, empIds, field, value);
               await reloadScenario();
             }}
+            onBulkMove={async (empIds, newMgrId) => {
+              // Optimistic update then persist — validation reruns automatically via applyAndPersist
+              await applyAndPersist(
+                (recs) =>
+                  recs.map((r) => {
+                    const rid = String(r.__emp_id ?? r[empCol] ?? "");
+                    return empIds.includes(rid)
+                      ? { ...r, __mgr_id: String(newMgrId), [mgrCol]: newMgrId }
+                      : r;
+                  }),
+                () => dbBulkMove(activeScenarioId, empIds, newMgrId)
+              );
+            }}
+            allRecords={records}
+            empCol={empCol}
+            jobTitleCol={jobTitleCol}
           />
 
           {/* Floating pan controls. Each click shifts the stage by a fixed

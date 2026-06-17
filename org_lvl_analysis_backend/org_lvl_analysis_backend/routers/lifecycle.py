@@ -36,6 +36,7 @@ from services import dataset_lock_service
 from services.audit_service import write_audit_log
 from services import db_service
 from services.cleanup_service import apply_exclusion_filter, build_country_flag
+from services.completeness_service import get_completeness_matrix
 from services.crosstab_service import apply_others_grouping, generate_crosstab, generate_preview_data
 from services.export_service import export_excel
 from services.filter_error_service import filter_errors
@@ -111,6 +112,11 @@ class BulkEditPropertyBody(BaseModel):
     value: Any
     effective_date: Optional[str] = None
 
+class BulkMoveBody(BaseModel):
+    emp_ids: List[str]
+    new_mgr_id: Optional[str] = None
+    effective_date: Optional[str] = None
+
 class FormulaCreateBody(BaseModel):
     col_name: str
     expression: str
@@ -120,6 +126,11 @@ class FormulaPreviewBody(BaseModel):
     sample_size: int = 5
     data: List[Dict]
     available_columns: Optional[List[str]] = None
+
+class CompletenessHeatmapBody(BaseModel):
+    data: List[Dict]
+    fields: List[str]
+    group_col: str
 
 class ScenarioBody(BaseModel):
     name: str
@@ -853,6 +864,48 @@ async def validate_endpoint(
         write_activity_log(
             username=username, action="download" if download else "process",
             module="Validate", status="error", details=str(e),
+        )
+        raise
+
+
+@router.post("/completeness_heatmap")
+async def completeness_heatmap_endpoint(
+    body: CompletenessHeatmapBody,
+    project_id: int,
+    user: dict = Depends(require_project_access()),
+):
+    """Return a group × field completeness matrix for heatmap visualization."""
+    username = user["username"]
+    try:
+        df = pd.DataFrame(body.data)
+        if df.empty:
+            raise HTTPException(status_code=400, detail="No data provided")
+        if not body.fields:
+            raise HTTPException(status_code=400, detail="Select at least one field to analyze")
+        if not body.group_col:
+            raise HTTPException(status_code=400, detail="Select a group-by column")
+
+        result = get_completeness_matrix(df, body.fields, body.group_col)
+
+        write_activity_log(
+            username=username,
+            action="process",
+            module="Validate",
+            rows_input=len(df),
+            rows_output=len(result["matrix"]),
+            status="success",
+            details=f"Completeness heatmap: {result['summary']['fields_count']} fields × {result['summary']['groups_count']} groups",
+        )
+        return result
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        write_activity_log(
+            username=username,
+            action="process",
+            module="Validate",
+            status="error",
+            details=str(e),
         )
         raise
 
@@ -2111,6 +2164,27 @@ def db_scenario_bulk_edit_property(
         effective_date=body.effective_date,
     )
     return {"affected": affected}
+
+
+@router.post("/db/scenarios/{scenario_id}/bulk_move")
+def db_scenario_bulk_move(
+    scenario_id: int,
+    project_id: int,
+    body: BulkMoveBody,
+    user: dict = Depends(require_project_access()),
+    _lock: dict = Depends(require_dataset_lock_holder()),
+):
+    """Reassign multiple employees to a new manager in one transaction."""
+    _require_scenario_in_project(scenario_id, project_id)
+    affected = db_service.bulk_move_employees(
+        scenario_id,
+        body.emp_ids,
+        body.new_mgr_id,
+        username=user["username"],
+        effective_date=body.effective_date,
+    )
+    summary = db_service.get_scenario_summary(scenario_id)
+    return {"affected": affected, "summary": summary}
 
 
 @router.post("/db/scenarios/{scenario_id}/promote")

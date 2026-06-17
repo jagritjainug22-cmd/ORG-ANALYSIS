@@ -14,11 +14,12 @@
  * @param {Array}  records  - OrgChart records array (with __emp_id, __mgr_id,
  *                            is_flagged_removed, is_added fields)
  * @param {Object} opts
- * @param {string} opts.empCol - column key for employee ID (fallback)
- * @param {string} opts.mgrCol - column key for manager ID (fallback)
+ * @param {string} opts.empCol      - column key for employee ID (fallback)
+ * @param {string} opts.mgrCol      - column key for manager ID (fallback)
+ * @param {string} opts.jobTitleCol - column key for job title (used in descriptions)
  * @returns {Map<string, Array>}
  */
-export function validateRecordsClient(records, { empCol, mgrCol } = {}) {
+export function validateRecordsClient(records, { empCol, mgrCol, jobTitleCol } = {}) {
   const issuesMap = new Map(); // empId -> Issue[]
 
   const addIssue = (empId, type, severity, description, relatedEmpIds = []) => {
@@ -44,6 +45,13 @@ export function validateRecordsClient(records, { empCol, mgrCol } = {}) {
 
   const activeIds = new Set([...allById.keys()].filter((id) => !flaggedIds.has(id)));
 
+  // Helper: human-readable label for a position
+  const label = (r, eid) => {
+    if (!r) return `"${eid}"`;
+    const title = jobTitleCol ? (r[jobTitleCol] || "").toString().trim() : "";
+    return title ? `"${title}" (${eid})` : `"${eid}"`;
+  };
+
   // --- Check 1: Duplicate IDs (among all active records) ---
   const seenIds = new Set();
   const dupIds = new Set();
@@ -52,7 +60,7 @@ export function validateRecordsClient(records, { empCol, mgrCol } = {}) {
     seenIds.add(id);
   }
   for (const id of dupIds) {
-    addIssue(id, "duplicate_id", "error", `Duplicate employee ID "${id}"`, []);
+    addIssue(id, "duplicate_id", "error", `Duplicate ID ${label(allById.get(id), id)} — appears in multiple active rows`, []);
   }
 
   // --- Check 2-6: per-record checks ---
@@ -64,6 +72,7 @@ export function validateRecordsClient(records, { empCol, mgrCol } = {}) {
     const isFlagged = flaggedIds.has(eid);
     const isAdded = addedIds.has(eid);
     const isActive = activeIds.has(eid);
+    const posLabel = label(r, eid);
 
     // Check 2: Closed manager still has active direct reports
     if (isFlagged) {
@@ -74,11 +83,13 @@ export function validateRecordsClient(records, { empCol, mgrCol } = {}) {
       });
       if (activeReports.length > 0) {
         const relIds = activeReports.map((c) => String(c.__emp_id ?? c[empCol] ?? ""));
+        const childLabels = relIds.slice(0, 3).map((cid) => label(allById.get(cid), cid)).join(", ");
+        const extra = relIds.length > 3 ? ` +${relIds.length - 3} more` : "";
         addIssue(
           eid,
           "closed_manager_has_reports",
           "error",
-          `Closed position has ${activeReports.length} open direct report${activeReports.length !== 1 ? "s" : ""}`,
+          `${posLabel} is closed but still has ${activeReports.length} open report${activeReports.length !== 1 ? "s" : ""}: ${childLabels}${extra}`,
           relIds
         );
       }
@@ -92,7 +103,7 @@ export function validateRecordsClient(records, { empCol, mgrCol } = {}) {
           eid,
           "orphaned_position",
           "error",
-          `Manager ID "${mgrId}" does not exist in the dataset`,
+          `${posLabel} reports to unknown manager "${mgrId}" (not in dataset)`,
           [mgrId]
         );
       } else if (flaggedIds.has(mgrId)) {
@@ -100,7 +111,7 @@ export function validateRecordsClient(records, { empCol, mgrCol } = {}) {
           eid,
           "orphaned_position",
           "error",
-          `Reports to closed position "${mgrId}"`,
+          `${posLabel} reports to closed position ${label(mgrRec, mgrId)}`,
           [mgrId]
         );
       }
@@ -108,18 +119,19 @@ export function validateRecordsClient(records, { empCol, mgrCol } = {}) {
 
     // Check 4: Self-report
     if (isActive && mgrId && mgrId === eid) {
-      addIssue(eid, "self_report", "error", "Position reports to itself", []);
+      addIssue(eid, "self_report", "error", `${posLabel} reports to itself`, []);
     }
 
     // Check 5 (missing change reason): flagged or added with no reason
     if (isFlagged || isAdded) {
       const reason = (r["Change Reason"] || r["change_reason"] || "").toString().trim();
       if (!reason) {
+        const changeType = isFlagged ? "Flagged removal" : "Added position";
         addIssue(
           eid,
           "missing_change_reason",
           "warning",
-          `${isFlagged ? "Closed" : "Added"} position has no Change Reason`,
+          `${changeType} ${posLabel} has no Change Reason`,
           []
         );
       }
@@ -140,7 +152,7 @@ export function validateRecordsClient(records, { empCol, mgrCol } = {}) {
     // Avoid duplicate if already has a circular issue
     const existing = issuesMap.get(id) || [];
     if (!existing.some((i) => i.type === "circular_reference")) {
-      addIssue(id, "circular_reference", "error", "Part of a circular reporting chain", []);
+      addIssue(id, "circular_reference", "error", `${label(allById.get(id), id)} is part of a circular reporting chain`, []);
     }
   }
 

@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { validate as validateBackend } from "../api/backend";
+import CompletenessHeatmap from "./CompletenessHeatmap";
 
 export default function Validate({
   dfRecords,
@@ -15,6 +16,7 @@ export default function Validate({
   const [downloadUrl, setDownloadUrl] = useState(null);
   const [loading, setLoading] = useState(false);
   const [validationComplete, setValidationComplete] = useState(false);
+  const [activeTab, setActiveTab] = useState("validation");
 
   const runValidation = async (download = false) => {
     if (!dfRecords || !empCol || !mgrCol) {
@@ -109,12 +111,50 @@ export default function Validate({
               Data Validation
             </h3>
             <p className="text-sm text-gray-600">
-              Validate organizational hierarchy data for duplicate IDs, missing managers, invalid relationships, and circular references.
+              Check hierarchy integrity and data completeness — duplicate IDs, missing managers,
+              invalid relationships, and field-level gaps across your organisation.
             </p>
           </div>
         </div>
       </div>
 
+      {/* Tab switcher */}
+      <div className="flex gap-1 p-1 bg-gray-100 rounded-xl w-fit">
+        <button
+          type="button"
+          onClick={() => setActiveTab("validation")}
+          className={`px-4 py-2 text-sm rounded-lg transition-all ${
+            activeTab === "validation"
+              ? "bg-white shadow-sm text-gray-900 font-semibold"
+              : "text-gray-500 hover:text-gray-700 font-medium"
+          }`}
+        >
+          Validation Results
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab("quality")}
+          className={`px-4 py-2 text-sm rounded-lg transition-all ${
+            activeTab === "quality"
+              ? "bg-white shadow-sm text-gray-900 font-semibold"
+              : "text-gray-500 hover:text-gray-700 font-medium"
+          }`}
+        >
+          Data Quality
+        </button>
+      </div>
+
+      {activeTab === "quality" && (
+        <CompletenessHeatmap
+          dfRecords={dfRecords}
+          columns={columns}
+          empCol={empCol}
+          mgrCol={mgrCol}
+        />
+      )}
+
+      {activeTab === "validation" && (
+      <>
       {/* Column Selection Section */}
       <div className="bg-white border border-gray-200 rounded-lg p-6">
         <h4 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
@@ -654,6 +694,8 @@ export default function Validate({
           </div>
         </div>
       </div>
+      </>
+      )}
     </div>
   );
 }

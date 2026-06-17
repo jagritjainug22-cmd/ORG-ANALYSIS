@@ -545,6 +545,15 @@ export const dbBulkEditProperty = async (scenarioId, empIds, field, value, effec
   return res.data;
 };
 
+export const dbBulkMove = async (scenarioId, empIds, newMgrId, effectiveDate = null) => {
+  const res = await axios.post(
+    `${getProjectUrl()}/db/scenarios/${scenarioId}/bulk_move`,
+    { emp_ids: empIds, new_mgr_id: newMgrId, effective_date: effectiveDate },
+    { headers: jsonHeaders() }
+  );
+  return res.data;
+};
+
 export const dbPromoteScenario = async (scenarioId) => {
   const res = await axios.post(`${getProjectUrl()}/db/scenarios/${scenarioId}/promote`, {}, { headers: jsonHeaders() });
   return res.data;
@@ -807,6 +816,17 @@ export const dbPreviewFormula = (datasetId, expression, data, availableColumns =
 
 export const dbValidateFormula = (datasetId, expression, availableColumns = []) =>
   axios.post(`${getProjectUrl()}/datasets/${datasetId}/formulas/validate`, { expression, data: [], available_columns: availableColumns }, { headers: jsonHeaders() }).then(r => r.data);
+
+// ---------------------------------------------------------------------------
+// Completeness heatmap (Feature 8)
+// ---------------------------------------------------------------------------
+
+export const dbGetCompletenessHeatmap = (records, fields, groupCol) =>
+  axios.post(
+    `${getProjectUrl()}/completeness_heatmap`,
+    { data: records, fields, group_col: groupCol },
+    { headers: jsonHeaders() }
+  ).then(r => r.data);
 
 export const activityExportImpact = async (configId, configName = "activity") => {
   const res = await axios.get(`${getProjectUrl()}/activity/configs/${configId}/impact/export`, {

@@ -12,6 +12,8 @@ export default function Hierarchy({
   countryCol,
   onBaselineSaved,
   uploadedFileName,
+  formulas = [],
+  datasetId = null,
 }) {
   const [loading, setLoading] = useState(false);
   const [preview, setPreview] = useState([]);
@@ -41,7 +43,8 @@ export default function Hierarchy({
         flcCol || null,
         fteCol || null,
         false,
-        jobTitleCol || null
+        jobTitleCol || null,
+        datasetId || null
       );
 
       if (res.df) setValidatedDf(res.df);
@@ -98,7 +101,8 @@ export default function Hierarchy({
         flcCol || null,
         fteCol || null,
         true,
-        jobTitleCol || null
+        jobTitleCol || null,
+        datasetId || null
       );
     } catch (err) {
       console.error("Hierarchy download failed:", err);

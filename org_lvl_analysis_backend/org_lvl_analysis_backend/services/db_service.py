@@ -593,6 +593,24 @@ def _migrate_v8(conn: PgConnection) -> None:
         c.execute("ALTER TABLE change_log ADD COLUMN effective_date TEXT")
 
 
+def _migrate_v9(conn: PgConnection) -> None:
+    """v9: dataset_formulas table for user-defined derived columns (Feature 7)."""
+    c = conn.cursor()
+    c.execute(
+        f"""
+        CREATE TABLE IF NOT EXISTS dataset_formulas (
+            id         {_ID_PK},
+            dataset_id INTEGER NOT NULL REFERENCES datasets(id) ON DELETE CASCADE,
+            col_name   TEXT NOT NULL,
+            expression TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            UNIQUE (dataset_id, col_name)
+        )
+        """
+    )
+    c.execute("CREATE INDEX IF NOT EXISTS idx_formulas_dataset ON dataset_formulas(dataset_id)")
+
+
 _MIGRATIONS = [
     (1, "projects + assignments + audit_log tables", _migrate_v1),
     (2, "project_id on datasets + Legacy project backfill", _migrate_v2),
@@ -602,6 +620,7 @@ _MIGRATIONS = [
     (6, "rate cards + scenario rate-card settings", _migrate_v6),
     (7, "activity analysis tables", _migrate_v7),
     (8, "effective_date on change_log", _migrate_v8),
+    (9, "dataset_formulas table", _migrate_v9),
 ]
 
 
@@ -2777,4 +2796,46 @@ def get_activity_levers(config_id: int) -> List[Dict[str, Any]]:
 def delete_activity_lever(lever_id: int) -> None:
     with _connect() as conn:
         conn.execute("DELETE FROM activity_levers WHERE id = ?", (lever_id,))
+        conn.commit()
+
+
+# ---------------------------------------------------------------------------
+# Dataset formulas (Feature 7 — derived columns)
+# ---------------------------------------------------------------------------
+
+def list_formulas(dataset_id: int) -> List[Dict[str, Any]]:
+    """Return all formulas for a dataset, ordered by creation time."""
+    with _connect_ro() as conn:
+        rows = conn.execute(
+            "SELECT * FROM dataset_formulas WHERE dataset_id = ? ORDER BY id",
+            (dataset_id,),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def create_formula(dataset_id: int, col_name: str, expression: str) -> Dict[str, Any]:
+    """Insert a formula (or replace if col_name already exists for this dataset)."""
+    now = datetime.utcnow().isoformat()
+    with _connect() as conn:
+        c = conn.cursor()
+        c.execute(
+            """
+            INSERT INTO dataset_formulas (dataset_id, col_name, expression, created_at)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT (dataset_id, col_name)
+                DO UPDATE SET expression = EXCLUDED.expression, created_at = EXCLUDED.created_at
+            """,
+            (dataset_id, col_name, expression, now),
+        )
+        conn.commit()
+        row = conn.execute(
+            "SELECT * FROM dataset_formulas WHERE dataset_id = ? AND col_name = ?",
+            (dataset_id, col_name),
+        ).fetchone()
+    return dict(row) if row else {}
+
+
+def delete_formula(formula_id: int) -> None:
+    with _connect() as conn:
+        conn.execute("DELETE FROM dataset_formulas WHERE id = ?", (formula_id,))
         conn.commit()

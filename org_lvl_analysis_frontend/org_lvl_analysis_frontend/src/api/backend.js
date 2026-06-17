@@ -321,12 +321,13 @@ export const validate = (df, empCol, mgrCol, spanCol = null, download = false) =
   }).then(r => r.data);
 };
 
-export const hierarchy = async (df, empCol, mgrCol, flcCol = null, fteCol = null, download = false, jobTitleCol = null) => {
+export const hierarchy = async (df, empCol, mgrCol, flcCol = null, fteCol = null, download = false, jobTitleCol = null, datasetId = null) => {
   const params = {
     emp_col: empCol, mgr_col: mgrCol,
     flc_col: flcCol || null, fte_col: fteCol || null,
-    job_title_col: jobTitleCol || null, download
+    job_title_col: jobTitleCol || null, download,
   };
+  if (datasetId) params.dataset_id = datasetId;
   if (download) {
     const res = await axios.post(`${getProjectUrl()}/hierarchy`, df, {
       headers: getHeaders(), params, responseType: "blob"
@@ -787,6 +788,25 @@ export const activityUploadLevers = (configId, file) => {
 
 export const activityCompute = (configId, params = {}) =>
   axios.post(`${getProjectUrl()}/activity/configs/${configId}/compute`, {}, { headers: jsonHeaders(), params }).then(r => r.data);
+
+// ---------------------------------------------------------------------------
+// Formula API (Feature 7)
+// ---------------------------------------------------------------------------
+
+export const dbListFormulas = (datasetId) =>
+  axios.get(`${getProjectUrl()}/datasets/${datasetId}/formulas`, { headers: getHeaders() }).then(r => r.data);
+
+export const dbCreateFormula = (datasetId, colName, expression) =>
+  axios.post(`${getProjectUrl()}/datasets/${datasetId}/formulas`, { col_name: colName, expression }, { headers: jsonHeaders() }).then(r => r.data);
+
+export const dbDeleteFormula = (datasetId, formulaId) =>
+  axios.delete(`${getProjectUrl()}/datasets/${datasetId}/formulas/${formulaId}`, { headers: getHeaders() }).then(r => r.data);
+
+export const dbPreviewFormula = (datasetId, expression, data, availableColumns = []) =>
+  axios.post(`${getProjectUrl()}/datasets/${datasetId}/formulas/preview`, { expression, data, available_columns: availableColumns, sample_size: 5 }, { headers: jsonHeaders() }).then(r => r.data);
+
+export const dbValidateFormula = (datasetId, expression, availableColumns = []) =>
+  axios.post(`${getProjectUrl()}/datasets/${datasetId}/formulas/validate`, { expression, data: [], available_columns: availableColumns }, { headers: jsonHeaders() }).then(r => r.data);
 
 export const activityExportImpact = async (configId, configName = "activity") => {
   const res = await axios.get(`${getProjectUrl()}/activity/configs/${configId}/impact/export`, {

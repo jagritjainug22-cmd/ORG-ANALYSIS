@@ -30,6 +30,7 @@ export default function OrgDetailPanel({
   records = [],
   onMoveEmployee,
   onEditEmployee,
+  formulas = [],
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState({});
@@ -456,6 +457,81 @@ export default function OrgDetailPanel({
             </span>
           </div>
         ))}
+
+        {/* ── Calculated columns (formula-derived) ── */}
+        {formulas.length > 0 && record && (() => {
+          // Evaluate each formula against this record
+          const evalFormula = (expression, rec) => {
+            try {
+              const cols = Object.keys(rec).sort((a, b) => b.length - a.length);
+              let expr = expression;
+              const vals = {};
+              cols.forEach((col) => {
+                const safe = col.replace(/[^a-zA-Z0-9_]/g, "_").replace(/^(\d)/, "col_$1") || "col_x";
+                vals[safe] = parseFloat(rec[col]) || 0;
+                expr = expr.split(col).join(safe);
+              });
+              expr = expr.replace(/\^/g, "**");
+              if (/[^0-9a-zA-Z_\s+\-*/.()^]/.test(expr)) return null;
+              const fn = new Function(...Object.keys(vals), `"use strict"; return (${expr});`);
+              const result = fn(...Object.values(vals));
+              return isFinite(result) ? Math.round(result * 10000) / 10000 : null;
+            } catch { return null; }
+          };
+
+          return (
+            <div style={{ marginTop: 12 }}>
+              <div
+                style={{
+                  fontSize: 10,
+                  fontWeight: 600,
+                  color: "#0D6B5F",
+                  textTransform: "uppercase",
+                  letterSpacing: "0.8px",
+                  marginBottom: 8,
+                  marginTop: 4,
+                  borderTop: "1px solid rgba(13,107,95,0.2)",
+                  paddingTop: 10,
+                }}
+              >
+                Calculated
+              </div>
+              {formulas.map((formula) => {
+                const val = evalFormula(formula.expression, record);
+                return (
+                  <div
+                    key={formula.id || formula.col_name}
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      gap: 12,
+                      padding: "6px 8px",
+                      marginBottom: 4,
+                      borderRadius: 6,
+                      background: "rgba(13,107,95,0.06)",
+                      border: "1px solid rgba(13,107,95,0.12)",
+                    }}
+                  >
+                    <span style={{ fontSize: 11, color: "#0a5549", fontWeight: 500, flexShrink: 0 }}>
+                      {formula.col_name}
+                    </span>
+                    <span
+                      style={{
+                        fontSize: 11,
+                        color: val !== null ? "#0D6B5F" : AM.textMuted,
+                        fontFamily: "'IBM Plex Mono', monospace",
+                        fontWeight: 600,
+                        textAlign: "right",
+                      }}
+                    >
+                      {val !== null ? val.toLocaleString() : "—"}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          );
+        })()}
       </div>
     </aside>
   );

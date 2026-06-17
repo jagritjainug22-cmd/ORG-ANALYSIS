@@ -102,6 +102,7 @@ export default function OrgChart({
   setJobTitleCol,
   setCountryCol,
   onGuardStateChange,
+  formulas = [],
 }) {
   const inDbMode = !!(datasetId && activeScenarioId);
   const hasLegacyDf = !!(df && df.length);
@@ -2083,6 +2084,7 @@ export default function OrgChart({
             records={records}
             onMoveEmployee={handleMove}
             onEditEmployee={handleEdit}
+            formulas={formulas}
           />
         )}
 

@@ -43,6 +43,7 @@ from services.hierarchy_service import compute_avg_flc, compute_chains, compute_
 from services.logging_service import get_activity_logs, get_user_stats, write_activity_log
 from services.orgchart_render_service import render_scenario_svg, get_tree_structure
 from services.orgchart_service import build_org_tree, build_tree_preserve_ancestors, make_json_serializable
+from services.formula_service import apply_formulas_to_records, evaluate_formula, validate_expression as formula_validate_expression
 from services.spans_layers_service import span_threshold, spans_and_layers
 from services.upload_service import read_excel_file
 from services.validation_service import validate_org_data, validate_scenario
@@ -109,6 +110,16 @@ class BulkEditPropertyBody(BaseModel):
     field: str
     value: Any
     effective_date: Optional[str] = None
+
+class FormulaCreateBody(BaseModel):
+    col_name: str
+    expression: str
+
+class FormulaPreviewBody(BaseModel):
+    expression: str
+    sample_size: int = 5
+    data: List[Dict]
+    available_columns: Optional[List[str]] = None
 
 class ScenarioBody(BaseModel):
     name: str
@@ -899,6 +910,7 @@ async def hierarchy_endpoint(
     fte_col: str | None = Query(None),
     job_title_col: str | None = Query(None),
     download: bool = Query(False),
+    dataset_id: int | None = Query(None),
     user: dict = Depends(require_project_access()),
 ):
     username = user["username"]
@@ -914,6 +926,16 @@ async def hierarchy_endpoint(
         df, max_depth = compute_chains(df, emp_col, mgr_col)
         df = compute_total_reports(df, emp_col, mgr_col)
         df = compute_avg_flc(df, flc_col, fte_col)
+
+        # Apply user-defined formula columns if a saved dataset is active
+        if dataset_id:
+            try:
+                formulas = db_service.list_formulas(dataset_id)
+                if formulas:
+                    enriched = apply_formulas_to_records(df.to_dict(orient="records"), formulas)
+                    df = pd.DataFrame(enriched)
+            except Exception:
+                pass  # Formula errors must not break the hierarchy result
 
         potential_base_cols = []
         if job_title_col and job_title_col in df.columns:
@@ -964,6 +986,79 @@ async def hierarchy_endpoint(
             module="Hierarchy", status="error", details=str(e),
         )
         raise
+
+
+# ---------------------------------------------------------------------------
+# Formula CRUD endpoints (Feature 7)
+# ---------------------------------------------------------------------------
+
+@router.get("/datasets/{dataset_id}/formulas")
+def list_formulas(
+    dataset_id: int,
+    project_id: int,
+    _user: dict = Depends(require_project_access()),
+):
+    return {"formulas": db_service.list_formulas(dataset_id)}
+
+
+@router.post("/datasets/{dataset_id}/formulas")
+def create_formula(
+    dataset_id: int,
+    body: FormulaCreateBody,
+    project_id: int,
+    _user: dict = Depends(require_project_access()),
+):
+    # Validate the expression can be parsed (columns unknown here; just syntax check)
+    validation = formula_validate_expression(body.expression, [])
+    # A syntax error with no columns mentioned will have error "Unknown columns:..."
+    # which is acceptable — we allow it through (columns exist at runtime).
+    # Only reject hard parse errors.
+    if not validation["valid"] and "Unknown column(s)" not in (validation["error"] or ""):
+        raise HTTPException(status_code=400, detail=validation["error"])
+    formula = db_service.create_formula(dataset_id, body.col_name, body.expression)
+    return {"formula": formula}
+
+
+@router.delete("/datasets/{dataset_id}/formulas/{formula_id}")
+def delete_formula(
+    dataset_id: int,
+    formula_id: int,
+    project_id: int,
+    _user: dict = Depends(require_project_access()),
+):
+    db_service.delete_formula(formula_id)
+    return {"status": "deleted"}
+
+
+@router.post("/datasets/{dataset_id}/formulas/preview")
+def preview_formula(
+    dataset_id: int,
+    body: FormulaPreviewBody,
+    project_id: int,
+    _user: dict = Depends(require_project_access()),
+):
+    sample = body.data[: body.sample_size]
+    available = body.available_columns or (list(sample[0].keys()) if sample else [])
+    validation = formula_validate_expression(body.expression, available)
+    if not validation["valid"]:
+        raise HTTPException(status_code=400, detail=validation["error"])
+    results = []
+    for record in sample:
+        from services.formula_service import evaluate_formula
+        val = evaluate_formula(body.expression, record)
+        results.append({"record": record, "result": val})
+    return {"preview": results, "validation": validation}
+
+
+@router.post("/datasets/{dataset_id}/formulas/validate")
+def validate_formula_expression(
+    dataset_id: int,
+    body: FormulaPreviewBody,
+    project_id: int,
+    _user: dict = Depends(require_project_access()),
+):
+    available = body.available_columns or []
+    return formula_validate_expression(body.expression, available)
 
 
 @router.post("/spans_layers")
@@ -1041,10 +1136,19 @@ def crosstab_endpoint(
     threshold_metric: str | None = Query(None),
     excluded_categories: str | None = Query(None),
     preview_only: bool = Query(False),
+    dataset_id: int | None = Query(None),
     user: dict = Depends(require_project_access()),
 ):
     username = user["username"]
     try:
+        # Apply formula columns before building the crosstab
+        if dataset_id:
+            try:
+                formulas = db_service.list_formulas(dataset_id)
+                if formulas:
+                    df = apply_formulas_to_records(df, formulas)
+            except Exception:
+                pass
         df = pd.DataFrame(df)
         rows_input = len(df)
         col_x = col_x if col_x in df.columns else None

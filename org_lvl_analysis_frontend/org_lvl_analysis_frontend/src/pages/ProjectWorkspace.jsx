@@ -3,8 +3,9 @@ import { useParams, useNavigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import { useConfirmLogout } from "../hooks/useConfirmLogout";
 import { useWorkGuard } from "../contexts/WorkGuardContext";
-import { setCurrentProjectId, fetchProjectDetail, cleanup, crosstab, orgchart, spansLayers, acquireLock, lockHeartbeat, releaseLock, dbPromoteScenario, dbResetScenario, releaseDatasetLock, dbListDatasets, dbGetDatasetRecords } from "../api/backend";
+import { setCurrentProjectId, fetchProjectDetail, cleanup, crosstab, orgchart, spansLayers, acquireLock, lockHeartbeat, releaseLock, dbPromoteScenario, dbResetScenario, releaseDatasetLock, dbListDatasets, dbGetDatasetRecords, dbListFormulas } from "../api/backend";
 import ActiveDatasetDropdown from "../components/ActiveDatasetDropdown";
+import FormulaEditor from "../components/FormulaEditor";
 
 import Upload from "../components/Upload";
 import DataSourceSelector from "../components/DataSourceSelector";
@@ -54,6 +55,10 @@ const MODULES = [
   {
     id: "Activity Analysis", label: "Activity Analysis",
     icon: (<svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>)
+  },
+  {
+    id: "Formulas", label: "Formula Columns",
+    icon: (<svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 7H7a2 2 0 00-2 2v8a2 2 0 002 2h10a2 2 0 002-2V9a2 2 0 00-2-2h-2M9 7V5a2 2 0 012-2h2a2 2 0 012 2v2M9 7h6M9 12h.01M12 12h.01M15 12h.01M9 16h.01M12 16h.01M15 16h.01" /></svg>)
   }
 ];
 
@@ -100,6 +105,9 @@ export default function ProjectWorkspace() {
 
   // --- Saved datasets cache (fetched once per project load) ---
   const [savedDatasets, setSavedDatasets] = useState(null);
+
+  // --- Formula columns (Feature 7) ---
+  const [formulas, setFormulas] = useState([]);
 
   // --- Switch-dataset confirmation dialog ---
   const [switchPending, setSwitchPending] = useState(false);
@@ -358,6 +366,10 @@ export default function ProjectWorkspace() {
       const scenarioName = scenarios.find((s) => s.id === scenarioId)?.name || "Baseline";
       setActiveDatasetLabel(dataset.name + " — " + scenarioName);
       setActiveDatasetName(dataset.name);
+      // Load formula columns for this dataset
+      dbListFormulas(dataset.id)
+        .then((data) => setFormulas(data?.formulas || []))
+        .catch(() => setFormulas([]));
       // Refresh the cached list so any new scenarios show up
       dbListDatasets(false, true).then((d) => setSavedDatasets(d?.datasets || [])).catch(() => {});
     } finally {
@@ -452,10 +464,14 @@ export default function ProjectWorkspace() {
             fteCol={fteCol} flcCol={flcCol}
             jobTitleCol={jobTitleCol} countryCol={countryCol}
             uploadedFileName={uploadedFileName}
-            onBaselineSaved={({ datasetId, scenarios, activeScenarioId }) => {
-              setDatasetId(datasetId);
-              setScenarios(scenarios);
-              setActiveScenarioId(activeScenarioId);
+            formulas={formulas}
+            datasetId={datasetId}
+            onBaselineSaved={({ datasetId: did, scenarios: scs, activeScenarioId: sid }) => {
+              setDatasetId(did);
+              setScenarios(scs);
+              setActiveScenarioId(sid);
+              // Load formulas for the newly created baseline
+              dbListFormulas(did).then((d) => setFormulas(d?.formulas || [])).catch(() => {});
             }}
           />
         );
@@ -469,7 +485,17 @@ export default function ProjectWorkspace() {
           />
         );
       case "Crosstab":
-        return <Crosstab df={validatedDf} fteCol={fteCol} flcCol={flcCol} />;
+        return <Crosstab df={validatedDf} fteCol={fteCol} flcCol={flcCol} formulas={formulas} datasetId={datasetId} />;
+      case "Formulas":
+        return (
+          <FormulaEditor
+            datasetId={datasetId}
+            columns={columns || (validatedDf?.length ? Object.keys(validatedDf[0]) : [])}
+            validatedDf={validatedDf}
+            formulas={formulas}
+            onFormulasChange={setFormulas}
+          />
+        );
       case "Org Chart":
         return (
           <OrgChart
@@ -487,6 +513,7 @@ export default function ProjectWorkspace() {
             setFteCol={setFteCol} setFlcCol={setFlcCol}
             setJobTitleCol={setJobTitleCol} setCountryCol={setCountryCol}
             onGuardStateChange={handleOrgGuardStateChange}
+            formulas={formulas}
           />
         );
       case "Activity Analysis":

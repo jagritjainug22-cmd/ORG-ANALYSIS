@@ -1,7 +1,34 @@
 import React, { useState, useEffect } from "react";
 import { crosstab } from "../api/backend";
 
-export default function Crosstab({ df, fteCol, flcCol }) {
+/** Apply formula columns client-side before crosstab (mirrors formula_service.py) */
+function applyFormulasToRecords(records, formulas) {
+  if (!formulas?.length || !records?.length) return records;
+  return records.map((record) => {
+    const r = { ...record };
+    formulas.forEach(({ col_name, expression }) => {
+      if (!col_name || !expression) return;
+      try {
+        const cols = Object.keys(record).sort((a, b) => b.length - a.length);
+        let expr = expression;
+        const vals = {};
+        cols.forEach((col) => {
+          const safe = col.replace(/[^a-zA-Z0-9_]/g, "_").replace(/^(\d)/, "col_$1") || "col_x";
+          vals[safe] = parseFloat(record[col]) || 0;
+          expr = expr.split(col).join(safe);
+        });
+        expr = expr.replace(/\^/g, "**");
+        if (/[^0-9a-zA-Z_\s+\-*/.()^]/.test(expr)) return;
+        const fn = new Function(...Object.keys(vals), `"use strict"; return (${expr});`);
+        const result = fn(...Object.values(vals));
+        r[col_name] = isFinite(result) ? Math.round(result * 10000) / 10000 : null;
+      } catch { /* skip bad formulas silently */ }
+    });
+    return r;
+  });
+}
+
+export default function Crosstab({ df, fteCol, flcCol, formulas = [], datasetId = null }) {
   const [colX, setColX] = useState("");
   const [colY, setColY] = useState("");
   const [rows, setRows] = useState([]);
@@ -18,8 +45,10 @@ export default function Crosstab({ df, fteCol, flcCol }) {
   const [excludedCategories, setExcludedCategories] = useState([]);
   const [showPreview, setShowPreview] = useState(false);
 
-  const columns = df?.length ? Object.keys(df[0]) : [];
-  const canRun = df?.length > 0;
+  // Apply formula columns so derived columns appear in selectors & backend call
+  const enrichedDf = applyFormulasToRecords(df || [], formulas);
+  const columns = enrichedDf?.length ? Object.keys(enrichedDf[0]) : [];
+  const canRun = enrichedDf?.length > 0;
 
   // Available threshold metrics
   const thresholdMetrics = ["Count", "FTEs", "FLC", "Avg_FTE_cost"];
@@ -77,7 +106,7 @@ export default function Crosstab({ df, fteCol, flcCol }) {
 
     try {
       const res = await crosstab(
-        df, 
+        enrichedDf, 
         colX || null, 
         colY || null, 
         fteCol || null, 
@@ -103,7 +132,7 @@ export default function Crosstab({ df, fteCol, flcCol }) {
   };
 
   const generate = async () => {
-    if (!df?.length) {
+    if (!enrichedDf?.length) {
       setError("No data available. Please upload and validate data first.");
       return;
     }
@@ -117,7 +146,7 @@ export default function Crosstab({ df, fteCol, flcCol }) {
       // Only pass others grouping params if enabled
       const res = enableOthersGrouping 
         ? await crosstab(
-            df, 
+            enrichedDf, 
             colX || null, 
             colY || null, 
             fteCol || null, 
@@ -130,7 +159,7 @@ export default function Crosstab({ df, fteCol, flcCol }) {
             false
           )
         : await crosstab(
-            df, 
+            enrichedDf, 
             colX || null, 
             colY || null, 
             fteCol || null, 
@@ -180,7 +209,7 @@ export default function Crosstab({ df, fteCol, flcCol }) {
     try {
       if (enableOthersGrouping) {
         await crosstab(
-          df, 
+          enrichedDf, 
           colX || null, 
           colY || null, 
           fteCol || null, 
@@ -194,7 +223,7 @@ export default function Crosstab({ df, fteCol, flcCol }) {
         );
       } else {
         await crosstab(
-          df, 
+          enrichedDf, 
           colX || null, 
           colY || null, 
           fteCol || null, 

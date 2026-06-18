@@ -253,35 +253,46 @@ export default function OrgImpactStrip({
             {/* Tab bar */}
             <div style={{
               display: "flex",
-              borderBottom: `1px solid ${AM.borderLight}`,
-              background: AM.white,
+              borderBottom: `1px solid ${AM.border}`,
+              background: AM.bg,
               paddingLeft: 20,
               flexShrink: 0,
+              gap: 4,
             }}>
-              {[{ id: "summary", label: "Summary" }, { id: "phasing", label: "Phasing" }].map((tab) => (
-                <button
-                  key={tab.id}
-                  onClick={() => setActiveTab(tab.id)}
-                  style={{
-                    background: "transparent",
-                    border: "none",
-                    borderBottom: activeTab === tab.id ? `2px solid ${AM.navy}` : "2px solid transparent",
-                    color: activeTab === tab.id ? AM.navy : AM.textMuted,
-                    fontWeight: activeTab === tab.id ? 700 : 500,
-                    fontSize: 12,
-                    padding: "10px 16px",
-                    cursor: "pointer",
-                    marginBottom: -1,
-                    fontFamily: "inherit",
-                  }}
-                >
-                  {tab.label}
-                </button>
-              ))}
+              {[{ id: "summary", label: "Summary" }, { id: "phasing", label: "Phasing" }].map((tab) => {
+                const isActive = activeTab === tab.id;
+                return (
+                  <button
+                    key={tab.id}
+                    onClick={() => setActiveTab(tab.id)}
+                    style={{
+                      background: isActive ? AM.white : "transparent",
+                      border: "none",
+                      borderBottom: isActive ? `2px solid ${AM.navy}` : "2px solid transparent",
+                      borderTop: isActive ? `2px solid transparent` : "2px solid transparent",
+                      color: isActive ? AM.navy : AM.textMuted,
+                      fontWeight: isActive ? 700 : 500,
+                      fontSize: 12.5,
+                      padding: "10px 20px",
+                      cursor: "pointer",
+                      marginBottom: -1,
+                      fontFamily: "inherit",
+                      letterSpacing: "0.1px",
+                      transition: "color 0.15s, background 0.15s",
+                      borderRadius: isActive ? "6px 6px 0 0" : 0,
+                      boxShadow: isActive ? `0 -1px 0 ${AM.border}, 1px 0 0 ${AM.border}, -1px 0 0 ${AM.border}` : "none",
+                    }}
+                    onMouseEnter={(e) => { if (!isActive) e.currentTarget.style.color = AM.navy; }}
+                    onMouseLeave={(e) => { if (!isActive) e.currentTarget.style.color = AM.textMuted; }}
+                  >
+                    {tab.label}
+                  </button>
+                );
+              })}
             </div>
 
             {/* Scrollable content */}
-            <div style={{ padding: 20, overflowY: "auto", flex: 1 }}>
+            <div style={{ padding: 20, overflowY: "auto", flex: 1, background: AM.bg }}>
               {activeTab === "summary" && (
               <>
                 {/* Totals row */}
@@ -545,16 +556,25 @@ function sectionLabel() {
 
 function ImpactPill({ icon, label, tone = "neutral" }) {
   const colors = {
-    neutral: { bg: AM.borderLight, fg: AM.textSecondary },
-    success: { bg: AM.successLight, fg: AM.success },
-    warning: { bg: "#fef3d6", fg: "#8a6d00" },
-    danger: { bg: AM.dangerLight, fg: AM.danger },
-  }[tone];
+    neutral: { bg: AM.borderLight, fg: AM.textSecondary, border: AM.border },
+    success: { bg: AM.successLight, fg: AM.success, border: "rgba(46,158,106,0.3)" },
+    warning: { bg: "#fef3c7", fg: "#92400e", border: "rgba(196,164,0,0.3)" },
+    danger: { bg: AM.dangerLight, fg: AM.danger, border: "rgba(217,79,79,0.3)" },
+  }[tone] || { bg: AM.borderLight, fg: AM.textSecondary, border: AM.border };
   return (
     <span style={{
-      background: colors.bg, color: colors.fg, fontSize: 11, fontWeight: 600,
-      padding: "5px 10px", borderRadius: 14, display: "inline-flex",
-      alignItems: "center", gap: 6, fontFamily: "'IBM Plex Mono', monospace",
+      background: colors.bg,
+      color: colors.fg,
+      border: `1px solid ${colors.border}`,
+      fontSize: 11.5,
+      fontWeight: 700,
+      padding: "4px 11px",
+      borderRadius: 20,
+      display: "inline-flex",
+      alignItems: "center",
+      gap: 6,
+      fontFamily: "'IBM Plex Mono', monospace",
+      letterSpacing: "0.1px",
     }}>
       {icon}{label}
     </span>
@@ -562,33 +582,47 @@ function ImpactPill({ icon, label, tone = "neutral" }) {
 }
 
 function ComparisonCard({ label, headcount, fte, cost, tone, isDelta }) {
-  const accent = { neutral: AM.textSecondary, primary: AM.navy, success: AM.success, warning: "#8a6d00" }[tone];
+  const palettes = {
+    neutral: { accent: AM.textSecondary, bg: AM.bg, border: AM.border },
+    primary: { accent: AM.navy, bg: `linear-gradient(135deg, ${AM.blueLight} 0%, #c7ddf0 100%)`, border: "rgba(1,36,74,0.15)" },
+    success: { accent: AM.success, bg: "linear-gradient(135deg, #e3f5ec 0%, #d1fae5 100%)", border: "rgba(46,158,106,0.25)" },
+    warning: { accent: "#92400e", bg: "linear-gradient(135deg, #fef3c7 0%, #fde68a55 100%)", border: "rgba(196,164,0,0.3)" },
+  };
+  const p = palettes[tone] || palettes.neutral;
   const sign = (n) => (isDelta && n > 0 ? "+" : "");
   return (
     <div style={{
-      background: AM.white, border: `1px solid ${AM.border}`,
-      borderRadius: 8, padding: "12px 14px", borderTop: `3px solid ${accent}`,
+      background: p.bg,
+      border: `1px solid ${p.border}`,
+      borderTop: `3px solid ${p.accent}`,
+      borderRadius: 8,
+      padding: "12px 16px",
+      boxShadow: "0 1px 4px rgba(1,36,74,0.06)",
     }}>
       <div style={{
         fontSize: 10, fontWeight: 700, textTransform: "uppercase",
-        letterSpacing: "0.8px", color: accent, marginBottom: 8,
+        letterSpacing: "0.8px", color: p.accent, marginBottom: 10,
       }}>
         {label}
       </div>
       <Row label="Headcount" value={`${sign(headcount)}${fmtNumber(headcount)}`} />
       <Row label="FTE" value={`${sign(fte)}${fmtNumber(Number(fte).toFixed(1))}`} />
-      <Row label="Cost" value={`${sign(cost)}${fmtCompactCurrency(cost)}`} bold />
+      <Row label="Cost" value={`${sign(cost)}${fmtCompactCurrency(cost)}`} bold accent={p.accent} isDelta={isDelta} cost={cost} />
     </div>
   );
 }
 
-function Row({ label, value, bold }) {
+function Row({ label, value, bold, accent, isDelta, cost }) {
+  const valueColor = bold && isDelta && accent ? accent : AM.textPrimary;
   return (
-    <div style={{ display: "flex", justifyContent: "space-between", marginTop: 4 }}>
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginTop: 5 }}>
       <span style={{ fontSize: 11, color: AM.textMuted }}>{label}</span>
       <span style={{
-        fontSize: 12, fontFamily: "'IBM Plex Mono', monospace",
-        fontWeight: bold ? 700 : 500, color: AM.textPrimary,
+        fontSize: bold ? 13 : 12,
+        fontFamily: "'IBM Plex Mono', monospace",
+        fontWeight: bold ? 700 : 500,
+        color: valueColor,
+        letterSpacing: "-0.3px",
       }}>
         {value}
       </span>

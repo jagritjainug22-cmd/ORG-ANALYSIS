@@ -49,6 +49,7 @@ import {
 import {
   CARD_WIDTH,
   CARD_HEIGHT,
+  HORIZONTAL_GAP,
   buildIndex,
   computeSubtreeStats,
   layoutTree,
@@ -104,6 +105,8 @@ export default function OrgChart({
   setCountryCol,
   onGuardStateChange,
   formulas = [],
+  initialFocusNodeId = null,
+  onFocusHandled,
 }) {
   const inDbMode = !!(datasetId && activeScenarioId);
   const hasLegacyDf = !!(df && df.length);
@@ -128,6 +131,7 @@ export default function OrgChart({
   const [selectedId, setSelectedId] = useState(null);
   const [multiSelectedIds, setMultiSelectedIds] = useState(() => new Set());
   const [nodeIssuesMap, setNodeIssuesMap] = useState(() => new Map());
+  const [cycleGroups, setCycleGroups] = useState(() => []);
   const [clonePromptFor, setClonePromptFor] = useState(null);
   const [collapsed, setCollapsed] = useState(() => new Set());
   const [maxDepth, setMaxDepth] = useState(2);
@@ -223,7 +227,9 @@ export default function OrgChart({
       setRecords(loaded);
       setSummary(scResp.summary || null);
       setChangeLog(logResp.changes || []);
-      setNodeIssuesMap(validateRecordsClient(loaded, { empCol, mgrCol, jobTitleCol }));
+      const { issuesMap, cycleGroups: cg } = validateRecordsClient(loaded, { empCol, mgrCol, jobTitleCol });
+      setNodeIssuesMap(issuesMap);
+      setCycleGroups(cg);
     } catch (e) {
       console.error("Failed to load scenario:", e);
       setError(e.message || "Failed to load scenario from database.");
@@ -628,14 +634,50 @@ export default function OrgChart({
   }, [records, search, departmentFilter, jobTitleFilter, empCol, jobTitleCol, countryCol, idOf, parentOf, index]);
 
   const layout = useMemo(() => {
-    if (!records || !records.length) return { nodes: new Map(), width: 0, height: 0 };
-    return layoutTree({
+    if (!records || !records.length) return { nodes: new Map(), width: 0, height: 0, childRowsInfo: new Map() };
+
+    const result = layoutTree({
       rootIds: index.roots,
       childrenByParent: index.childrenByParent,
       collapsed,
       hidden,
       maxDepth,
     });
+
+    // Find true cycle-orphans: nodes that are NOT reachable from any root in
+    // the full tree (ignoring collapse/hidden). These are the only nodes that
+    // should appear in the orphan row. Nodes that are simply collapsed or
+    // filtered out are reachable — they must NOT be treated as orphans.
+    const reachableFromRoot = new Set();
+    {
+      const queue = [...index.roots];
+      while (queue.length) {
+        const id = queue.shift();
+        if (reachableFromRoot.has(id)) continue;
+        reachableFromRoot.add(id);
+        for (const child of index.childrenByParent.get(id) || []) {
+          queue.push(child);
+        }
+      }
+    }
+
+    const orphanIds = [];
+    for (const id of index.byId.keys()) {
+      if (!reachableFromRoot.has(id)) orphanIds.push(id);
+    }
+
+    if (orphanIds.length) {
+      const yOffset = result.height + CARD_HEIGHT + 80;
+      let xCursor = 0;
+      for (const id of orphanIds) {
+        result.nodes.set(id, { x: xCursor, y: yOffset, depth: -1, isCycleOrphan: true });
+        xCursor += CARD_WIDTH + HORIZONTAL_GAP;
+      }
+      result.width  = Math.max(result.width,  xCursor - HORIZONTAL_GAP);
+      result.height = yOffset + CARD_HEIGHT;
+    }
+
+    return result;
   }, [records, index, collapsed, hidden, maxDepth]);
 
   // Departments for the filter dropdown
@@ -705,7 +747,9 @@ export default function OrgChart({
     const next = localUpdater(snapshot);
     setRecords(next);
     setSummary(buildLocalSummary(next, fteCol, flcCol));
-    setNodeIssuesMap(validateRecordsClient(next, { empCol, mgrCol, jobTitleCol }));
+    const { issuesMap, cycleGroups: cg } = validateRecordsClient(next, { empCol, mgrCol, jobTitleCol });
+    setNodeIssuesMap(issuesMap);
+    setCycleGroups(cg);
     if (!inDbMode) return;
     try {
       const resp = await dbCall();
@@ -1003,6 +1047,47 @@ export default function OrgChart({
     setPan(targetX, targetY);
     setSelectedId(String(empId));
   }, [layout, setPan]);
+
+  // Focus a node when navigated from Spans & Layers (Feature 9)
+  const focusHandledRef = useRef(null);
+  useEffect(() => {
+    if (!initialFocusNodeId || !records?.length || !layout.nodes.size) return;
+    const targetId = String(initialFocusNodeId);
+    if (focusHandledRef.current === targetId) return;
+    if (!layout.nodes.has(targetId)) return;
+
+    // Uncollapse all ancestors so the node is visible
+    const parentMap = new Map();
+    records.forEach((r) => {
+      const id = String(r.__emp_id ?? r[empCol] ?? "");
+      const pid = r.__mgr_id ?? r[mgrCol];
+      if (id && pid != null && pid !== "") parentMap.set(id, String(pid));
+    });
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      let curr = targetId;
+      const guard = new Set();
+      while (parentMap.has(curr) && !guard.has(curr)) {
+        guard.add(curr);
+        const parent = parentMap.get(curr);
+        next.delete(parent);
+        curr = parent;
+      }
+      return next;
+    });
+
+    focusHandledRef.current = targetId;
+    requestAnimationFrame(() => {
+      setTimeout(() => {
+        panToNode(targetId);
+        onFocusHandled?.();
+      }, 150);
+    });
+  }, [initialFocusNodeId, records, layout.nodes, empCol, mgrCol, panToNode, onFocusHandled]);
+
+  useEffect(() => {
+    if (!initialFocusNodeId) focusHandledRef.current = null;
+  }, [initialFocusNodeId]);
 
   const onWheel = (e) => {
     if (!e.ctrlKey && !e.metaKey) return;
@@ -1856,7 +1941,10 @@ export default function OrgChart({
             backgroundSize: "30px 30px",
           }}
           onClick={(e) => {
-            if (!e.target.closest(".org-node-card")) {
+            if (
+              !e.target.closest(".org-node-card") &&
+              !e.target.closest(".bulk-action-bar")
+            ) {
               setSelectedId(null);
               setMultiSelectedIds(new Set());
             }
@@ -1898,8 +1986,14 @@ export default function OrgChart({
               ).map((parentId) => {
                 const pPos = layout.nodes.get(parentId);
                 if (!pPos) return null;
+                // Skip connectors from/to cycle-orphan nodes — they have no
+                // meaningful parent-child relationship to draw in the layout.
+                if (pPos.isCycleOrphan) return null;
                 const kids = (index.childrenByParent.get(parentId) || []);
-                const visibleKids = kids.filter((cid) => layout.nodes.get(cid));
+                const visibleKids = kids.filter((cid) => {
+                  const cp = layout.nodes.get(cid);
+                  return cp && !cp.isCycleOrphan;
+                });
                 if (!visibleKids.length) return null;
                 const childPositions = visibleKids.map((cid) => layout.nodes.get(cid));
                 const d = stepPath(pPos, childPositions);
@@ -1917,6 +2011,46 @@ export default function OrgChart({
                 );
               })}
             </svg>
+
+            {/* Separator label for cycle-orphan nodes that couldn't be placed in the main tree */}
+            {(() => {
+              const firstOrphan = records.find((r) => {
+                const id = String(idOf(r));
+                const pos = layout.nodes.get(id);
+                return pos?.isCycleOrphan;
+              });
+              if (!firstOrphan) return null;
+              const pos = layout.nodes.get(String(idOf(firstOrphan)));
+              return (
+                <div
+                  key="cycle-orphan-label"
+                  style={{
+                    position: "absolute",
+                    left: 0,
+                    top: pos.y - 36,
+                    width: "100%",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    pointerEvents: "none",
+                  }}
+                >
+                  <div style={{
+                    background: "#fef2f2",
+                    border: "1px dashed #fca5a5",
+                    borderRadius: 8,
+                    padding: "4px 12px",
+                    fontSize: 11,
+                    fontWeight: 700,
+                    color: "#dc2626",
+                    fontFamily: "'IBM Plex Sans', sans-serif",
+                    whiteSpace: "nowrap",
+                  }}>
+                    ⚠ Circular reference — fix the reporting chain to place these nodes in the tree
+                  </div>
+                </div>
+              );
+            })()}
 
             {/* Cards layer -- only render nodes in the layout */}
             {records.map((rec) => {
@@ -2011,7 +2145,7 @@ export default function OrgChart({
           </DragOverlay>
           </DndContext>
 
-          {/* Inline validation sidebar — always present when there are issues */}
+          {/* Inline validation sidebar — navigation only; fix UI is in the detail panel */}
           <ValidationSidebar
             nodeIssuesMap={nodeIssuesMap}
             onJumpToNode={panToNode}
@@ -2047,6 +2181,7 @@ export default function OrgChart({
             allRecords={records}
             empCol={empCol}
             jobTitleCol={jobTitleCol}
+            editMode={editMode}
           />
 
           {/* Floating pan controls. Each click shifts the stage by a fixed
@@ -2098,6 +2233,7 @@ export default function OrgChart({
             rateCardActive={!!activeScenario?.rate_card_id}
             onApplyRateCard={handleApplyRateCard}
             issues={nodeIssuesMap.get(String(idOf(selectedRecord))) || null}
+            cycleGroups={cycleGroups}
             records={records}
             onMoveEmployee={handleMove}
             onEditEmployee={handleEdit}

@@ -83,6 +83,14 @@ def compute_chains(df, emp_col, mgr_col):
     return df, max_depth
 
 
+def compute_direct_span(df, emp_col, mgr_col):
+    """Count direct reports per employee (Span of control)."""
+    df = df.copy()
+    span_dict = df[mgr_col].value_counts().to_dict()
+    df["Span"] = df[emp_col].apply(lambda x: span_dict.get(x, 0))
+    return df
+
+
 def compute_total_reports(df, emp_col, mgr_col):
     df = df.copy()
 

@@ -350,8 +350,11 @@ export const filterErrors = (df, empCol, mgrCol, removeDup = true, removeMissing
     remove_invalid: removeInvalid, remove_circular: removeCircular,
   });
 
-export const spansLayers = async (df, threshold = 0, download = false) => {
+export const spansLayers = async (df, threshold = 0, download = false, empCol = null, mgrCol = null, fteCol = null) => {
   const params = { threshold, download };
+  if (empCol) params.emp_col = empCol;
+  if (mgrCol) params.mgr_col = mgrCol;
+  if (fteCol) params.fte_col = fteCol;
   if (download) {
     const res = await axios.post(`${getProjectUrl()}/spans_layers`, df, {
       headers: getHeaders(), params, responseType: "blob"
@@ -366,6 +369,22 @@ export const spansLayers = async (df, threshold = 0, download = false) => {
     return;
   }
   const res = await axios.post(`${getProjectUrl()}/spans_layers`, df, { headers: getHeaders(), params });
+  return res.data;
+};
+
+export const spansLayersLayerEmployees = async (df, level, empCol = null) => {
+  const params = { level };
+  if (empCol) params.emp_col = empCol;
+  const res = await axios.post(`${getProjectUrl()}/spans_layers/layer_employees`, df, { headers: getHeaders(), params });
+  return res.data;
+};
+
+export const spansLayersManagerDetail = async (df, empId, threshold = 0, empCol = null, mgrCol = null, fteCol = null) => {
+  const params = { emp_id: empId, threshold };
+  if (empCol) params.emp_col = empCol;
+  if (mgrCol) params.mgr_col = mgrCol;
+  if (fteCol) params.fte_col = fteCol;
+  const res = await axios.post(`${getProjectUrl()}/spans_layers/manager_detail`, df, { headers: getHeaders(), params });
   return res.data;
 };
 

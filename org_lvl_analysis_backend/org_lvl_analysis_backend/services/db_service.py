@@ -1083,8 +1083,27 @@ def get_scenario_records(scenario_id: int) -> List[Dict[str, Any]]:
     Each record's stored JSON is merged with the mutable scenario columns
     (mgr_id, level, is_flagged_removed, is_added) so the frontend always sees
     the current state.
+
+    The authoritative hot columns (emp_id, mgr_id) are also written back into
+    the raw data dict under their original column names (emp_col, mgr_col) so
+    that "ALL FIELDS" display and exports always reflect the live scenario state
+    rather than the stale original upload values.
     """
     with _connect_ro() as conn:
+        # Resolve emp_col / mgr_col so we can keep the raw columns in sync
+        scenario_row = conn.execute(
+            "SELECT dataset_id FROM scenarios WHERE id = ?", (scenario_id,)
+        ).fetchone()
+        emp_col = mgr_col = None
+        if scenario_row:
+            ds_row = conn.execute(
+                "SELECT emp_col, mgr_col FROM datasets WHERE id = ?",
+                (scenario_row["dataset_id"],),
+            ).fetchone()
+            if ds_row:
+                emp_col = ds_row["emp_col"]
+                mgr_col = ds_row["mgr_col"]
+
         cur = conn.execute(
             """
             SELECT emp_id, mgr_id, level, fte, flc,
@@ -1096,6 +1115,11 @@ def get_scenario_records(scenario_id: int) -> List[Dict[str, Any]]:
         records = []
         for r in cur.fetchall():
             data = json.loads(r["data_json"])
+            # Overlay authoritative hot columns so display is always current
+            if emp_col:
+                data[emp_col] = r["emp_id"]
+            if mgr_col:
+                data[mgr_col] = r["mgr_id"]
             data["__emp_id"] = r["emp_id"]
             data["__mgr_id"] = r["mgr_id"]
             data["Level"] = r["level"]
@@ -1156,17 +1180,32 @@ def bulk_move_employees(
     affected = 0
     with _connect() as conn:
         c = conn.cursor()
+        # Resolve mgr_col once for the whole batch so data_json stays in sync
+        scenario_row = c.execute(
+            "SELECT dataset_id FROM scenarios WHERE id = ?", (scenario_id,)
+        ).fetchone()
+        mgr_col = None
+        if scenario_row:
+            ds_row = c.execute(
+                "SELECT mgr_col FROM datasets WHERE id = ?", (scenario_row["dataset_id"],)
+            ).fetchone()
+            if ds_row:
+                mgr_col = ds_row["mgr_col"]
+
         for eid in emp_ids:
             row = c.execute(
-                "SELECT mgr_id FROM scenario_records WHERE scenario_id = ? AND emp_id = ?",
+                "SELECT mgr_id, data_json FROM scenario_records WHERE scenario_id = ? AND emp_id = ?",
                 (scenario_id, eid),
             ).fetchone()
             if not row:
                 continue
             old_mgr_id = row["mgr_id"]
+            data = json.loads(row["data_json"])
+            if mgr_col:
+                data[mgr_col] = new_mgr_id
             c.execute(
-                "UPDATE scenario_records SET mgr_id = ? WHERE scenario_id = ? AND emp_id = ?",
-                (new_mgr_id, scenario_id, eid),
+                "UPDATE scenario_records SET mgr_id = ?, data_json = ? WHERE scenario_id = ? AND emp_id = ?",
+                (new_mgr_id, json.dumps(data, default=str), scenario_id, eid),
             )
             c.execute(
                 """
@@ -1312,9 +1351,21 @@ def move_employee(
         old_mgr_id = row["mgr_id"]
         data = json.loads(row["data_json"])
 
+        # Keep data_json[mgr_col] in sync so ALL FIELDS display and exports
+        # reflect the scenario's current state, not the stale original upload.
+        scenario_row = c.execute(
+            "SELECT dataset_id FROM scenarios WHERE id = ?", (scenario_id,)
+        ).fetchone()
+        if scenario_row:
+            ds_row = c.execute(
+                "SELECT mgr_col FROM datasets WHERE id = ?", (scenario_row["dataset_id"],)
+            ).fetchone()
+            if ds_row and ds_row["mgr_col"]:
+                data[ds_row["mgr_col"]] = new_mgr_id
+
         c.execute(
-            "UPDATE scenario_records SET mgr_id = ? WHERE scenario_id = ? AND emp_id = ?",
-            (new_mgr_id, scenario_id, emp_id),
+            "UPDATE scenario_records SET mgr_id = ?, data_json = ? WHERE scenario_id = ? AND emp_id = ?",
+            (new_mgr_id, json.dumps(data, default=str), scenario_id, emp_id),
         )
         c.execute(
             """

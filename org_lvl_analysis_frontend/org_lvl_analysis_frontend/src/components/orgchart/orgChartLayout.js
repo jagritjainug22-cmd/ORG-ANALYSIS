@@ -86,13 +86,18 @@ export function computeSubtreeStats(records, idOf, parentOf, opts = {}) {
 
   const { byId, childrenByParent } = buildIndex(records, idOf, parentOf);
   const stats = new Map();
+  const computing = new Set(); // cycle guard: nodes currently in the call stack
 
   function walk(id) {
     if (stats.has(id)) return stats.get(id);
+    // Cycle detected — return empty sentinel rather than infinite-looping
+    if (computing.has(id)) return { headcount: 0, fte: 0, cost: 0, directReports: 0 };
+    computing.add(id);
     const node = byId.get(id);
     if (!node) {
       const empty = { headcount: 0, fte: 0, cost: 0, directReports: 0 };
       stats.set(id, empty);
+      computing.delete(id);
       return empty;
     }
     const removed = flaggedOf(node);
@@ -110,6 +115,7 @@ export function computeSubtreeStats(records, idOf, parentOf, opts = {}) {
       total.cost += c.cost;
     });
     stats.set(id, total);
+    computing.delete(id);
     return total;
   }
 
@@ -155,10 +161,15 @@ export function layoutTree({
     return kids.every((k) => getVisibleChildren(k).length === 0);
   }
 
+  const measuring = new Set(); // cycle guard for measure
   function measure(id, depth) {
+    if (subtreeWidth.has(id)) return subtreeWidth.get(id); // already measured
+    if (measuring.has(id)) { subtreeWidth.set(id, CARD_WIDTH); return CARD_WIDTH; } // cycle → treat as leaf
+    measuring.add(id);
     const kids = getVisibleChildren(id);
     if (!kids.length) {
       subtreeWidth.set(id, CARD_WIDTH);
+      measuring.delete(id);
       return CARD_WIDTH;
     }
     if (shouldWrapChildren(kids)) {
@@ -170,6 +181,7 @@ export function layoutTree({
       const rowWidth = perRow * CARD_WIDTH + (perRow - 1) * HORIZONTAL_GAP;
       const w = Math.max(CARD_WIDTH, rowWidth);
       subtreeWidth.set(id, w);
+      measuring.delete(id);
       return w;
     }
     let total = 0;
@@ -179,10 +191,14 @@ export function layoutTree({
     });
     const w = Math.max(CARD_WIDTH, total);
     subtreeWidth.set(id, w);
+    measuring.delete(id);
     return w;
   }
 
+  const placing = new Set(); // cycle guard for place
   function place(id, leftX, depth) {
+    if (placing.has(id)) return; // cycle → skip to prevent infinite recursion
+    placing.add(id);
     const kids = getVisibleChildren(id);
     const myWidth = subtreeWidth.get(id);
 
@@ -219,6 +235,7 @@ export function layoutTree({
       const y = depth * levelStep;
       nodes.set(id, { x, y, depth });
       childRowsInfo.set(id, { rows: rowCount, perRow });
+      placing.delete(id);
       return;
     }
 
@@ -251,6 +268,7 @@ export function layoutTree({
 
     const y = depth * levelStep;
     nodes.set(id, { x, y, depth });
+    placing.delete(id);
   }
 
   let xOffset = 0;
@@ -313,8 +331,10 @@ export function collectDescendants(rootId, childrenByParent) {
   while (queue.length) {
     const cur = queue.shift();
     for (const k of childrenByParent.get(cur) || []) {
-      out.add(k);
-      queue.push(k);
+      if (!out.has(k)) {        // cycle guard: only enqueue unseen nodes
+        out.add(k);
+        queue.push(k);
+      }
     }
   }
   return out;

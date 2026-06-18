@@ -27,6 +27,7 @@ export default function OrgDetailPanel({
   rateCardActive = false,
   onApplyRateCard,
   issues = null,
+  cycleGroups = [],
   records = [],
   onMoveEmployee,
   onEditEmployee,
@@ -205,6 +206,8 @@ export default function OrgDetailPanel({
             record={record}
             empCol={empCol}
             mgrCol={mgrCol}
+            jobTitleCol={jobTitleCol}
+            cycleGroups={cycleGroups}
             records={records}
             onMoveEmployee={onMoveEmployee}
             onEditEmployee={onEditEmployee}
@@ -625,6 +628,8 @@ function ValidationIssueBanner({
   record,
   empCol,
   mgrCol,
+  jobTitleCol,
+  cycleGroups = [],
   records,
   onMoveEmployee,
   onEditEmployee,
@@ -650,6 +655,17 @@ function ValidationIssueBanner({
         .slice(0, 200)
     : [];
 
+  // Build a label map for cycle chain display
+  const labelMap = new Map();
+  if (records) {
+    for (const r of records) {
+      const eid = String(r.__emp_id ?? r[empCol] ?? "");
+      if (!eid) continue;
+      const title = (jobTitleCol && r[jobTitleCol]) ? String(r[jobTitleCol]).trim() : "";
+      labelMap.set(eid, title || eid);
+    }
+  }
+
   return (
     <div
       style={{
@@ -674,6 +690,8 @@ function ValidationIssueBanner({
           empCol={empCol}
           mgrCol={mgrCol}
           managerOptions={managerOptions}
+          cycleGroups={cycleGroups}
+          labelMap={labelMap}
           onMoveEmployee={onMoveEmployee}
           onEditEmployee={onEditEmployee}
           onFlagToggle={onFlagToggle}
@@ -690,6 +708,8 @@ function IssueFixRow({
   empCol,
   mgrCol,
   managerOptions,
+  cycleGroups = [],
+  labelMap = new Map(),
   onMoveEmployee,
   onEditEmployee,
   onFlagToggle,
@@ -698,6 +718,9 @@ function IssueFixRow({
   const [newMgr, setNewMgr] = useState("");
   const [newId, setNewId] = useState("");
   const [saving, setSaving] = useState(false);
+  // Searchable picker state (for circular_reference / orphaned_position)
+  const [mgrQuery, setMgrQuery] = useState("");
+  const [mgrDropOpen, setMgrDropOpen] = useState(false);
 
   const label = ISSUE_LABELS[issue.type] || issue.type;
   const isError = issue.severity === "error";
@@ -762,7 +785,101 @@ function IssueFixRow({
         </div>
       )}
 
-      {(issue.type === "orphaned_position" || issue.type === "self_report" || issue.type === "circular_reference") && (
+      {/* Circular reference: show full cycle chain + searchable manager picker */}
+      {issue.type === "circular_reference" && (() => {
+        const myGroup = cycleGroups.find((g) => g.includes(empId));
+        const filteredMgrs = managerOptions.filter((o) => {
+          if (!mgrQuery.trim()) return true;
+          const q = mgrQuery.toLowerCase();
+          return o.label.toLowerCase().includes(q) || o.id.toLowerCase().includes(q);
+        }).slice(0, 8);
+        return (
+          <div style={{ marginTop: 6 }}>
+            {/* Cycle chain visualization */}
+            {myGroup && myGroup.length > 0 && (
+              <div style={{
+                background: "#fff1f1", border: "1px dashed #fca5a5",
+                borderRadius: 6, padding: "8px 10px", marginBottom: 8,
+              }}>
+                <div style={{ fontSize: 10, fontWeight: 700, color: AM.danger, marginBottom: 5, textTransform: "uppercase", letterSpacing: "0.4px" }}>
+                  Cycle chain
+                </div>
+                {myGroup.map((id, idx) => (
+                  <div key={id}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                      <span style={{
+                        fontSize: 10, fontWeight: id === empId ? 800 : 600,
+                        color: id === empId ? AM.danger : AM.navy,
+                        background: id === empId ? "#fee2e2" : "transparent",
+                        borderRadius: 4, padding: id === empId ? "1px 5px" : "0",
+                      }}>
+                        {labelMap.get(id) || id}
+                      </span>
+                      <span style={{ fontSize: 9, color: AM.textMuted, fontFamily: "'IBM Plex Mono', monospace" }}>
+                        {id}
+                      </span>
+                      {id === empId && (
+                        <span style={{ fontSize: 9, color: AM.danger, fontWeight: 700 }}>← you are here</span>
+                      )}
+                    </div>
+                    <div style={{ fontSize: 9, color: AM.danger, opacity: 0.6, paddingLeft: 4, margin: "1px 0" }}>
+                      {idx < myGroup.length - 1 ? "↓ reports to" : "↓ reports to (back to start ↑)"}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+            {/* Searchable manager picker to break the cycle */}
+            <div style={{ fontSize: 10, color: AM.textSecondary, marginBottom: 4 }}>
+              Reassign <strong>this position</strong>'s manager to break the cycle:
+            </div>
+            <div style={{ position: "relative", display: "flex", gap: 5 }}>
+              <div style={{ flex: 1, position: "relative" }}>
+                <input
+                  value={mgrQuery}
+                  onChange={(e) => { setMgrQuery(e.target.value); setMgrDropOpen(true); }}
+                  onFocus={() => setMgrDropOpen(true)}
+                  onBlur={() => setTimeout(() => setMgrDropOpen(false), 150)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Escape") { setMgrDropOpen(false); }
+                    if (e.key === "Enter" && filteredMgrs.length === 1) { applyMgrChange(empId, filteredMgrs[0].id); setMgrQuery(""); setMgrDropOpen(false); }
+                  }}
+                  placeholder="Search by name or ID…"
+                  style={miniInput()}
+                />
+                {mgrDropOpen && filteredMgrs.length > 0 && (
+                  <div style={{
+                    position: "absolute", bottom: "calc(100% + 4px)", left: 0,
+                    right: 0, background: "#fff",
+                    border: `1px solid ${AM.border}`, borderRadius: 8,
+                    boxShadow: "0 4px 16px rgba(1,36,74,0.15)", zIndex: 500, overflow: "hidden",
+                  }}>
+                    {filteredMgrs.map((o) => (
+                      <button key={o.id}
+                        onMouseDown={() => { applyMgrChange(empId, o.id); setMgrQuery(""); setMgrDropOpen(false); }}
+                        style={{
+                          display: "block", width: "100%", padding: "6px 10px",
+                          textAlign: "left", background: "none", border: "none",
+                          borderBottom: `1px solid ${AM.borderLight}`,
+                          cursor: "pointer", fontSize: 11,
+                          fontFamily: "'IBM Plex Sans', sans-serif",
+                        }}
+                        onMouseEnter={(e) => (e.currentTarget.style.background = AM.borderLight)}
+                        onMouseLeave={(e) => (e.currentTarget.style.background = "none")}
+                      >
+                        <span style={{ fontWeight: 600, color: AM.navy }}>{o.label}</span>
+                        <span style={{ marginLeft: 5, fontSize: 9, color: AM.textMuted, fontFamily: "'IBM Plex Mono', monospace" }}>{o.id}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {(issue.type === "orphaned_position" || issue.type === "self_report") && (
         <div style={{ display: "flex", gap: 5, marginTop: 4 }}>
           <select
             value={newMgr}

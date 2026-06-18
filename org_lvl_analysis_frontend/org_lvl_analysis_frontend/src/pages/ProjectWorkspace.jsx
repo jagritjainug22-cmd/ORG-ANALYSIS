@@ -3,7 +3,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import { useConfirmLogout } from "../hooks/useConfirmLogout";
 import { useWorkGuard } from "../contexts/WorkGuardContext";
-import { setCurrentProjectId, fetchProjectDetail, cleanup, crosstab, orgchart, spansLayers, acquireLock, lockHeartbeat, releaseLock, dbPromoteScenario, dbResetScenario, releaseDatasetLock, dbListDatasets, dbGetDatasetRecords, dbListFormulas } from "../api/backend";
+import { setCurrentProjectId, fetchProjectDetail, cleanup, crosstab, orgchart, acquireLock, lockHeartbeat, releaseLock, dbPromoteScenario, dbResetScenario, releaseDatasetLock, dbListDatasets, dbGetDatasetRecords, dbListFormulas } from "../api/backend";
 import ActiveDatasetDropdown from "../components/ActiveDatasetDropdown";
 import FormulaEditor from "../components/FormulaEditor";
 
@@ -109,6 +109,15 @@ export default function ProjectWorkspace() {
 
   // --- Formula columns (Feature 7) ---
   const [formulas, setFormulas] = useState([]);
+
+  // --- Org Chart focus from Spans & Layers (Feature 9) ---
+  const [focusNodeId, setFocusNodeId] = useState(null);
+  const jumpToOrgChartNode = useCallback((empId) => {
+    if (empId != null && empId !== "") {
+      setFocusNodeId(String(empId));
+      setActiveModule("Org Chart");
+    }
+  }, []);
 
   // --- Switch-dataset confirmation dialog ---
   const [switchPending, setSwitchPending] = useState(false);
@@ -481,8 +490,13 @@ export default function ProjectWorkspace() {
           <SpansLayers
             validatedDf={validatedDf}
             setValidatedDf={setValidatedDf}
-            fteCol={fteCol} flcCol={flcCol}
-            backendCall={spansLayers}
+            empCol={empCol}
+            mgrCol={mgrCol}
+            fteCol={fteCol}
+            flcCol={flcCol}
+            jobTitleCol={jobTitleCol}
+            datasetId={datasetId}
+            onJumpToOrgChart={jumpToOrgChartNode}
           />
         );
       case "Crosstab":
@@ -515,6 +529,8 @@ export default function ProjectWorkspace() {
             setJobTitleCol={setJobTitleCol} setCountryCol={setCountryCol}
             onGuardStateChange={handleOrgGuardStateChange}
             formulas={formulas}
+            initialFocusNodeId={focusNodeId}
+            onFocusHandled={() => setFocusNodeId(null)}
           />
         );
       case "Activity Analysis":
@@ -757,7 +773,7 @@ export default function ProjectWorkspace() {
 
         {/* CENTER PANE */}
         <main className="flex-1 overflow-auto bg-gray-50">
-          {(activeModule === "Org Chart" || activeModule === "Activity Analysis") ? (
+          {(activeModule === "Org Chart" || activeModule === "Activity Analysis" || activeModule === "Spans & Layers") ? (
             <div className="h-full">{renderActiveModule()}</div>
           ) : (
             <div className="p-8">
@@ -771,7 +787,7 @@ export default function ProjectWorkspace() {
         {/* RIGHT PANE */}
         <aside
           className="w-72 bg-white border-l border-gray-200 shadow-sm"
-          style={{ display: (activeModule === "Org Chart" || activeModule === "Activity Analysis") ? "none" : "block" }}
+          style={{ display: (activeModule === "Org Chart" || activeModule === "Activity Analysis" || activeModule === "Spans & Layers") ? "none" : "block" }}
         >
           <div className="p-4 border-b border-gray-200">
             <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Export & Stats</h3>

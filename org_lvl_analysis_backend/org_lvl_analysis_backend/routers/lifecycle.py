@@ -40,12 +40,18 @@ from services.completeness_service import get_completeness_matrix
 from services.crosstab_service import apply_others_grouping, generate_crosstab, generate_preview_data
 from services.export_service import export_excel
 from services.filter_error_service import filter_errors
-from services.hierarchy_service import compute_avg_flc, compute_chains, compute_levels, compute_total_reports
+from services.hierarchy_service import compute_avg_flc, compute_chains, compute_direct_span, compute_levels, compute_total_reports
 from services.logging_service import get_activity_logs, get_user_stats, write_activity_log
 from services.orgchart_render_service import render_scenario_svg, get_tree_structure
 from services.orgchart_service import build_org_tree, build_tree_preserve_ancestors, make_json_serializable
 from services.formula_service import apply_formulas_to_records, evaluate_formula, validate_expression as formula_validate_expression
-from services.spans_layers_service import span_threshold, spans_and_layers
+from services.spans_layers_service import (
+    get_insights,
+    get_layer_employees,
+    get_manager_detail,
+    span_threshold,
+    spans_and_layers,
+)
 from services.upload_service import read_excel_file
 from services.validation_service import validate_org_data, validate_scenario
 
@@ -976,6 +982,7 @@ async def hierarchy_endpoint(
             raise ValueError(f"Selected columns '{emp_col}' or '{mgr_col}' not in dataframe")
 
         df = compute_levels(df, emp_col, mgr_col)
+        df = compute_direct_span(df, emp_col, mgr_col)
         df, max_depth = compute_chains(df, emp_col, mgr_col)
         df = compute_total_reports(df, emp_col, mgr_col)
         df = compute_avg_flc(df, flc_col, fte_col)
@@ -1120,6 +1127,9 @@ async def spans_layers_endpoint(
     project_id: int,
     threshold: float = Query(0.0),
     download: bool = Query(False),
+    emp_col: str | None = Query(None),
+    mgr_col: str | None = Query(None),
+    fte_col: str | None = Query(None),
     user: dict = Depends(require_project_access()),
 ):
     username = user["username"]
@@ -1157,6 +1167,19 @@ async def spans_layers_endpoint(
         df_out = df_threshold if df_threshold is not None else df
         df_out = df_out.replace([np.inf, -np.inf], np.nan)
         summary = summary.replace([np.inf, -np.inf], np.nan)
+
+        insights = None
+        try:
+            insights = get_insights(
+                df_out, threshold=threshold,
+                emp_col=emp_col, mgr_col=mgr_col, fte_col=fte_col,
+            )
+        except Exception as insights_err:
+            write_activity_log(
+                username=username, action="process", module="Spans & Layers",
+                status="warning", details=f"insights computation failed: {insights_err}",
+            )
+
         write_activity_log(
             username=username, action="process", module="Spans & Layers",
             rows_input=rows_input, rows_output=len(df_out),
@@ -1166,6 +1189,7 @@ async def spans_layers_endpoint(
             "summary": summary.to_dict(orient="records"),
             "df": df_out.to_dict(orient="records"),
             "high": high, "low": low, "rows_processed": len(df_out),
+            "insights": insights,
         })
     except Exception as e:
         write_activity_log(
@@ -1173,6 +1197,44 @@ async def spans_layers_endpoint(
             module="Spans & Layers", status="error", details=str(e),
         )
         raise
+
+
+@router.post("/spans_layers/layer_employees")
+async def spans_layers_layer_employees(
+    request: Request,
+    project_id: int,
+    level: float = Query(...),
+    emp_col: str | None = Query(None),
+    user: dict = Depends(require_project_access()),
+):
+    payload = await request.json()
+    df = pd.DataFrame(payload)
+    if "Level" not in df.columns:
+        raise ValueError("Level column missing")
+    rows = get_layer_employees(df, level, emp_col=emp_col)
+    return {"level": level, "employees": rows, "count": len(rows)}
+
+
+@router.post("/spans_layers/manager_detail")
+async def spans_layers_manager_detail(
+    request: Request,
+    project_id: int,
+    emp_id: str = Query(...),
+    threshold: float = Query(0.0),
+    emp_col: str | None = Query(None),
+    mgr_col: str | None = Query(None),
+    fte_col: str | None = Query(None),
+    user: dict = Depends(require_project_access()),
+):
+    payload = await request.json()
+    df = pd.DataFrame(payload)
+    detail = get_manager_detail(
+        df, emp_id, threshold=threshold,
+        emp_col=emp_col, mgr_col=mgr_col, fte_col=fte_col,
+    )
+    if detail is None:
+        raise HTTPException(status_code=404, detail="Manager not found")
+    return detail
 
 
 @router.post("/crosstab")

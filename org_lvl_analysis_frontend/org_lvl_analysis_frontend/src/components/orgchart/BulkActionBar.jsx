@@ -6,11 +6,14 @@ import { AM } from "./orgChartTheme";
  * `multiSelectedIds` has at least 1 entry.
  *
  * Actions:
- *   • Flag for Removal  — POST /bulk_flag  { flagged: true }
- *   • Restore           — POST /bulk_flag  { flagged: false }
- *   • Set Change Reason — POST /bulk_edit_property { field: "Change Reason", value }
+ *   • Flag for Removal  — POST /bulk_flag  { flagged: true }   (only when ≥1 selected are NOT flagged)
+ *   • Restore           — POST /bulk_flag  { flagged: false }  (only when ≥1 selected ARE flagged)
+ *   • Set Change Reason — POST /bulk_edit_property             (only when ≥1 selected are flagged/added)
  *   • Move To...        — POST /bulk_move  { new_mgr_id }
  *   • Clear selection
+ *
+ * Selection is NOT auto-cleared after actions — the user keeps their selection
+ * so they can see the updated state and continue working.
  */
 export default function BulkActionBar({
   multiSelectedIds,
@@ -22,6 +25,7 @@ export default function BulkActionBar({
   empCol = "__emp_id",
   jobTitleCol,
   loading = false,
+  editMode = false,
 }) {
   const [changeReason, setChangeReason] = useState("");
   const [reasonOpen, setReasonOpen] = useState(false);
@@ -37,6 +41,24 @@ export default function BulkActionBar({
       setTimeout(() => moveInputRef.current?.focus(), 50);
     }
   }, [moveOpen]);
+
+  // Derive state of the selected nodes so we can show/hide buttons contextually
+  const selectedNodes = useMemo(() => {
+    if (!allRecords.length) return [];
+    return allRecords.filter((r) => {
+      const eid = String(r.__emp_id ?? r[empCol] ?? "");
+      return eid && multiSelectedIds.has(eid);
+    });
+  }, [allRecords, multiSelectedIds, empCol]);
+
+  const anyFlagged   = useMemo(() => selectedNodes.some((r) => r.is_flagged_removed), [selectedNodes]);
+  const anyUnflagged = useMemo(() => selectedNodes.some((r) => !r.is_flagged_removed), [selectedNodes]);
+  // "Set Reason" is useful when a flagged or added node has no change reason yet
+  const anyNeedReason = useMemo(() => selectedNodes.some((r) => {
+    if (!r.is_flagged_removed && !r.is_added) return false;
+    const reason = (r["Change Reason"] || r["change_reason"] || "").toString().trim();
+    return !reason;
+  }), [selectedNodes]);
 
   // Build a searchable list of potential target nodes (exclude selected nodes themselves)
   const targetOptions = useMemo(() => {
@@ -64,14 +86,15 @@ export default function BulkActionBar({
 
   if (count === 0) return null;
 
+  // Handlers — intentionally do NOT call onClearSelection so the bar stays
+  // visible after the action. Users can see the updated node state and clear
+  // manually via the × button.
   const handleFlagRemoval = async () => {
     await onBulkFlag?.(Array.from(multiSelectedIds), true);
-    onClearSelection?.();
   };
 
   const handleRestore = async () => {
     await onBulkFlag?.(Array.from(multiSelectedIds), false);
-    onClearSelection?.();
   };
 
   const handleApplyReason = async () => {
@@ -79,7 +102,6 @@ export default function BulkActionBar({
     await onBulkEditProperty?.(Array.from(multiSelectedIds), "Change Reason", changeReason.trim());
     setChangeReason("");
     setReasonOpen(false);
-    onClearSelection?.();
   };
 
   const handleSelectTarget = async (targetId) => {
@@ -87,7 +109,6 @@ export default function BulkActionBar({
     setMoveOpen(false);
     setMoveQuery("");
     await onBulkMove?.(Array.from(multiSelectedIds), targetId);
-    onClearSelection?.();
   };
 
   const handleCloseMove = () => {
@@ -107,6 +128,7 @@ export default function BulkActionBar({
 
   return (
     <div
+      className="bulk-action-bar"
       style={{
         position: "absolute",
         bottom: 24,
@@ -144,69 +166,76 @@ export default function BulkActionBar({
         {count} selected
       </span>
 
-      {/* Flag for Removal */}
-      {!reasonOpen && !moveOpen && (
-        <BarBtn
-          tone="danger"
-          onClick={handleFlagRemoval}
-          disabled={loading}
-          title="Flag all selected for removal"
-        >
-          <FlagIcon /> Flag for Removal
-        </BarBtn>
+      {/* Write actions — only available in edit mode */}
+      {editMode && (
+        <>
+          {/* Flag for Removal — only when at least one selected node is not already flagged */}
+          {!reasonOpen && !moveOpen && anyUnflagged && (
+            <BarBtn
+              tone="danger"
+              onClick={handleFlagRemoval}
+              disabled={loading}
+              title="Flag all selected for removal"
+            >
+              <FlagIcon /> Flag for Removal
+            </BarBtn>
+          )}
+
+          {/* Restore — only when at least one selected node is already flagged */}
+          {!reasonOpen && !moveOpen && anyFlagged && (
+            <BarBtn
+              tone="success"
+              onClick={handleRestore}
+              disabled={loading}
+              title="Restore all flagged selections"
+            >
+              <RestoreIcon /> Restore
+            </BarBtn>
+          )}
+
+          {/* Change Reason panel — only shown when at least one selected node needs a reason */}
+          {anyNeedReason && (
+            reasonOpen ? (
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <input
+                  autoFocus
+                  value={changeReason}
+                  onChange={(e) => setChangeReason(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") handleApplyReason();
+                    if (e.key === "Escape") handleCloseReason();
+                  }}
+                  placeholder="e.g. Outsource, Redundancy…"
+                  style={{
+                    background: "rgba(255,255,255,0.12)",
+                    border: "1px solid rgba(255,255,255,0.3)",
+                    borderRadius: 8,
+                    color: AM.white,
+                    fontSize: 12,
+                    fontWeight: 500,
+                    padding: "4px 10px",
+                    outline: "none",
+                    width: 220,
+                  }}
+                />
+                <BarBtn tone="gold" onClick={handleApplyReason} disabled={loading || !changeReason.trim()}>
+                  Apply
+                </BarBtn>
+                <BarBtn onClick={handleCloseReason} disabled={loading}>
+                  Cancel
+                </BarBtn>
+              </div>
+            ) : !moveOpen ? (
+              <BarBtn onClick={openReason} disabled={loading} title="Set Change Reason for flagged/added positions">
+                <ReasonIcon /> Set Reason
+              </BarBtn>
+            ) : null
+          )}
+        </>
       )}
 
-      {/* Restore */}
-      {!reasonOpen && !moveOpen && (
-        <BarBtn
-          tone="success"
-          onClick={handleRestore}
-          disabled={loading}
-          title="Restore all selected positions"
-        >
-          <RestoreIcon /> Restore
-        </BarBtn>
-      )}
-
-      {/* Change Reason panel */}
-      {reasonOpen ? (
-        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          <input
-            autoFocus
-            value={changeReason}
-            onChange={(e) => setChangeReason(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") handleApplyReason();
-              if (e.key === "Escape") handleCloseReason();
-            }}
-            placeholder="e.g. Outsource, Redundancy…"
-            style={{
-              background: "rgba(255,255,255,0.12)",
-              border: "1px solid rgba(255,255,255,0.3)",
-              borderRadius: 8,
-              color: AM.white,
-              fontSize: 12,
-              fontWeight: 500,
-              padding: "4px 10px",
-              outline: "none",
-              width: 220,
-            }}
-          />
-          <BarBtn tone="gold" onClick={handleApplyReason} disabled={loading || !changeReason.trim()}>
-            Apply
-          </BarBtn>
-          <BarBtn onClick={handleCloseReason} disabled={loading}>
-            Cancel
-          </BarBtn>
-        </div>
-      ) : !moveOpen ? (
-        <BarBtn onClick={openReason} disabled={loading} title="Set Change Reason for selected">
-          <ReasonIcon /> Set Reason
-        </BarBtn>
-      ) : null}
-
-      {/* Move To... panel */}
-      {moveOpen ? (
+      {/* Move To... panel — only available in edit mode */}
+      {editMode && moveOpen ? (
         <div style={{ position: "relative", display: "flex", alignItems: "center", gap: 6 }}>
           <MoveIcon style={{ color: "rgba(255,255,255,0.7)", flexShrink: 0 }} />
           <span style={{ fontSize: 11, color: "rgba(255,255,255,0.7)", whiteSpace: "nowrap" }}>
@@ -293,7 +322,7 @@ export default function BulkActionBar({
             Cancel
           </BarBtn>
         </div>
-      ) : !reasonOpen ? (
+      ) : editMode && !reasonOpen ? (
         <BarBtn onClick={openMove} disabled={loading} title="Move all selected to a new manager">
           <MoveIcon /> Move To…
         </BarBtn>

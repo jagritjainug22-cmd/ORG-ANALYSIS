@@ -147,8 +147,8 @@ export function validateRecordsClient(records, { empCol, mgrCol, jobTitleCol } =
     if (mgrId && activeIds.has(mgrId)) mgrMapActive.set(eid, mgrId);
   }
 
-  const circularIds = detectCycles(mgrMapActive);
-  for (const id of circularIds) {
+  const { cycleNodes, cycleGroups } = detectCycles(mgrMapActive);
+  for (const id of cycleNodes) {
     // Avoid duplicate if already has a circular issue
     const existing = issuesMap.get(id) || [];
     if (!existing.some((i) => i.type === "circular_reference")) {
@@ -156,18 +156,22 @@ export function validateRecordsClient(records, { empCol, mgrCol, jobTitleCol } =
     }
   }
 
-  return issuesMap;
+  return { issuesMap, cycleGroups };
 }
 
 /**
  * Detect all node IDs that are part of a cycle in the manager map.
  * Uses DFS with a "currently visiting" set.
  * @param {Map<string, string>} mgrMap  empId -> mgrId
- * @returns {Set<string>}
+ * @returns {{ cycleNodes: Set<string>, cycleGroups: Array<string[]> }}
+ *   cycleNodes  — flat set of all IDs involved in any cycle
+ *   cycleGroups — each entry is an ordered array of IDs forming one cycle
+ *                 (does NOT repeat the start node at the end)
  */
 function detectCycles(mgrMap) {
   const cycleNodes = new Set();
-  const confirmed = new Set(); // confirmed no cycle from this node
+  const cycleGroups = [];
+  const confirmed = new Set(); // confirmed no-cycle from this node
 
   for (const start of mgrMap.keys()) {
     if (confirmed.has(start) || cycleNodes.has(start)) continue;
@@ -180,12 +184,11 @@ function detectCycles(mgrMap) {
       if (confirmed.has(curr)) break; // safe tail
 
       if (visiting.has(curr)) {
-        // Found the cycle entry point — mark everything from that index onward
+        // Found the cycle entry point — slice the cycle path
         const cycleStart = visiting.get(curr);
-        for (let i = cycleStart; i < path.length; i++) {
-          cycleNodes.add(path[i]);
-        }
-        cycleNodes.add(curr); // the repeated node itself
+        const cycleGroup = path.slice(cycleStart);
+        for (const n of cycleGroup) cycleNodes.add(n);
+        cycleGroups.push(cycleGroup);
         break;
       }
 
@@ -200,7 +203,7 @@ function detectCycles(mgrMap) {
     }
   }
 
-  return cycleNodes;
+  return { cycleNodes, cycleGroups };
 }
 
 /**

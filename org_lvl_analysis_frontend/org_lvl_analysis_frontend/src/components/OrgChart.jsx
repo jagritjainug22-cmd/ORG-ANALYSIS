@@ -2238,6 +2238,7 @@ export default function OrgChart({
             onMoveEmployee={handleMove}
             onEditEmployee={handleEdit}
             formulas={formulas}
+            mutationState={mutationStates.get(String(idOf(selectedRecord)))}
           />
         )}
 

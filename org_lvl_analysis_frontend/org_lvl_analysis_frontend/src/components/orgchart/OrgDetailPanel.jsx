@@ -32,6 +32,7 @@ export default function OrgDetailPanel({
   onMoveEmployee,
   onEditEmployee,
   formulas = [],
+  mutationState = null,
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState({});
@@ -197,6 +198,47 @@ export default function OrgDetailPanel({
           >
             ID: {empId}
           </div>
+          {/* Status pills */}
+          {(() => {
+            const pills = [];
+            if (flagged) {
+              pills.push({ label: "Flagged", bg: AM.danger, color: "#fff" });
+            }
+            if (mutationState?.added) {
+              pills.push({ label: mutationState?.cloned ? "Cloned" : "Added", bg: AM.success, color: "#fff" });
+            } else if (mutationState?.cloned) {
+              pills.push({ label: "Cloned", bg: AM.success, color: "#fff" });
+            }
+            if (mutationState?.moved) {
+              pills.push({ label: "Moved", bg: "#2563eb", color: "#fff" });
+            }
+            if (mutationState?.edited) {
+              pills.push({ label: "Edited", bg: "#d97706", color: "#fff" });
+            }
+            if (!pills.length) return null;
+            return (
+              <div style={{ display: "flex", gap: 5, marginTop: 8, flexWrap: "wrap" }}>
+                {pills.map(({ label, bg, color }) => (
+                  <span
+                    key={label}
+                    style={{
+                      fontSize: 10,
+                      fontWeight: 700,
+                      letterSpacing: "0.5px",
+                      textTransform: "uppercase",
+                      background: bg,
+                      color,
+                      padding: "2px 8px",
+                      borderRadius: 10,
+                      fontFamily: "'IBM Plex Sans', system-ui, sans-serif",
+                    }}
+                  >
+                    {label}
+                  </span>
+                ))}
+              </div>
+            );
+          })()}
         </div>
 
         {/* Validation issues banner */}

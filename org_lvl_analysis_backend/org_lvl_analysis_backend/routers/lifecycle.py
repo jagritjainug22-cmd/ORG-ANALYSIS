@@ -10,11 +10,14 @@ sourced from the URL path -- never from a request body.
 from __future__ import annotations
 
 import json
+import logging
 import os
 import subprocess
 import tempfile
 from io import BytesIO
 from typing import Any, Dict, List, Optional
+
+logger = logging.getLogger(__name__)
 
 import numpy as np
 import pandas as pd
@@ -33,6 +36,7 @@ from dependencies.auth import (
     require_dataset_lock_holder_for_dataset,
 )
 from services import dataset_lock_service
+from services import duckdb_manager
 from services.audit_service import write_audit_log
 from services import db_service
 from services.cleanup_service import apply_exclusion_filter, build_country_flag
@@ -1562,6 +1566,20 @@ def db_save_baseline(
             project_id=project_id,
         )
         scenarios = db_service.list_scenarios(dataset_id)
+
+        # Auto-load into DuckDB for the "Ask OrgSight" analytical layer
+        baseline_scenario_id = scenarios[0]["id"] if scenarios else None
+        if baseline_scenario_id is not None:
+            try:
+                duckdb_manager.load(
+                    project_id=project_id,
+                    dataset_id=dataset_id,
+                    scenario_id=baseline_scenario_id,
+                    records=body.records,
+                )
+            except Exception as duck_err:
+                logger.warning("DuckDB load after save_baseline failed: %s", duck_err)
+
         write_activity_log(
             username=username, action="db_save_baseline", module="Org Chart",
             rows_input=len(body.records), rows_output=len(body.records),
@@ -1836,7 +1854,27 @@ def db_get_dataset_flat_records(
         scenario = db_service.get_scenario(scenario_id)
         if not scenario or scenario.get("dataset_id") != dataset_id:
             raise HTTPException(status_code=404, detail="Scenario not found in dataset")
-    return db_service.get_dataset_flat_records(dataset_id, scenario_id)
+    result = db_service.get_dataset_flat_records(dataset_id, scenario_id)
+
+    # Auto-load into DuckDB when a saved dataset is activated
+    target_scenario_id = scenario_id
+    if target_scenario_id is None:
+        scenarios = db_service.list_scenarios(dataset_id)
+        if scenarios:
+            target_scenario_id = scenarios[0]["id"]
+    if target_scenario_id is not None:
+        try:
+            records_for_duck = result.get("records", [])
+            duckdb_manager.load(
+                project_id=project_id,
+                dataset_id=dataset_id,
+                scenario_id=target_scenario_id,
+                records=records_for_duck,
+            )
+        except Exception as duck_err:
+            logger.warning("DuckDB load on dataset fetch failed: %s", duck_err)
+
+    return result
 
 
 @router.get("/db/datasets/{dataset_id}/recent-changes")
@@ -2003,10 +2041,23 @@ def db_get_scenario(
     project_id: int,
     _user: dict = Depends(require_project_access()),
 ):
-    scenario, _ = _require_scenario_in_project(scenario_id, project_id)
+    scenario, dataset = _require_scenario_in_project(scenario_id, project_id)
+    records = db_service.get_scenario_records(scenario_id)
+
+    # Auto-load into DuckDB when a scenario is activated
+    try:
+        duckdb_manager.load(
+            project_id=project_id,
+            dataset_id=dataset["id"],
+            scenario_id=scenario_id,
+            records=records,
+        )
+    except Exception as duck_err:
+        logger.warning("DuckDB load on scenario fetch failed: %s", duck_err)
+
     return {
         "scenario": scenario,
-        "records": db_service.get_scenario_records(scenario_id),
+        "records": records,
         "summary": db_service.get_scenario_summary(scenario_id),
     }
 

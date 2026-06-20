@@ -2,13 +2,61 @@
 org_lvl_analysis_backend/org_lvl_analysis_backend/db/credentials.local.json
 
 # Environment files with secrets
+.env
+.env.*
+!.env.example
 POSTGRES/.env
 org_lvl_analysis_backend/org_lvl_analysis_backend/.env
 
-# SQLite DB and logs (local runtime data)
-org_lvl_analysis_backend/org_lvl_analysis_backend/db/orgsight.db
-org_lvl_analysis_backend/org_lvl_analysis_backend/logs/
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+.Python
+.venv/
+venv/
+env/
+*.egg-info/
+.eggs/
+dist/
+build/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.ipynb_checkpoints/
 
-# Node
+# Node / frontend build output
 node_modules/
+dist/
+dist-ssr/
+*.local
+
+# SQLite DB, DuckDB, and backups (local runtime data)
+*.db
+*.duckdb
+org_lvl_analysis_backend/org_lvl_analysis_backend/db/orgsight.db
+org_lvl_analysis_backend/org_lvl_analysis_backend/db/backups/
+
+# Logs
+logs/
+*.log
+
+# Cursor / IDE / OS
+.cursor/
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+Thumbs.db
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Project-specific paths
 CENSUS_RATIONALISATION/app_2/app_2/ORGVUE/
+Fw_ G&A Tools (Org and Census Data Rationalization) Enhancement/

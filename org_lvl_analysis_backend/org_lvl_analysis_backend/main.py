@@ -22,6 +22,7 @@ from routers.auth import router as auth_router
 from routers.admin import router as admin_router
 from routers.projects import router as projects_router
 from routers.lifecycle import router as lifecycle_router
+from routers.chat import router as chat_router
 
 ALLOWED_ORIGINS = [
     "http://localhost:5173",
@@ -42,8 +43,10 @@ async def lifespan(app: FastAPI):
     # so the async event loop stays unblocked and can serve requests.
     await asyncio.to_thread(db_service.init_db)
     yield
+    from services import duckdb_manager
     from services.pg_adapter import close_pool
 
+    duckdb_manager.close()
     await asyncio.to_thread(close_pool)
 
 
@@ -99,6 +102,7 @@ app.include_router(auth_router)
 app.include_router(admin_router)
 app.include_router(projects_router)
 app.include_router(lifecycle_router)
+app.include_router(chat_router)
 
 
 @app.get("/")

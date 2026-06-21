@@ -611,6 +611,29 @@ def _migrate_v9(conn: PgConnection) -> None:
     c.execute("CREATE INDEX IF NOT EXISTS idx_formulas_dataset ON dataset_formulas(dataset_id)")
 
 
+def _migrate_v10(conn: PgConnection) -> None:
+    """v10: rationalisation_cache table for cross-run LLM result caching."""
+    c = conn.cursor()
+    c.execute(
+        f"""
+        CREATE TABLE IF NOT EXISTS rationalisation_cache (
+            id            {_ID_PK},
+            input_value   TEXT NOT NULL,
+            input_type    VARCHAR(20) NOT NULL,
+            context_func  TEXT,
+            resolved      TEXT NOT NULL,
+            method        VARCHAR(20) NOT NULL,
+            matched       BOOLEAN DEFAULT FALSE,
+            confidence    VARCHAR(10),
+            created_at    TIMESTAMPTZ DEFAULT NOW(),
+            hit_count     INTEGER DEFAULT 0,
+            UNIQUE(input_value, input_type, context_func)
+        )
+        """
+    )
+    c.execute("CREATE INDEX IF NOT EXISTS idx_rat_cache_lookup ON rationalisation_cache(input_value, input_type, context_func)")
+
+
 _MIGRATIONS = [
     (1, "projects + assignments + audit_log tables", _migrate_v1),
     (2, "project_id on datasets + Legacy project backfill", _migrate_v2),
@@ -621,6 +644,7 @@ _MIGRATIONS = [
     (7, "activity analysis tables", _migrate_v7),
     (8, "effective_date on change_log", _migrate_v8),
     (9, "dataset_formulas table", _migrate_v9),
+    (10, "rationalisation_cache table", _migrate_v10),
 ]
 
 

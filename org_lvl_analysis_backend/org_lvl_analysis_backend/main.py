@@ -17,6 +17,7 @@ load_dotenv(_backend / ".env")
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.openapi.utils import get_openapi
 
 from routers.auth import router as auth_router
 from routers.admin import router as admin_router
@@ -103,6 +104,46 @@ app.include_router(admin_router)
 app.include_router(projects_router)
 app.include_router(lifecycle_router)
 app.include_router(chat_router)
+
+# Paths that do not require a Bearer token (Swagger + runtime).
+_PUBLIC_PATHS = {"/", "/auth/login", "/auth/refresh"}
+
+
+def custom_openapi():
+    """Add Bearer JWT security to OpenAPI so Swagger UI shows Authorize."""
+    if app.openapi_schema:
+        return app.openapi_schema
+
+    openapi_schema = get_openapi(
+        title=app.title,
+        version="1.0.0",
+        description=(
+            "OrgSight backend API. Use **Authorize** with the `access_token` "
+            "from `POST /auth/login` (paste the token only, without `Bearer`)."
+        ),
+        routes=app.routes,
+    )
+    openapi_schema.setdefault("components", {})["securitySchemes"] = {
+        "BearerAuth": {
+            "type": "http",
+            "scheme": "bearer",
+            "bearerFormat": "JWT",
+            "description": "JWT access token from POST /auth/login (15 min TTL)",
+        }
+    }
+
+    for path, path_item in openapi_schema.get("paths", {}).items():
+        if path in _PUBLIC_PATHS:
+            continue
+        for operation in path_item.values():
+            if isinstance(operation, dict):
+                operation["security"] = [{"BearerAuth": []}]
+
+    app.openapi_schema = openapi_schema
+    return app.openapi_schema
+
+
+app.openapi = custom_openapi
 
 
 @app.get("/")

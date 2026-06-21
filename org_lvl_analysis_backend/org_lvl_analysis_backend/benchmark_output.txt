@@ -1,0 +1,89 @@
+{
+  "config": {
+    "batch_size": 200,
+    "max_workers": 10,
+    "batch_max_tokens": 12000
+  },
+  "timings": {
+    "read": 0.4534043000021484,
+    "column_mapping": 6.882242399995448,
+    "rationalisation": 10.827839399993536,
+    "total": 18.163486099991133
+  },
+  "summary": {
+    "functions_total": 11,
+    "functions_exact": 1,
+    "functions_fuzzy": 0,
+    "functions_ai": 7,
+    "functions_cached": 0,
+    "functions_unresolved": 3,
+    "subfunctions_total": 35,
+    "subfunctions_exact": 0,
+    "subfunctions_fuzzy": 0,
+    "subfunctions_ai": 35,
+    "subfunctions_cached": 0,
+    "subfunctions_unresolved": 0,
+    "titles_total": 43,
+    "titles_exact": 0,
+    "titles_fuzzy": 0,
+    "titles_ai": 43,
+    "titles_cached": 0,
+    "titles_unresolved": 0
+  },
+  "accuracy": {
+    "subfunctions_sent_to_llm": 35,
+    "subfunctions_returned_by_llm": 35,
+    "subfunctions_llm_completeness_pct": 100.0,
+    "subfunctions_matched_from_master_pct": 77.14,
+    "titles_sent_to_llm": 43,
+    "titles_returned_by_llm": 43,
+    "titles_llm_completeness_pct": 100.0,
+    "titles_matched_from_master_pct": 69.77
+  },
+  "llm_metrics": {
+    "call_count": 3,
+    "prompt_tokens": 1439,
+    "completion_tokens": 2003,
+    "total_tokens": 3442,
+    "total_latency_ms": 19230.4,
+    "wall_clock_note": "sum of per-call latency (parallel calls overlap in wall-clock)",
+    "inputs_requested": 88,
+    "outputs_returned": 88,
+    "completeness_pct": 100.0,
+    "calls": [
+      {
+        "call_type": "function",
+        "prompt_tokens": 156,
+        "completion_tokens": 95,
+        "total_tokens": 251,
+        "latency_ms": 2140.6,
+        "inputs_requested": 10,
+        "outputs_returned": 10,
+        "batch_size": 10,
+        "retry": false
+      },
+      {
+        "call_type": "title",
+        "prompt_tokens": 578,
+        "completion_tokens": 927,
+        "total_tokens": 1505,
+        "latency_ms": 8429.5,
+        "inputs_requested": 43,
+        "outputs_returned": 43,
+        "batch_size": 43,
+        "retry": false
+      },
+      {
+        "call_type": "subfunction",
+        "prompt_tokens": 705,
+        "completion_tokens": 981,
+        "total_tokens": 1686,
+        "latency_ms": 8660.3,
+        "inputs_requested": 35,
+        "outputs_returned": 35,
+        "batch_size": 35,
+        "retry": false
+      }
+    ]
+  }
+}

@@ -56,8 +56,10 @@ from services.spans_layers_service import (
     span_threshold,
     spans_and_layers,
 )
-from services.upload_service import read_excel_file
+from services.upload_service import read_excel_file, smart_read_excel
 from services.validation_service import validate_org_data, validate_scenario
+from services.column_mapping_service import auto_map_columns
+from services.rationalisation_service import rationalise, apply_rationalisation
 
 Image.MAX_IMAGE_PIXELS = None
 
@@ -178,6 +180,28 @@ class ScenarioRateCardBody(BaseModel):
 
 class RateCardLookupBody(BaseModel):
     values: Dict[str, Any]
+
+
+class ColumnMappingBody(BaseModel):
+    columns: List[str]
+    sample_rows: List[Dict]
+
+
+class RationaliseBody(BaseModel):
+    records: List[Dict]
+    func_col: Optional[str] = None
+    subfunc_col: Optional[str] = None
+    title_col: Optional[str] = None
+
+
+class RationaliseApplyBody(BaseModel):
+    records: List[Dict]
+    func_col: Optional[str] = None
+    subfunc_col: Optional[str] = None
+    title_col: Optional[str] = None
+    approved_functions: List[Dict] = []
+    approved_subfunctions: List[Dict] = []
+    approved_titles: List[Dict] = []
 
 
 # ---------------------------------------------------------------------------
@@ -814,6 +838,261 @@ def cleanup_endpoint(
         write_activity_log(
             username=username, action="process", module="Cleanup",
             rows_input=len(payload), status="error", details=str(e),
+        )
+        raise
+
+
+# ===================================================================
+# Smart upload pipeline
+# ===================================================================
+
+@router.post("/smart-upload")
+async def smart_upload_endpoint(
+    file: UploadFile,
+    request: Request,
+    project_id: int,
+    user: dict = Depends(require_project_access()),
+):
+    """Smart upload: reads messy Excel, auto-detects headers, unmerges cells,
+    cleans column names, fixes float IDs, and returns data + preprocessing summary.
+    """
+    username = user["username"]
+    try:
+        contents = await file.read()
+        df, preprocessing = smart_read_excel(contents, filename=file.filename or "")
+        rows_count = len(df)
+        records = df.to_dict(orient="records")
+        safe_records = jsonable_encoder(records)
+        write_activity_log(
+            username=username, action="process", module="SmartUpload",
+            rows_output=rows_count, status="success",
+            details=(
+                f"File: {file.filename}, sheet: {preprocessing.get('sheet_used', '?')}, "
+                f"header_row: {preprocessing.get('header_row_detected', 1)}, "
+                f"merged_cells: {preprocessing.get('merged_cells_resolved', 0)}"
+            ),
+        )
+        return {
+            "columns": df.columns.tolist(),
+            "records": safe_records,
+            "preprocessing": preprocessing,
+        }
+    except Exception as e:
+        write_activity_log(
+            username=username, action="process", module="SmartUpload",
+            status="error", details=str(e),
+        )
+        raise
+
+
+# ===================================================================
+# Column auto-mapping
+# ===================================================================
+
+@router.post("/auto-map-columns")
+def auto_map_columns_endpoint(
+    body: ColumnMappingBody,
+    project_id: int,
+    user: dict = Depends(require_project_access()),
+):
+    """Auto-map uploaded columns to OrgSight target columns using alias
+    matching + a single LLM call for unresolved columns."""
+    username = user["username"]
+    try:
+        mappings = auto_map_columns(body.columns, body.sample_rows)
+        write_activity_log(
+            username=username, action="process", module="ColumnMapping",
+            status="success",
+            details=f"Mapped {sum(1 for m in mappings.values() if m.get('source_column'))} of {len(mappings)} target columns",
+        )
+        return {"mappings": mappings}
+    except Exception as e:
+        write_activity_log(
+            username=username, action="process", module="ColumnMapping",
+            status="error", details=str(e),
+        )
+        raise
+
+
+# ===================================================================
+# Rationalisation
+# ===================================================================
+
+@router.post("/rationalise")
+def rationalise_endpoint(
+    body: RationaliseBody,
+    project_id: int,
+    user: dict = Depends(require_project_access()),
+):
+    """Run three-layer rationalisation (exact + fuzzy + batch LLM) on
+    Function, Subfunction, and Title columns.  Returns proposed mappings
+    for user review — does NOT modify the data."""
+    username = user["username"]
+    try:
+        result = rationalise(
+            body.records,
+            func_col=body.func_col,
+            subfunc_col=body.subfunc_col,
+            title_col=body.title_col,
+        )
+        summary = result.get("summary", {})
+        write_activity_log(
+            username=username, action="process", module="Rationalise",
+            rows_input=len(body.records), status="success",
+            details=(
+                f"Functions: {summary.get('functions_total', 0)} "
+                f"(exact={summary.get('functions_exact', 0)}, "
+                f"fuzzy={summary.get('functions_fuzzy', 0)}, "
+                f"ai={summary.get('functions_ai', 0)}), "
+                f"Titles: {summary.get('titles_total', 0)} "
+                f"(exact={summary.get('titles_exact', 0)}, "
+                f"fuzzy={summary.get('titles_fuzzy', 0)}, "
+                f"ai={summary.get('titles_ai', 0)})"
+            ),
+        )
+        return result
+    except Exception as e:
+        write_activity_log(
+            username=username, action="process", module="Rationalise",
+            rows_input=len(body.records), status="error", details=str(e),
+        )
+        raise
+
+
+@router.post("/rationalise/apply", response_class=ORJSONResponse)
+def rationalise_apply_endpoint(
+    body: RationaliseApplyBody,
+    project_id: int,
+    user: dict = Depends(require_project_access()),
+):
+    """Apply user-approved rationalisation mappings to all rows.
+    Adds six new columns: Rationalised Function/Subfunction/Title + Sources."""
+    username = user["username"]
+    try:
+        updated = apply_rationalisation(
+            body.records,
+            func_col=body.func_col,
+            subfunc_col=body.subfunc_col,
+            title_col=body.title_col,
+            approved_functions=body.approved_functions,
+            approved_subfunctions=body.approved_subfunctions,
+            approved_titles=body.approved_titles,
+        )
+        write_activity_log(
+            username=username, action="process", module="RationaliseApply",
+            rows_input=len(body.records), rows_output=len(updated),
+            status="success",
+            details=f"Applied rationalisation to {len(updated)} rows",
+        )
+        return {"records": updated}
+    except Exception as e:
+        write_activity_log(
+            username=username, action="process", module="RationaliseApply",
+            rows_input=len(body.records), status="error", details=str(e),
+        )
+        raise
+
+
+# ===================================================================
+# Full pipeline (upload → cleanup → map → rationalise → validate)
+# ===================================================================
+
+@router.post("/process-upload")
+async def process_upload_endpoint(
+    file: UploadFile,
+    request: Request,
+    project_id: int,
+    remove_exclusion: bool = Query(True),
+    user: dict = Depends(require_project_access()),
+):
+    """One-shot pipeline: upload → preprocess → auto-map columns → cleanup →
+    rationalise → validate.  Returns everything the frontend needs to render
+    the Upload & Prepare screen in a single response."""
+    username = user["username"]
+    try:
+        contents = await file.read()
+
+        # 1. Smart read
+        df, preprocessing = smart_read_excel(contents, filename=file.filename or "")
+        columns = df.columns.tolist()
+        records = df.to_dict(orient="records")
+
+        # 2. Auto-map columns
+        sample_rows = records[:10]
+        col_mappings = auto_map_columns(columns, sample_rows)
+
+        # Determine mapped columns for downstream steps
+        country_col = (col_mappings.get("country") or {}).get("source_column")
+        func_col = (col_mappings.get("function") or {}).get("source_column")
+        subfunc_col = (col_mappings.get("subfunction") or {}).get("source_column")
+        title_col = (col_mappings.get("job_title") or {}).get("source_column")
+        emp_col = (col_mappings.get("employee_id") or {}).get("source_column")
+        mgr_col = (col_mappings.get("manager_id") or {}).get("source_column")
+
+        # 3. Cleanup
+        cleanup_removed = 0
+        if country_col or "exclusion list" in df.columns:
+            df = build_country_flag(df, country_col=country_col)
+            df, cleanup_removed = apply_exclusion_filter(df, remove=remove_exclusion)
+            df = df.replace([np.inf, -np.inf], np.nan)
+            records = df.to_dict(orient="records")
+            columns = df.columns.tolist()
+
+        # 4. Rationalise (propose mappings)
+        rationalisation_result = None
+        if func_col or subfunc_col or title_col:
+            rationalisation_result = rationalise(
+                records,
+                func_col=func_col,
+                subfunc_col=subfunc_col,
+                title_col=title_col,
+            )
+
+        # 5. Validate (if emp_col and mgr_col are mapped)
+        validation_result = None
+        if emp_col and mgr_col:
+            try:
+                raw_validation = validate_org_data(df, emp_col, mgr_col)
+                validation_result = {
+                    k: v for k, v in raw_validation.items() if k != "df_with_flags"
+                }
+                vdf = raw_validation.get("df_with_flags")
+                if vdf is not None:
+                    flag_cols = [c for c in vdf.columns if str(c).startswith("FLAG_")]
+                    validation_result["flag_counts"] = {
+                        c: int(vdf[c].fillna(0).astype(bool).sum())
+                        for c in flag_cols
+                    }
+            except Exception as ve:
+                logger.warning("Auto-validation failed: %s", ve)
+
+        safe_records = jsonable_encoder(records)
+
+        write_activity_log(
+            username=username, action="process", module="ProcessUpload",
+            rows_input=preprocessing.get("total_rows", len(records)),
+            rows_output=len(records), status="success",
+            details=(
+                f"File: {file.filename}, "
+                f"sheet: {preprocessing.get('sheet_used', '?')}, "
+                f"cleanup_removed: {cleanup_removed}, "
+                f"columns_mapped: {sum(1 for m in col_mappings.values() if m.get('source_column'))}"
+            ),
+        )
+
+        return {
+            "columns": columns,
+            "records": safe_records,
+            "preprocessing": preprocessing,
+            "column_mappings": col_mappings,
+            "cleanup": {"removed": cleanup_removed},
+            "rationalisation": rationalisation_result,
+            "validation": validation_result,
+        }
+    except Exception as e:
+        write_activity_log(
+            username=username, action="process", module="ProcessUpload",
+            status="error", details=str(e),
         )
         raise
 

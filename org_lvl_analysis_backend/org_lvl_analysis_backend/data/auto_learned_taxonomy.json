@@ -1,0 +1,76 @@
+{
+  "function_aliases": {
+    "C&P": "Compliance and Legal",
+    "Commercial": "Sales & Marketing",
+    "Engineering": "R&D",
+    "Human Resources": "HR",
+    "Marketing, Comms & Transformation": "Sales & Marketing",
+    "S&D": "Sales & Marketing",
+    "Supply": "Procurement",
+    "ERA": "Compliance and Legal",
+    "Lubricants": "Procurement",
+    "Retail": "Sales & Marketing"
+  },
+  "subfunction_aliases": {},
+  "title_aliases": {
+    "Marketing, Comms & Transformation": {
+      "Event Coordinator": "Campaign Manager",
+      "Stakeholder Synergies Specia": "Specialist",
+      "Graphic Designer": "Marketing Specialist",
+      "Educator": "Marketing Specialist"
+    },
+    "C&P": {
+      "Knowledge Mgt& Process Compl": "Compliance Analyst"
+    },
+    "Commercial": {
+      "TeleAccounts Representative": "Sales Representative",
+      "Junior Analyst": "Business Development Executive",
+      "Field Sales Specialist": "Sales Executive"
+    },
+    "S&D": {
+      "Business Planning & Analysis": "Business Development Executive",
+      "Financial Inventory Team Lea": "Account Manager",
+      "Distribution Scheduler": "Sales Executive",
+      "Supply Planner": "Sales Executive",
+      "Technical Planner": "Sales Executive",
+      "Infrastructure & Network Opt": "Sales Executive",
+      "Inventory Analyst": "Business Development Executive",
+      "Linear Programming Planner": "Sales Executive",
+      "Contract Management Speciali": "Specialist"
+    },
+    "Finance": {
+      "Credit Controller": "Specialist",
+      "Financial Analyst": "Analyst",
+      "Industry Research & Informat": "Analyst",
+      "Customs Specialist": "Specialist",
+      "Retail Credit Controller": "Specialist",
+      "Treasury Trader": "Finance Executive",
+      "Acquittals Controller": "Specialist",
+      "Income Tax Specialist": "Specialist",
+      "Administration Controller": "Administrator",
+      "Money Market Trader": "Finance Executive"
+    },
+    "Retail": {
+      "Governance & Compliance Mana": "Compliance Manager",
+      "Network Developer": "Sales Executive",
+      "Area Manager": "Account Manager",
+      "Financial Business Analyst": "Business Development Executive",
+      "Administrative Assistant": "Sales Executive",
+      "Business Technology & Data C": "Business Development Executive",
+      "Senior New Site Developer": "Senior Sales Executive"
+    },
+    "Engineering": {
+      "Maintenance Assets Administr": "R&D Technician",
+      "Senior Engineer": "R&D Engineer",
+      "Engineering Technician": "R&D Technician",
+      "Master Data Coordinator": "Research Assistant",
+      "Assets Verification Officer": "Research Assistant"
+    },
+    "Human Resources": {
+      "Learning & SD Coordinator": "L&D Coordinator"
+    },
+    "ERA": {
+      "Senior Auditor": "Analyst"
+    }
+  }
+}

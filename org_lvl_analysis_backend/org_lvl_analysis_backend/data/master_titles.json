@@ -1,0 +1,194 @@
+{
+  "Finance": {
+    "raw_to_standard": {
+      "Sr. Accountant": "Senior Accountant",
+      "Senior Acct": "Senior Accountant",
+      "Accountant II": "Accountant",
+      "Acctnt": "Accountant",
+      "Acnt Paybl Anlyst": "Analyst",
+      "A/P Clerk": "Analyst",
+      "A/P Exec": "Analyst",
+      "Finance Exec": "Finance Executive",
+      "Fin Exec": "Finance Executive",
+      "Finance Mgr": "Finance Manager",
+      "Finance Lead": "Finance Manager",
+      "FP&A Analyst": "Analyst",
+      "FPnA": "Analyst",
+      "Treasury spec.": "Specialist",
+      "Treas Ops": "Specialist",
+      "Payroll Admin": "Administrator",
+      "Payrl Spclst": "Specialist",
+      "Cost acct": "Cost Accountant",
+      "Costing Analyst": "Cost Accountant"
+    },
+    "standard_titles": [
+      "Senior Accountant",
+      "Accountant",
+      "Analyst",
+      "Finance Executive",
+      "Finance Manager",
+      "Specialist",
+      "Administrator",
+      "Cost Accountant"
+    ]
+  },
+  "HR": {
+    "raw_to_standard": {
+      "HR Gen": "HR Generalist",
+      "HR Generalist II": "HR Generalist",
+      "HRBP": "HR Business Partner",
+      "HR Bus. Prt.": "HR Business Partner",
+      "Recruiter Jr.": "Recruiter",
+      "Talent acq spclst": "Specialist",
+      "TA Specialist": "Specialist",
+      "L&D Coord": "L&D Coordinator",
+      "OD Mgr": "Organizational Development Manager",
+      "Comp & Ben Analyst": "Analyst",
+      "C&B Analyst": "Analyst",
+      "HR Ops Lead": "Operations Lead"
+    },
+    "standard_titles": [
+      "HR Generalist",
+      "HR Business Partner",
+      "Recruiter",
+      "Specialist",
+      "L&D Coordinator",
+      "Organizational Development Manager",
+      "Analyst",
+      "Operations Lead"
+    ]
+  },
+  "IT": {
+    "raw_to_standard": {
+      "IT support engr": "IT Support Engineer",
+      "IT Support II": "IT Support Engineer",
+      "Tech Support": "IT Support Engineer",
+      "IT analyst II": "IT Analyst",
+      "Sys Admin": "System Administrator",
+      "Sysadmin": "System Administrator",
+      "Netwk Engg": "Network Engineer",
+      "Net Eng": "Network Engineer",
+      "Software Dev": "Software Developer",
+      "SW Dev.": "Software Developer",
+      "Progmr": "Software Developer",
+      "QA Tester": "QA Engineer",
+      "QA/ QC Engr": "QA Engineer",
+      "InfoSec Spclst": "Information Security Specialist",
+      "Cyber Sec Analyst": "Cybersecurity Analyst",
+      "Data Eng": "Data Engineer",
+      "DB Admin": "Data Engineer"
+    },
+    "standard_titles": [
+      "IT Support Engineer",
+      "IT Analyst",
+      "System Administrator",
+      "Network Engineer",
+      "Software Developer",
+      "QA Engineer",
+      "Information Security Specialist",
+      "Cybersecurity Analyst",
+      "Data Engineer"
+    ]
+  },
+  "Sales & Marketing": {
+    "raw_to_standard": {
+      "Sales exec": "Sales Executive",
+      "Sr Sales Exec": "Senior Sales Executive",
+      "Acct Mgr": "Account Manager",
+      "Key acct mgr": "Key Account Manager",
+      "Bus Dev Exec": "Business Development Executive",
+      "BDE": "Business Development Executive",
+      "Sales rep": "Sales Representative",
+      "Inside Sales": "Sales Representative",
+      "Mktg Specialist": "Marketing Specialist",
+      "MKTG Spclst": "Marketing Specialist",
+      "Digital Mktg": "Marketing Specialist",
+      "Content Creator": "Marketing Specialist",
+      "Brand exec": "Brand Executive",
+      "Campaign Mgr": "Campaign Manager",
+      "SEO/SEM Analyst": "SEO Specialist"
+    },
+    "standard_titles": [
+      "Sales Executive",
+      "Senior Sales Executive",
+      "Account Manager",
+      "Key Account Manager",
+      "Business Development Executive",
+      "Sales Representative",
+      "Marketing Specialist",
+      "Brand Executive",
+      "Campaign Manager",
+      "SEO Specialist"
+    ]
+  },
+  "Customer Support": {
+    "raw_to_standard": {
+      "CSR": "CS Analyst",
+      "Cust support rep": "CS Analyst",
+      "Call Center Agent": "CS Analyst",
+      "Helpdesk": "CS Analyst",
+      "Support Engr": "CS Analyst",
+      "Client servicing exec": "CS Analyst",
+      "Tech support rep": "CS Analyst",
+      "Customer Success Mgr": "CS Manager",
+      "Cust Success Exec": "CS Executive",
+      "Escalation Spclst": "Escalation Specialist"
+    },
+    "standard_titles": [
+      "CS Analyst",
+      "CS Manager",
+      "CS Executive",
+      "Escalation Specialist"
+    ]
+  },
+  "Compliance and Legal": {
+    "raw_to_standard": {
+      "Compliance Offcr": "Compliance Officer",
+      "Compl. Mgr": "Compliance Manager",
+      "Risk & Compliance": "Compliance Analyst",
+      "AML Analyst": "Analyst",
+      "KYC Spclst": "Specialist",
+      "Contract lawyer": "Legal Counsel",
+      "Legal Advsr": "Legal Advisor",
+      "Corp Counsel": "Corporate Counsel",
+      "Paralegal Asst": "Paralegal",
+      "Reg Affairs Spclst": "Regulatory Affairs Specialist"
+    },
+    "standard_titles": [
+      "Compliance Officer",
+      "Compliance Manager",
+      "Compliance Analyst",
+      "Analyst",
+      "Specialist",
+      "Legal Counsel",
+      "Legal Advisor",
+      "Corporate Counsel",
+      "Paralegal",
+      "Regulatory Affairs Specialist"
+    ]
+  },
+  "R&D": {
+    "raw_to_standard": {
+      "RnD Eng": "R&D Engineer",
+      "R&D Technician": "R&D Technician",
+      "Product Dev Eng": "Product Development Engineer",
+      "Lab Tech": "Laboratory Technician",
+      "Scientist I": "Research Scientist",
+      "Res Scientist": "Research Scientist",
+      "Innovation mgr": "Innovation Manager",
+      "Clinical Rsch Assoc": "Clinical Research Associate",
+      "CRA": "Clinical Research Associate",
+      "Research Asst": "Research Assistant"
+    },
+    "standard_titles": [
+      "R&D Engineer",
+      "R&D Technician",
+      "Product Development Engineer",
+      "Laboratory Technician",
+      "Research Scientist",
+      "Innovation Manager",
+      "Clinical Research Associate",
+      "Research Assistant"
+    ]
+  }
+}

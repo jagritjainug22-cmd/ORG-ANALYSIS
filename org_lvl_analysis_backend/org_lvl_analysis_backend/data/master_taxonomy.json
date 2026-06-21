@@ -1,0 +1,63 @@
+{
+  "R&D": [
+    "Manage product and service portfolio",
+    "Develop products and services"
+  ],
+  "Sales & Marketing": [
+    "Understand markets, customers, and capabilities",
+    "Develop marketing strategy",
+    "Develop sales strategy",
+    "Develop and manage marketing plans",
+    "Develop and manage sales plans"
+  ],
+  "Procurement": [
+    "Plan for and align supply chain resources",
+    "Procure materials and services",
+    "Produce/Manufacture/Deliver product",
+    "Deliver products and services to customers",
+    "Manage logistics and warehousing"
+  ],
+  "Customer Support": [
+    "Develop customer care/customer service strategy",
+    "Plan and manage customer service operations",
+    "Measure and evaluate customer service operations"
+  ],
+  "HR": [
+    "Develop and manage human resources (HR) planning, policies, and strategies",
+    "Recruit, source, and select employees",
+    "Develop and counsel employees",
+    "Manage employee relations",
+    "Reward and retain employees",
+    "Redeploy and retire employees",
+    "Manage employee information and analytics",
+    "Manage employee communication"
+  ],
+  "IT": [
+    "Manage the business of information technology",
+    "Develop and manage IT customer relationships",
+    "Develop and implement security, privacy, and data protection controls",
+    "Manage enterprise information",
+    "Develop and maintain information technology solutions",
+    "Deploy information technology solutions",
+    "Deliver and support information technology services"
+  ],
+  "Finance": [
+    "Perform planning and management accounting",
+    "Perform revenue accounting",
+    "Perform general accounting and reporting",
+    "Manage fixed-asset project accounting",
+    "Process payroll",
+    "Process accounts payable and expense reimbursements",
+    "Manage treasury operations",
+    "Manage internal controls",
+    "Manage taxes",
+    "Manage international funds/consolidation",
+    "Perform global trade services"
+  ],
+  "Compliance and Legal": [
+    "Manage enterprise risk",
+    "Manage compliance",
+    "Manage remediation efforts",
+    "Manage business resiliency"
+  ]
+}

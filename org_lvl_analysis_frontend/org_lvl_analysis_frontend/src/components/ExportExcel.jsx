@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { exportExcel } from "../api/backend";
 
-export default function ExportExcel({ df }) {
+export default function ExportExcel({ df, compact = false }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
@@ -38,20 +38,51 @@ export default function ExportExcel({ df }) {
 
   const hasData = df && df.length > 0;
 
+  if (compact) {
+    return (
+      <div className="relative">
+        <button
+          onClick={handleExport}
+          disabled={!hasData || loading}
+          className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition shadow-sm ${
+            hasData && !loading
+              ? "bg-brand-500 text-white hover:bg-brand-600"
+              : "bg-gray-200 text-gray-500 cursor-not-allowed"
+          }`}
+        >
+          {loading ? (
+            <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+            </svg>
+          ) : (
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+          )}
+          {loading ? "Exporting..." : "Export to Excel"}
+        </button>
+        {error && (
+          <p className="absolute top-full right-0 mt-1 text-xs text-red-600 whitespace-nowrap">{error}</p>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-3">
       {/* Export Card */}
       <button
         onClick={handleExport}
         disabled={!hasData || loading}
-        className={`w-full text-left p-4 rounded-lg border-2 transition-all duration-200 ${
+        className={`w-full text-left p-3 rounded-md border-2 transition-all duration-200 ${
           hasData && !loading
             ? "bg-gradient-to-br from-brand-50 to-brand-100 border-brand-200 hover:border-brand-300 hover:shadow-md cursor-pointer"
             : "bg-gray-50 border-gray-200 cursor-not-allowed opacity-60"
         }`}>
       
         <div className="flex items-center gap-3">
-            <div className={`w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${
+            <div className={`w-8 h-8 rounded-md flex items-center justify-center flex-shrink-0 ${
             hasData && !loading
               ? "bg-gradient-to-br from-brand-700 to-brand-500"
               : "bg-gray-400"
@@ -129,7 +160,7 @@ export default function ExportExcel({ df }) {
 
       {/* Error Message */}
       {error && (
-        <div className="bg-red-50 border border-red-200 rounded-lg p-3 animate-fadeIn">
+        <div className="bg-red-50 border border-red-200 rounded-md p-2 animate-fadeIn">
           <div className="flex items-center gap-2">
             <svg
               className="w-4 h-4 text-red-600 flex-shrink-0"
@@ -149,7 +180,7 @@ export default function ExportExcel({ df }) {
 
       {/* Info Text */}
       {hasData && !loading && (
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+        <div className="bg-blue-50 border border-blue-200 rounded-md p-2">
           <div className="flex items-start gap-2">
             <svg
               className="w-4 h-4 text-blue-600 mt-0.5 flex-shrink-0"

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { dbListDatasets, dbGetDataset, dbGetDatasetRecords } from "../api/backend";
+import { dbListDatasets, dbGetDataset } from "../api/backend";
 
 const BRAND_500 = "#155bb2";
 const ACCENT_GOLD = "#c5a84a";
@@ -107,24 +107,7 @@ export default function DataSourceSelector({
     setLoadingPickId(dataset.id);
     setError(null);
     try {
-      const data = await dbGetDatasetRecords(dataset.id, pickedScenarioId);
-      const records = data.records || [];
-      const columns = data.columns || (records.length > 0 ? Object.keys(records[0]) : []);
-
-      // Hydrate the analytics pipeline (Validate, Hierarchy, Spans & Layers, Crosstab)
-      setDfRecords?.(records);
-      setValidatedDf?.(records);
-      setColumns?.(columns);
-
-      // Hydrate the DB context (Org Chart)
-      onDatasetPicked?.({
-        dataset,
-        scenarios,
-        activeScenarioId: pickedScenarioId,
-        records,
-        columns,
-      });
-
+      await onDatasetPicked?.({ dataset, scenarios, activeScenarioId: pickedScenarioId });
       setPickerState(null);
     } catch (e) {
       setError(e?.response?.data?.detail || e?.message || "Failed to load records.");

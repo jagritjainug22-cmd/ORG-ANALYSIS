@@ -59,7 +59,13 @@ from services.spans_layers_service import (
 from services.upload_service import read_excel_file, smart_read_excel
 from services.validation_service import validate_org_data, validate_scenario
 from services.column_mapping_service import auto_map_columns
-from services.rationalisation_service import rationalise, apply_rationalisation
+from services.rationalisation_service import (
+    rationalise,
+    apply_rationalisation,
+    persist_approved_mappings,
+    list_learned_taxonomy_entries,
+    update_learned_taxonomy_entry,
+)
 
 Image.MAX_IMAGE_PIXELS = None
 
@@ -219,6 +225,7 @@ class RationaliseBody(BaseModel):
     func_col: Optional[str] = None
     subfunc_col: Optional[str] = None
     title_col: Optional[str] = None
+    ignore_learned_aliases: bool = True
 
 
 class RationaliseApplyBody(BaseModel):
@@ -230,6 +237,15 @@ class RationaliseApplyBody(BaseModel):
     approved_subfunctions: List[Dict] = []
     approved_titles: List[Dict] = []
     dataset_id: Optional[int] = None
+    enrich_learned: bool = True
+
+
+class LearnedTaxonomyPatchBody(BaseModel):
+    entry_id: str
+    resolved: Optional[str] = None
+    disabled: Optional[bool] = None
+    apply_to_matching: bool = False
+    delete: bool = False
 
 
 # ---------------------------------------------------------------------------
@@ -966,6 +982,7 @@ def rationalise_endpoint(
             func_col=body.func_col,
             subfunc_col=body.subfunc_col,
             title_col=body.title_col,
+            ignore_learned_aliases=body.ignore_learned_aliases,
         )
         summary = result.get("summary", {})
         write_activity_log(
@@ -1010,6 +1027,12 @@ def rationalise_apply_endpoint(
             approved_subfunctions=body.approved_subfunctions,
             approved_titles=body.approved_titles,
         )
+        persist_approved_mappings(
+            body.approved_functions,
+            body.approved_subfunctions,
+            body.approved_titles,
+            enrich_learned=body.enrich_learned,
+        )
         if body.dataset_id is not None:
             _require_dataset_in_project(body.dataset_id, project_id)
             db_service.touch_dataset_pipeline(body.dataset_id, "rationalise")
@@ -1024,6 +1047,47 @@ def rationalise_apply_endpoint(
         write_activity_log(
             username=username, action="process", module="RationaliseApply",
             rows_input=len(body.records), status="error", details=str(e),
+        )
+        raise
+
+
+@router.get("/learned-taxonomy")
+def get_learned_taxonomy(
+    project_id: int,
+    user: dict = Depends(require_project_access()),
+):
+    """Return all global learned mapping aliases for the Mapping Registry."""
+    return {"entries": list_learned_taxonomy_entries()}
+
+
+@router.patch("/learned-taxonomy")
+def patch_learned_taxonomy(
+    body: LearnedTaxonomyPatchBody,
+    project_id: int,
+    user: dict = Depends(require_project_access()),
+):
+    """Update, disable, or delete a learned mapping entry."""
+    username = user["username"]
+    try:
+        result = update_learned_taxonomy_entry(
+            body.entry_id,
+            resolved=body.resolved,
+            disabled=body.disabled,
+            apply_to_matching=body.apply_to_matching,
+            delete=body.delete,
+        )
+        write_activity_log(
+            username=username, action="update", module="MappingRegistry",
+            status="success",
+            details=f"Updated learned mapping {body.entry_id}",
+        )
+        return result
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        write_activity_log(
+            username=username, action="update", module="MappingRegistry",
+            status="error", details=str(e),
         )
         raise
 
@@ -1892,14 +1956,16 @@ def db_save_baseline(
         scenarios = db_service.list_scenarios(dataset_id)
 
         # Auto-load into DuckDB for the "Ask OrgSight" analytical layer
-        baseline_scenario_id = scenarios[0]["id"] if scenarios else None
-        if baseline_scenario_id is not None:
+        baseline_scenario = scenarios[0] if scenarios else None
+        if baseline_scenario is not None:
             try:
                 duckdb_manager.load(
+                    user_id=user["id"],
                     project_id=project_id,
                     dataset_id=dataset_id,
-                    scenario_id=baseline_scenario_id,
+                    scenario_id=baseline_scenario["id"],
                     records=body.records,
+                    scenario_updated_at=baseline_scenario.get("updated_at"),
                 )
             except Exception as duck_err:
                 logger.warning("DuckDB load after save_baseline failed: %s", duck_err)
@@ -2179,7 +2245,7 @@ def db_get_dataset_flat_records(
     dataset_id: int,
     project_id: int,
     scenario_id: Optional[int] = Query(None),
-    _user: dict = Depends(require_project_access()),
+    user: dict = Depends(require_project_access()),
 ):
     """Return a flat record array + column list for the analytics pipeline.
 
@@ -2201,12 +2267,14 @@ def db_get_dataset_flat_records(
             target_scenario_id = scenarios[0]["id"]
     if target_scenario_id is not None:
         try:
-            records_for_duck = result.get("records", [])
+            sc_meta = db_service.get_scenario(target_scenario_id) or {}
             duckdb_manager.load(
+                user_id=user["id"],
                 project_id=project_id,
                 dataset_id=dataset_id,
                 scenario_id=target_scenario_id,
-                records=records_for_duck,
+                records=result.get("records", []),
+                scenario_updated_at=sc_meta.get("updated_at"),
             )
         except Exception as duck_err:
             logger.warning("DuckDB load on dataset fetch failed: %s", duck_err)
@@ -2376,18 +2444,19 @@ def db_compare_scenarios(
 def db_get_scenario(
     scenario_id: int,
     project_id: int,
-    _user: dict = Depends(require_project_access()),
+    user: dict = Depends(require_project_access()),
 ):
     scenario, dataset = _require_scenario_in_project(scenario_id, project_id)
     records = db_service.get_scenario_records(scenario_id)
 
-    # Auto-load into DuckDB when a scenario is activated
     try:
         duckdb_manager.load(
+            user_id=user["id"],
             project_id=project_id,
             dataset_id=dataset["id"],
             scenario_id=scenario_id,
             records=records,
+            scenario_updated_at=scenario.get("updated_at"),
         )
     except Exception as duck_err:
         logger.warning("DuckDB load on scenario fetch failed: %s", duck_err)

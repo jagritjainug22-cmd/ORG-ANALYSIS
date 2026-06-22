@@ -129,7 +129,7 @@ export default function ActiveDatasetDropdown({
 
       {/* Pill + dropdown */}
       <div className="relative flex items-center gap-1.5" ref={ref}>
-        <svg className="w-3.5 h-3.5 text-white flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <svg className="w-3 h-3 text-white flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
         </svg>
 
@@ -147,7 +147,7 @@ export default function ActiveDatasetDropdown({
           </svg>
           <span className="truncate max-w-[180px] text-white">{label}</span>
           <svg
-            className={`w-3 h-3 flex-shrink-0 transition-transform ${open ? "rotate-180" : ""}`}
+            className={`w-2.5 h-2.5 flex-shrink-0 transition-transform ${open ? "rotate-180" : ""}`}
             fill="none" stroke="currentColor" viewBox="0 0 24 24"
           >
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" />
@@ -201,15 +201,15 @@ export default function ActiveDatasetDropdown({
                         <button
                           onClick={() => handleDatasetClick(d)}
                           disabled={isLoading || (loadingPickId !== null && !isLoading)}
-                          className={`w-full flex items-center gap-3 px-4 py-3 text-left transition-colors ${
+                          className={`w-full flex items-center gap-3 px-3 py-2 text-left transition-colors ${
                             isActive
                               ? "bg-brand-800/6"
-                                              : "hover:bg-gray-50"
+                              : "hover:bg-gray-50"
                           } ${(loadingPickId !== null && !isLoading) ? "opacity-40 cursor-not-allowed" : ""}`}
                         >
                           {/* Avatar */}
                           <div
-                            className="w-8 h-8 rounded-lg flex items-center justify-center text-white text-[10px] font-bold flex-shrink-0"
+                            className="w-7 h-7 rounded-md flex items-center justify-center text-white text-[10px] font-bold flex-shrink-0"
                             style={{ background: isActive ? "#0b2b4a" : "#64748b" }}
                           >
                             {isLoading ? (
@@ -221,8 +221,8 @@ export default function ActiveDatasetDropdown({
                           </div>
 
                           {/* Info */}
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-1.5">
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-1">
                               <span className={`text-sm font-semibold truncate ${isActive ? "text-white" : "text-gray-800"}`}>
                                 {d.name}
                               </span>

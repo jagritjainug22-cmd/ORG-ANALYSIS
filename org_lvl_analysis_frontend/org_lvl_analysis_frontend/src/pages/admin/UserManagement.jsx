@@ -50,10 +50,10 @@ function UserFormModal({ open, onClose, onSave, editUser }) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-      <div className="bg-white rounded-xl shadow-2xl border border-gray-200 w-full max-w-md mx-4">
-        <div className="px-6 py-4 border-b bg-gray-50">
-          <h3 className="text-lg font-semibold text-gray-800">
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+      <div className="bg-white rounded-md shadow-xl border border-gray-200 w-full max-w-md mx-4">
+        <div className="px-4 py-3 border-b bg-[#01244a] border-[#08304a]">
+          <h3 className="text-base font-semibold text-white">
             {editUser ? "Edit User" : "Create User"}
           </h3>
         </div>
@@ -62,32 +62,32 @@ function UserFormModal({ open, onClose, onSave, editUser }) {
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Username</label>
             <input type="text" value={username} onChange={(e) => setUsername(e.target.value)}
-              disabled={!!editUser} className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-am-500 focus:border-am-500 outline-none disabled:bg-gray-100 disabled:text-gray-500" required />
+              disabled={!!editUser} className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none disabled:bg-gray-100 disabled:text-gray-500" required />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Display Name</label>
             <input type="text" value={displayName} onChange={(e) => setDisplayName(e.target.value)}
-              className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-am-500 focus:border-am-500 outline-none" placeholder="Optional" />
+              className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none" placeholder="Optional" />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
               {editUser ? "Reset Password (leave blank to keep)" : "Password"}
             </label>
             <input type="password" value={password} onChange={(e) => setPassword(e.target.value)}
-              className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-am-500 focus:border-am-500 outline-none"
+              className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none"
               minLength={editUser ? 0 : 8} required={!editUser} placeholder={editUser ? "Leave blank to keep current" : "Min 8 characters"} />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Role</label>
             <select value={role} onChange={(e) => setRole(e.target.value)}
-              className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-am-500 focus:border-am-500 outline-none bg-white">
+              className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none bg-white">
               <option value="member">Member</option>
               <option value="admin">Admin</option>
             </select>
           </div>
           <div className="flex justify-end gap-3 pt-2">
-            <button type="button" onClick={onClose} className="px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50">Cancel</button>
-            <button type="submit" disabled={saving} className="px-4 py-2 bg-am-500 hover:bg-am-600 text-white rounded-lg text-sm font-medium disabled:opacity-50">
+            <button type="button" onClick={onClose} className="px-3 py-1.5 bg-white border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50">Cancel</button>
+            <button type="submit" disabled={saving} className="px-3 py-1.5 bg-brand-600 hover:bg-brand-700 text-white rounded-md text-sm font-medium disabled:opacity-50">
               {saving ? "Saving..." : editUser ? "Update" : "Create"}
             </button>
           </div>
@@ -143,7 +143,7 @@ export default function UserManagement() {
           <p className="text-sm text-gray-500 mt-1">{users.length} user{users.length !== 1 ? "s" : ""} total</p>
         </div>
         <button onClick={() => { setEditUser(null); setShowForm(true); }}
-          className="flex items-center gap-2 px-4 py-2.5 bg-am-500 hover:bg-am-600 text-white rounded-lg text-sm font-medium shadow-md transition-all">
+          className="flex items-center gap-2 px-3 py-1.5 bg-brand-600 hover:bg-brand-700 text-white rounded-md text-sm font-medium shadow-md transition-all">
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
           Create User
         </button>
@@ -178,31 +178,31 @@ export default function UserManagement() {
           <div className="w-8 h-8 border-4 border-am-100 border-t-am-500 rounded-full animate-spin"></div>
         </div>
       ) : (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+        <div className="bg-white rounded-md shadow-sm border border-gray-200 overflow-hidden">
           <table className="w-full">
             <thead>
-              <tr className="bg-gray-50 border-b border-gray-200">
-                <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">User</th>
-                <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Role</th>
-                <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Status</th>
-                <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Projects</th>
-                <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Created</th>
-                <th className="text-right px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Actions</th>
+              <tr className="bg-[#01244a] border-b border-[#08304a]">
+                <th className="text-left px-4 py-2 text-xs font-semibold text-white uppercase tracking-wider">User</th>
+                <th className="text-left px-4 py-2 text-xs font-semibold text-white uppercase tracking-wider">Role</th>
+                <th className="text-left px-4 py-2 text-xs font-semibold text-white uppercase tracking-wider">Status</th>
+                <th className="text-left px-4 py-2 text-xs font-semibold text-white uppercase tracking-wider">Projects</th>
+                <th className="text-left px-4 py-2 text-xs font-semibold text-white uppercase tracking-wider">Created</th>
+                <th className="text-right px-4 py-2 text-xs font-semibold text-white uppercase tracking-wider">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
               {sortedAndFiltered.map((u) => (
                 <tr key={u.id} className={`hover:bg-gray-50 transition-colors ${!u.is_active ? "opacity-50" : ""}`}>
-                  <td className="px-6 py-4">
+                  <td className="px-4 py-3">
                     <div className="font-medium text-gray-800">{u.username}</div>
                     {u.display_name && <div className="text-xs text-gray-500">{u.display_name}</div>}
                   </td>
-                  <td className="px-6 py-4">
-                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                      u.role === "admin" ? "bg-amber-100 text-amber-700" : "bg-blue-100 text-blue-700"
+                  <td className="px-4 py-3">
+                    <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium ${
+                      u.role === "admin" ? "bg-violet-50 text-violet-700" : "bg-brand-50 text-brand-700"
                     }`}>{u.role}</span>
                   </td>
-                  <td className="px-6 py-4">
+                  <td className="px-4 py-3">
                     <span className={`inline-flex items-center gap-1.5 text-xs font-medium ${
                       u.is_active ? "text-green-600" : "text-red-500"
                     }`}>
@@ -210,29 +210,29 @@ export default function UserManagement() {
                       {u.is_active ? "Active" : "Deactivated"}
                     </span>
                     {u.must_change_password === 1 && u.is_active ? (
-                      <span className="ml-2 text-xs text-amber-600">(password change pending)</span>
+                      <span className="ml-2 text-xs text-brand-600">(password change pending)</span>
                     ) : null}
                   </td>
-                  <td className="px-6 py-4">
+                  <td className="px-4 py-3">
                     <ProjectPills projects={u.projects || []} />
                   </td>
-                  <td className="px-6 py-4 text-sm text-gray-500">
+                  <td className="px-4 py-3 text-sm text-gray-500">
                     {new Date(u.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
                   </td>
-                  <td className="px-6 py-4 text-right">
+                  <td className="px-4 py-3 text-right">
                     <div className="flex items-center justify-end gap-2">
                       <button onClick={() => { setEditUser(u); setShowForm(true); }}
-                        className="px-3 py-1.5 text-xs font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-all">
+                        className="px-3 py-1.5 text-xs font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-md transition-all">
                         Edit
                       </button>
                       {u.is_active ? (
                         <button onClick={() => setConfirmDeactivate(u)}
-                          className="px-3 py-1.5 text-xs font-medium text-red-600 bg-red-50 hover:bg-red-100 rounded-lg transition-all">
+                          className="px-3 py-1.5 text-xs font-medium text-red-600 bg-red-50 hover:bg-red-100 rounded-md transition-all">
                           Deactivate
                         </button>
                       ) : (
                         <button onClick={async () => { await adminUpdateUser(u.id, { is_active: true }); load(); }}
-                          className="px-3 py-1.5 text-xs font-medium text-green-600 bg-green-50 hover:bg-green-100 rounded-lg transition-all">
+                          className="px-3 py-1.5 text-xs font-medium text-green-600 bg-green-50 hover:bg-green-100 rounded-md transition-all">
                           Reactivate
                         </button>
                       )}

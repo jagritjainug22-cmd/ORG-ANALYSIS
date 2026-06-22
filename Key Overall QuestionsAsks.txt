@@ -1,0 +1,91 @@
+Key Overall Questions/Asks:
+•	Show me total headcount.
+•	How many people do we employ?
+•	What's our workforce size?
+•	Give me FTE count by function.
+•	Which managers have small teams?
+•	Who has less than 5 direct reports?
+•	Show managers with narrow spans.
+•	Which departments are top-heavy?
+•	Where do we have too many management layers?
+•	What cost can be removed through delayering?
+
+Executive-Level Strategic Questions
+•	If we target an average span of 8, what would the organization look like?
+•	What is the cost-saving opportunity from organizational simplification?
+•	Which functions are most suitable for centralization?
+•	Where do we have excessive management layers driving cost?
+•	What are the top workforce risks based on current structure?
+•	Which leaders oversee the largest workforce spend?
+•	Which organizational changes would generate the highest productivity gains?
+•	What are the biggest opportunities to improve organizational effectiveness?
+•	If we redesign the organization based on benchmark spans and layers, what savings could be achieved?
+
+Workforce & Headcount
+•	What is the total FTE count across the organization?
+•	How many employees do we have by function?
+•	How many employees are located in each country?
+•	What is the FTE distribution across business units?
+•	Which function has the highest headcount?
+•	What percentage of employees are in customer-facing roles?
+•	What is the contractor versus employee mix? Fix vs permanent employees?
+•	How many vacant positions currently exist?
+
+Cost & Workforce Economics
+•	What is the total workforce cost for the organization?
+•	Which function has the highest personnel cost?
+•	What is the average cost per FTE at overall level?
+•	What is the average cost per FTE by country?
+•	What is the average cost per FTE by function?
+•	Which business unit has the highest labor cost?
+•	What percentage of total cost is concentrated in management roles?
+•	What is the labor cost split by geography?
+•	How much cost is associated with support functions?
+•	What is the cost impact if we reduce management layers by one level?
+•	Which locations provide the lowest cost per FTE?
+
+Organizational Structure
+•	How many organizational layers exist from CEO to last level of employees?
+•	What is the average reporting depth across the organization? Hierarchy?
+•	Which functions have the deepest organizational hierarchy?
+•	Which departments have the flattest structures?
+•	How many employees are within three layers of the CEO?
+•	Which managers have the largest teams?
+•	What percentage of employees sit below layer 5?
+•	How does organizational depth differ across business units?
+•	Where do we see excessive layering?
+•	Which teams have the most complex reporting structures?
+
+Span of Control
+•	What is the average span of control across the organization?
+•	Which managers have spans below internal/organisation benchmarks?
+•	Which managers have spans above internal/organisation benchmarks?
+•	What percentage of managers supervise fewer than five employees?
+•	Which functions have the narrowest spans of control?
+•	How does span of control vary by geography?
+•	What is the manager-to-employee ratio?
+•	Which business units have the highest management density?
+•	What opportunities exist to optimize spans of control?
+•	How much cost is tied to managers with small teams?
+
+Geography & Location Analytics
+•	What is the workforce distribution by region?
+•	Which countries have the highest concentration of employees?
+•	How many FTEs are located in offshore centers?
+•	What percentage of employees are in low-cost locations?
+•	How does workforce cost compare across locations?
+•	What is the average organizational depth by geography?
+•	Which countries have the highest management concentration?
+
+Benchmarking & Organization Effectiveness
+•	How does our span of control compare to industry benchmarks?
+•	Which functions appear over-managed?
+•	Which functions appear under-managed?
+•	Where do we have duplication of roles across business units?
+•	Which teams have the highest management overhead?
+•	How many managers could be removed while maintaining benchmark spans?
+•	What is the potential savings from organizational delayering?
+•	Which business units are structurally inefficient?
+•	What organization design opportunities exist based on benchmark comparisons?
+•	How does our organizational structure compare with peer companies?
+

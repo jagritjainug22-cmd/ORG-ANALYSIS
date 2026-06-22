@@ -249,7 +249,7 @@ export default function Crosstab({ df, fteCol, flcCol, formulas = [], datasetId 
   return (
     <div className="space-y-6">
       {/* Header Section */}
-      <div className="bg-brand-50 border border-brand-200 rounded-lg p-6">
+      <div className="bg-brand-50 border border-brand-200 rounded-lg p-3">
         <div className="flex items-start gap-4">
           <div className="w-12 h-12 bg-brand-500 rounded-lg flex items-center justify-center flex-shrink-0">
             <svg
@@ -267,10 +267,10 @@ export default function Crosstab({ df, fteCol, flcCol, formulas = [], datasetId 
             </svg>
           </div>
           <div className="flex-1">
-            <h3 className="text-xl font-bold text-gray-900 mb-2">
+            <h3 className="text-base font-bold text-gray-900 mb-1">
               Crosstab Analysis
             </h3>
-            <p className="text-sm text-gray-600">
+            <p className="text-xs text-gray-500">
               Generate pivot tables to analyze your data by different dimensions with optional FTE and FLC metrics.
             </p>
           </div>
@@ -278,8 +278,8 @@ export default function Crosstab({ df, fteCol, flcCol, formulas = [], datasetId 
       </div>
 
       {/* Configuration Section */}
-      <div className="bg-white border border-gray-200 rounded-lg p-6">
-        <h4 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
+      <div className="bg-white border border-gray-200 rounded-lg p-4">
+        <h4 className="text-base font-semibold text-gray-800 mb-3 flex items-center gap-2">
           <svg
             className="w-5 h-5 text-brand-500"
             fill="none"
@@ -353,8 +353,8 @@ export default function Crosstab({ df, fteCol, flcCol, formulas = [], datasetId 
       </div>
 
       {/* Others Grouping Section */}
-      <div className="bg-white border border-gray-200 rounded-lg p-6">
-        <div className="flex items-center gap-3 mb-4">
+      <div className="bg-white border border-gray-200 rounded-md p-4">
+        <div className="flex items-center gap-3 mb-3">
           <input
             type="checkbox"
             id="enableOthers"
@@ -362,7 +362,7 @@ export default function Crosstab({ df, fteCol, flcCol, formulas = [], datasetId 
             onChange={(e) => setEnableOthersGrouping(e.target.checked)}
             className="w-5 h-5 text-brand-500 border-gray-300 rounded focus:ring-2 focus:ring-brand-500"
           />
-          <label htmlFor="enableOthers" className="text-lg font-semibold text-gray-800 flex items-center gap-2 cursor-pointer">
+          <label htmlFor="enableOthers" className="text-sm font-semibold text-gray-800 flex items-center gap-2 cursor-pointer">
             <svg className="w-5 h-5 text-brand-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
             </svg>
@@ -371,14 +371,14 @@ export default function Crosstab({ df, fteCol, flcCol, formulas = [], datasetId 
         </div>
 
         {enableOthersGrouping && (
-          <div className="space-y-6 pt-4 border-t border-gray-200">
+          <div className="space-y-4 pt-3 border-t border-gray-200">
             {/* Threshold Metric Selection */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">Threshold Metric</label>
               <select
                 value={thresholdMetric}
                 onChange={(e) => setThresholdMetric(e.target.value)}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition-all bg-white hover:border-gray-400"
+                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition-all bg-white hover:border-gray-400"
               >
                 {thresholdMetrics.map((metric) => (
                   <option key={metric} value={metric}>{metric}</option>
@@ -387,7 +387,7 @@ export default function Crosstab({ df, fteCol, flcCol, formulas = [], datasetId 
               <p className="text-xs text-gray-500 mt-1">Categories below the threshold percentage of this metric will be grouped as "Others"</p>
             </div>
 
-            <div className="grid grid-cols-2 gap-6">
+            <div className="grid grid-cols-2 gap-4">
               {/* Column X Threshold */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -402,7 +402,7 @@ export default function Crosstab({ df, fteCol, flcCol, formulas = [], datasetId 
                   value={colXThreshold}
                   onChange={(e) => setColXThreshold(parseFloat(e.target.value) || 0)}
                   disabled={!colX}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition-all disabled:bg-gray-100 disabled:cursor-not-allowed"
+                  className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition-all disabled:bg-gray-100 disabled:cursor-not-allowed"
                 />
                 <p className="text-xs text-gray-500 mt-1">Group categories with less than this % as "Others"</p>
               </div>
@@ -421,7 +421,7 @@ export default function Crosstab({ df, fteCol, flcCol, formulas = [], datasetId 
                   value={colYThreshold}
                   onChange={(e) => setColYThreshold(parseFloat(e.target.value) || 0)}
                   disabled={!colY}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition-all disabled:bg-gray-100 disabled:cursor-not-allowed"
+                  className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition-all disabled:bg-gray-100 disabled:cursor-not-allowed"
                 />
                 <p className="text-xs text-gray-500 mt-1">Group categories with less than this % as "Others"</p>
               </div>
@@ -431,19 +431,19 @@ export default function Crosstab({ df, fteCol, flcCol, formulas = [], datasetId 
             <button
               onClick={fetchPreview}
               disabled={loading || (!colX && !colY)}
-              className="w-full px-4 py-3 bg-brand-100 hover:bg-brand-200 text-brand-700 rounded-lg font-medium transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              className="w-full px-3 py-2 bg-brand-100 hover:bg-brand-200 text-brand-700 rounded-md font-medium transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 text-sm"
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
               </svg>
-              Preview Categories to be Grouped
+                  Preview Categories to be Grouped
             </button>
 
             {/* Preview Results */}
             {showPreview && previewData && (
-              <div className="mt-4 p-4 bg-brand-50 border border-brand-200 rounded-lg">
-                <h5 className="font-semibold text-gray-800 mb-3">Categories to be grouped as "Others":</h5>
+              <div className="mt-3 p-3 bg-brand-50 border border-brand-200 rounded-md">
+                <h5 className="font-semibold text-gray-800 mb-2">Categories to be grouped as "Others":</h5>
                 
                 {previewData.colX_categories && previewData.colX_categories.length > 0 && (
                   <div className="mb-4">
@@ -511,12 +511,12 @@ export default function Crosstab({ df, fteCol, flcCol, formulas = [], datasetId 
         <button
           onClick={generate}
           disabled={!canRun || loading}
-          className="flex-1 px-6 py-4 bg-brand-500 hover:bg-brand-600 text-white rounded-lg font-semibold shadow-lg hover:shadow-xl transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3"
+          className="flex-1 px-4 py-2 bg-brand-500 hover:bg-brand-600 text-white rounded-md font-semibold shadow-sm hover:shadow-md transition-all duration-150 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 text-sm"
         >
           {loading ? (
             <>
               <svg
-                className="animate-spin h-6 w-6 text-white"
+                className="animate-spin h-5 w-5 text-white"
                 xmlns="http://www.w3.org/2000/svg"
                 fill="none"
                 viewBox="0 0 24 24"
@@ -535,12 +535,12 @@ export default function Crosstab({ df, fteCol, flcCol, formulas = [], datasetId 
                   d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
                 ></path>
               </svg>
-              <span className="text-lg">Generating...</span>
+              <span className="text-sm">Generating...</span>
             </>
           ) : (
             <>
               <svg
-                className="w-6 h-6"
+                className="w-5 h-5"
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
@@ -552,7 +552,7 @@ export default function Crosstab({ df, fteCol, flcCol, formulas = [], datasetId 
                   d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"
                 />
               </svg>
-              <span className="text-lg">Generate Crosstab</span>
+              <span className="text-sm">Generate Crosstab</span>
             </>
           )}
         </button>
@@ -561,10 +561,10 @@ export default function Crosstab({ df, fteCol, flcCol, formulas = [], datasetId 
           <button
             onClick={exportExcel}
             disabled={loading}
-            className="px-6 py-4 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white rounded-lg font-semibold shadow-lg hover:shadow-xl transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-3"
+            className="px-4 py-2 bg-brand-500 hover:bg-brand-600 text-white rounded-md font-semibold shadow-sm hover:shadow-md transition-all duration-150 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 text-sm"
           >
             <svg
-              className="w-6 h-6"
+              className="w-5 h-5"
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -603,10 +603,10 @@ export default function Crosstab({ df, fteCol, flcCol, formulas = [], datasetId 
       )}
 
       {/* Results Section */}
-      {rows.length > 0 && (
+        {rows.length > 0 && (
         <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-          <div className="bg-gray-50 px-6 py-4 border-b border-gray-200">
-            <h4 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
+          <div className="bg-[#01244a] px-4 py-2 border-b border-[#01244a]">
+            <h4 className="text-base font-semibold text-white flex items-center gap-2">
                 <svg
                 className="w-5 h-5 text-brand-500"
                 fill="none"
@@ -625,19 +625,19 @@ export default function Crosstab({ df, fteCol, flcCol, formulas = [], datasetId 
           </div>
 
           <div className="overflow-auto max-h-[600px]">
-            <table className="w-full border-collapse">
-              <thead className="sticky top-0 z-10">
+              <table className="w-full border-collapse">
+              <thead className="sticky top-0 z-10 bg-[#01244a] text-white">
                 {Object.keys(multiHeaders).length > 0 && (
                   <>
                     {/* Top-level X headers */}
-                    <tr className="bg-gray-100 border-b-2 border-gray-400">
-                      <th className="border-r border-gray-300 px-5 py-4 bg-gray-100 font-bold text-gray-800 text-left text-base sticky left-0 z-20 shadow-sm" rowSpan={2}>
+                    <tr className="border-b-2 border-[#0b2f4a]">
+                      <th className="border-r border-[#083145] px-3 py-2 font-bold text-left text-sm sticky left-0 z-20 shadow-sm" rowSpan={2}>
                         Index
                       </th>
                       {Object.entries(multiHeaders).map(([top, metrics]) => (
                         <th
                           key={top}
-                          className="border-r border-gray-300 px-5 py-4 text-center font-bold text-gray-800 text-base bg-gray-100"
+                          className="border-r border-[#083145] px-3 py-2 text-center font-bold text-white text-sm"
                           colSpan={metrics.length}
                         >
                           {top}
@@ -645,13 +645,13 @@ export default function Crosstab({ df, fteCol, flcCol, formulas = [], datasetId 
                       ))}
                     </tr>
                     {/* Metrics */}
-                    <tr className="bg-gray-50 border-b-2 border-gray-400">
+                    <tr className="border-b-2 border-[#0b2f4a]">
                       {Object.values(multiHeaders)
                         .flat()
                         .map((metric, i) => (
                           <th
                             key={i}
-                            className="border-r border-gray-300 px-4 py-3 text-center text-sm font-semibold text-gray-700 bg-gray-50 whitespace-nowrap"
+                            className="border-r border-[#083145] px-3 py-2 text-center text-sm font-semibold text-white whitespace-nowrap"
                           >
                             {metric}
                           </th>
@@ -660,14 +660,14 @@ export default function Crosstab({ df, fteCol, flcCol, formulas = [], datasetId 
                   </>
                 )}
                 {Object.keys(multiHeaders).length === 0 && (
-                  <tr className="bg-gray-100 border-b-2 border-gray-400">
+                  <tr className="border-b-2 border-[#0b2f4a]">
                     {Object.keys(rows[0]).map((k, idx) => (
                       <th
                         key={k}
-                        className={`border-r border-gray-300 px-5 py-4 font-bold text-gray-800 text-base ${
+                        className={`border-r border-[#083145] px-3 py-2 font-bold text-white text-sm ${
                           idx === 0
-                            ? "text-left sticky left-0 bg-gray-100 z-20 shadow-sm"
-                            : "text-center bg-gray-100"
+                            ? "text-left sticky left-0 bg-[#01244a] z-20 shadow-sm"
+                            : "text-center bg-[#01244a]"
                         }`}
                       >
                         {k}
@@ -691,11 +691,11 @@ export default function Crosstab({ df, fteCol, flcCol, formulas = [], datasetId 
                     } hover:bg-blue-50 transition-colors`}
                   >
                     {Object.entries(r).map(([k, v], j) => (
-                      <td
+                        <td
                         key={j}
-                        className={`border-r border-gray-200 px-5 py-3 text-sm ${
+                        className={`border-r border-gray-200 px-3 py-2 text-sm ${
                           j === 0
-                            ? "font-semibold text-gray-900 text-left sticky left-0 bg-inherit z-10 shadow-sm"
+                            ? "font-semibold text-white text-left sticky left-0 bg-inherit z-10 shadow-sm"
                             : "text-center text-gray-700 tabular-nums"
                         }`}
                       >
@@ -710,35 +710,24 @@ export default function Crosstab({ df, fteCol, flcCol, formulas = [], datasetId 
         </div>
       )}
 
+    
       {/* Info Box */}
-      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-        <div className="flex items-start gap-3">
-          <svg
-            className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0"
-            fill="currentColor"
-            viewBox="0 0 20 20"
-          >
-            <path
-              fillRule="evenodd"
-              d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z"
-              clipRule="evenodd"
-            />
+      <details className="bg-blue-50 border border-blue-200 rounded-lg">
+        <summary className="px-3 py-2 text-xs font-medium text-blue-900 cursor-pointer flex items-center gap-1.5">
+          <svg className="w-3.5 h-3.5 text-blue-600 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+            <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
           </svg>
-          <div>
-            <p className="text-sm font-medium text-blue-900 mb-1">
-              About Crosstab Analysis
-            </p>
-            <ul className="text-xs text-blue-700 space-y-1">
-              <li>• <strong>Column X:</strong> Creates rows in the crosstab table</li>
-              <li>• <strong>Column Y:</strong> Creates columns in the crosstab table</li>
-              <li>• <strong>Metrics:</strong> Automatically calculates counts, sums, and averages</li>
-              <li>• <strong>FTE/FLC:</strong> If columns are configured, additional cost metrics are included</li>
-              <li>• <strong>"Others" Grouping:</strong> Combine minority categories below a threshold into a single "Others" row/column</li>
-              <li>• <strong>Export:</strong> Download the full crosstab as an Excel file</li>
-            </ul>
-          </div>
-        </div>
-      </div>
+          About Crosstab Analysis
+        </summary>
+        <ul className="px-3 pb-2 text-[11px] text-blue-700 space-y-0.5 columns-2">
+          <li>• <strong>Column X:</strong> Creates rows in the crosstab table</li>
+          <li>• <strong>Column Y:</strong> Creates columns in the crosstab table</li>
+          <li>• <strong>Metrics:</strong> Automatically calculates counts, sums, and averages</li>
+          <li>• <strong>FTE/FLC:</strong> If columns are configured, additional cost metrics are included</li>
+          <li>• <strong>"Others" Grouping:</strong> Combine minority categories below a threshold into a single "Others" row/column</li>
+          <li>• <strong>Export:</strong> Download the full crosstab as an Excel file</li>
+        </ul>
+      </details>
     </div>
   );
 }

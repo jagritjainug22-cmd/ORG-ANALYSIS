@@ -215,7 +215,7 @@ export default function CompletenessHeatmap({ dfRecords = [], columns = [], empC
     <div className="space-y-4 animate-fadeInUp">
 
       {/* ─── Controls ─── */}
-      <div className="bg-white border border-gray-200 rounded-xl px-5 py-4 shadow-sm">
+      <div className="bg-white border border-gray-200 rounded-xl px-4 py-3 shadow-sm">
         <div className="flex flex-wrap items-center gap-4">
             <div className="flex items-center gap-2">
             <span className="text-sm text-gray-700 font-medium">
@@ -289,7 +289,7 @@ export default function CompletenessHeatmap({ dfRecords = [], columns = [], empC
         <div className="flex items-center gap-4 px-5 py-3 bg-white border border-gray-200 rounded-xl shadow-sm">
           <MiniDonut pct={overallPct} />
           <div className="flex items-baseline gap-1.5">
-            <span className={`text-2xl font-bold ${overallPct >= 90 ? "text-emerald-600" : overallPct >= 70 ? "text-amber-600" : "text-red-600"}`}>
+            <span className={`text-2xl font-bold ${overallPct >= 90 ? "text-brand-600" : overallPct >= 70 ? "text-amber-600" : "text-red-600"}`}>
               {overallPct}%
             </span>
             <span className="text-sm text-gray-500">complete</span>
@@ -325,7 +325,7 @@ export default function CompletenessHeatmap({ dfRecords = [], columns = [], empC
       {/* ─── FIELDS VIEW ─── */}
       {result && view === "bars" && (
         <div ref={chartRef} className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
-          <div className="px-5 py-3 border-b border-gray-100 flex items-center justify-between">
+          <div className="px-4 py-2 border-b border-gray-100 flex items-center justify-between">
             <p className="text-sm font-semibold text-gray-700">Field completeness — sorted worst first</p>
             <p className="text-xs text-gray-400">Click a row to drill into groups</p>
           </div>
@@ -337,13 +337,13 @@ export default function CompletenessHeatmap({ dfRecords = [], columns = [], empC
                 <div
                   key={field}
                   onClick={() => { setView("table"); setBarsPage(0); }}
-                  className={`flex items-center gap-4 px-5 py-3 cursor-pointer transition-colors ${isComplete ? "opacity-60 hover:opacity-80" : "hover:bg-gray-50"}`}
+                  className={`flex items-center gap-4 px-4 py-2.5 cursor-pointer transition-colors ${isComplete ? "opacity-60 hover:opacity-80" : "hover:bg-gray-50"}`}
                 >
                   <span className="text-sm font-medium text-gray-800 w-48 truncate shrink-0" title={field}>{field}</span>
                   <div className="flex-1 h-5 bg-gray-100 rounded-full overflow-hidden">
                     <div className="h-full rounded-full transition-all duration-500" style={{ width: `${Math.max(pct, 2)}%`, backgroundColor: barColor }} />
                   </div>
-                  <span className={`text-sm font-bold w-14 text-right ${pct >= 95 ? "text-emerald-600" : pct >= 70 ? "text-amber-600" : "text-red-600"}`}>{pct}%</span>
+                  <span className={`text-sm font-bold w-14 text-right ${pct >= 95 ? "text-brand-600" : pct >= 70 ? "text-amber-600" : "text-red-600"}`}>{pct}%</span>
                   {gapsIn.length > 0 ? (
                     <span className="text-xs text-red-600 bg-red-50 border border-red-200 px-2 py-0.5 rounded-full font-medium w-24 text-center shrink-0">{missing} missing</span>
                   ) : (
@@ -365,21 +365,21 @@ export default function CompletenessHeatmap({ dfRecords = [], columns = [], empC
       {/* ─── HEATMAP TABLE ─── */}
       {result && view === "table" && groups.length > 0 && (
         <div ref={chartRef} className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
-          <div className="px-5 py-3 border-b border-gray-100 flex items-center justify-between">
+          <div className="px-4 py-2 border-b border-gray-100 flex items-center justify-between">
             <p className="text-sm font-semibold text-gray-700">Group × Field completeness</p>
             <p className="text-xs text-gray-400">Click a red/amber cell to see missing rows below</p>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-xs border-collapse">
-              <thead className="sticky top-0 z-10">
-                <tr className="bg-gray-50 border-b border-gray-200">
-                  <th className="text-left px-4 py-2.5 font-semibold text-gray-600 sticky left-0 bg-gray-50 z-20 min-w-[180px]">Field</th>
+              <thead className="sticky top-0 z-10 bg-[#01244a] text-white">
+                <tr className="border-b border-[#0b2f4a]">
+                  <th className="text-left px-3 py-2 font-semibold sticky left-0 bg-[#01244a] z-20 min-w-[160px]">Field</th>
                   {groups.map((g) => (
-                    <th key={g} className="px-3 py-2.5 font-semibold text-gray-600 text-center whitespace-nowrap min-w-[80px]">
+                    <th key={g} className="px-2 py-2 font-semibold text-center whitespace-nowrap min-w-[80px]">
                       {g.length > 18 ? `${g.slice(0, 16)}…` : g}
                     </th>
                   ))}
-                  <th className="px-3 py-2.5 font-bold text-gray-700 text-center bg-gray-100 min-w-[60px]">All</th>
+                  <th className="px-2 py-2 font-bold text-center bg-[#01244a] min-w-[60px]">All</th>
                 </tr>
               </thead>
               <tbody>
@@ -403,7 +403,7 @@ export default function CompletenessHeatmap({ dfRecords = [], columns = [], empC
                       );
                     })}
                     <td className="px-2 py-2 text-center bg-gray-50/60">
-                      <span className={`font-bold text-[11px] ${overallFieldPct >= 95 ? "text-emerald-600" : overallFieldPct >= 70 ? "text-amber-600" : "text-red-600"}`}>
+                      <span className={`font-bold text-[11px] ${overallFieldPct >= 95 ? "text-brand-600" : overallFieldPct >= 70 ? "text-amber-600" : "text-red-600"}`}>
                         {overallFieldPct}%
                       </span>
                     </td>

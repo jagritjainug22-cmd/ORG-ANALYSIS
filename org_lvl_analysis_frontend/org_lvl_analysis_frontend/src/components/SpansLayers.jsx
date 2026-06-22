@@ -26,10 +26,10 @@ function StatCard({ label, value, sub, severity = "neutral", icon }) {
   const valueColor = severity === "danger" ? "text-red-600" : severity === "warning" ? "text-amber-600" : "text-gray-900";
   const iconBg = severity === "danger" ? "bg-red-50 text-red-600" : severity === "warning" ? "bg-amber-50 text-amber-600" : "bg-brand-50 text-brand-600";
   return (
-    <div className="bg-white border border-gray-200 rounded-lg p-3 shadow-sm hover:shadow-md transition-shadow">
+    <div className="bg-white border border-gray-200 rounded-md p-2 shadow-sm hover:shadow-md transition-shadow">
       <div className="flex items-center gap-2">
-        <div className={`w-6 h-6 rounded flex items-center justify-center ${iconBg}`}>{icon}</div>
-        <p className={`text-lg font-bold ${valueColor}`}>{value}</p>
+        <div className={`w-5 h-5 rounded flex items-center justify-center ${iconBg}`}>{icon}</div>
+        <p className={`text-base font-bold ${valueColor}`}>{value}</p>
       </div>
       <p className="text-[11px] font-medium text-gray-500 mt-1">{label}</p>
       {sub && <p className="text-[10px] text-gray-400">{sub}</p>}
@@ -298,16 +298,16 @@ export default function SpansLayers({
   const pad = maxVal * 0.2;
 
   return (
-    <div className="p-6 space-y-4 overflow-auto h-full">
+    <div className="p-4 space-y-4 overflow-auto h-full">
       {/* Header - compact */}
       <div className="flex items-center gap-3">
-        <div className="w-8 h-8 bg-brand-500 rounded-lg flex items-center justify-center flex-shrink-0">
-          <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <div className="w-7 h-7 bg-brand-500 rounded-md flex items-center justify-center flex-shrink-0">
+          <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z" />
           </svg>
         </div>
         <div>
-          <h3 className="text-lg font-bold text-gray-900">Spans & Layers Analysis</h3>
+          <h3 className="text-base font-bold text-gray-900">Spans & Layers Analysis</h3>
           <p className="text-xs text-gray-500">Visualize organizational structure by levels, analyze span of control, and identify management layers.</p>
         </div>
       </div>
@@ -586,13 +586,13 @@ export default function SpansLayers({
                 <h5 className="text-xs font-semibold text-gray-700 mb-2">Summary</h5>
                 <div className="border border-gray-200 rounded-lg overflow-hidden">
                   <table className="w-full text-sm">
-                    <thead className="bg-gray-100">
+                    <thead className="bg-[#01244a] text-white">
                       <tr>
-                        <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700">Level</th>
-                        <th className="px-3 py-2 text-right text-xs font-semibold text-gray-700">IC</th>
-                        <th className="px-3 py-2 text-right text-xs font-semibold text-gray-700">Mgr</th>
-                        <th className="px-3 py-2 text-right text-xs font-semibold text-gray-700">Total</th>
-                        <th className="px-3 py-2 text-right text-xs font-semibold text-gray-700">Avg Span</th>
+                        <th className="px-3 py-2 text-left text-xs font-semibold">Level</th>
+                        <th className="px-3 py-2 text-right text-xs font-semibold">IC</th>
+                        <th className="px-3 py-2 text-right text-xs font-semibold">Mgr</th>
+                        <th className="px-3 py-2 text-right text-xs font-semibold">Total</th>
+                        <th className="px-3 py-2 text-right text-xs font-semibold">Avg Span</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-200">
@@ -747,13 +747,13 @@ export default function SpansLayers({
               </div>
               <div className="overflow-x-auto max-h-64">
                 <table className="w-full text-sm">
-                  <thead className="bg-gray-100 sticky top-0">
+                  <thead className="bg-[#01244a] text-white sticky top-0">
                     <tr>
-                      <th className="px-4 py-2 text-left text-xs font-semibold text-gray-700">Employee</th>
-                      <th className="px-4 py-2 text-left text-xs font-semibold text-gray-700">ID</th>
-                      <th className="px-4 py-2 text-right text-xs font-semibold text-gray-700">Span</th>
-                      <th className="px-4 py-2 text-center text-xs font-semibold text-gray-700">Role</th>
-                      <th className="px-4 py-2 text-right text-xs font-semibold text-gray-700">Action</th>
+                      <th className="px-4 py-2 text-left text-xs font-semibold">Employee</th>
+                      <th className="px-4 py-2 text-left text-xs font-semibold">ID</th>
+                      <th className="px-4 py-2 text-right text-xs font-semibold">Span</th>
+                      <th className="px-4 py-2 text-center text-xs font-semibold">Role</th>
+                      <th className="px-4 py-2 text-right text-xs font-semibold">Action</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
@@ -817,13 +817,13 @@ export default function SpansLayers({
                     {insights.one_to_one_managers?.length > 0 ? (
                       <div className="overflow-x-auto">
                         <table className="w-full text-sm">
-                          <thead className="bg-gray-100">
+                          <thead className="bg-[#01244a] text-white">
                             <tr>
-                              <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700">Manager</th>
-                              <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700">ID</th>
-                              <th className="px-3 py-2 text-right text-xs font-semibold text-gray-700">Level</th>
-                              <th className="px-3 py-2 text-right text-xs font-semibold text-gray-700">Span</th>
-                              <th className="px-3 py-2 text-right text-xs font-semibold text-gray-700">Action</th>
+                                <th className="px-3 py-2 text-left text-xs font-semibold">Manager</th>
+                                <th className="px-3 py-2 text-left text-xs font-semibold">ID</th>
+                                <th className="px-3 py-2 text-right text-xs font-semibold">Level</th>
+                                <th className="px-3 py-2 text-right text-xs font-semibold">Span</th>
+                                <th className="px-3 py-2 text-right text-xs font-semibold">Action</th>
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-gray-50">
@@ -858,14 +858,14 @@ export default function SpansLayers({
                     {threshold > 0 && insights.below_target?.length > 0 ? (
                       <div className="overflow-x-auto">
                         <table className="w-full text-sm">
-                          <thead className="bg-gray-100">
+                          <thead className="bg-[#01244a] text-white">
                             <tr>
-                              <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700">Manager</th>
-                              <th className="px-3 py-2 text-right text-xs font-semibold text-gray-700">Current Span</th>
-                              <th className="px-3 py-2 text-right text-xs font-semibold text-gray-700">Target</th>
-                              <th className="px-3 py-2 text-right text-xs font-semibold text-gray-700">Gap</th>
-                              <th className="px-3 py-2 text-right text-xs font-semibold text-gray-700">FTE</th>
-                              <th className="px-3 py-2 text-right text-xs font-semibold text-gray-700">Action</th>
+                              <th className="px-3 py-2 text-left text-xs font-semibold">Manager</th>
+                              <th className="px-3 py-2 text-right text-xs font-semibold">Current Span</th>
+                              <th className="px-3 py-2 text-right text-xs font-semibold">Target</th>
+                              <th className="px-3 py-2 text-right text-xs font-semibold">Gap</th>
+                              <th className="px-3 py-2 text-right text-xs font-semibold">FTE</th>
+                              <th className="px-3 py-2 text-right text-xs font-semibold">Action</th>
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-gray-50">
@@ -897,12 +897,12 @@ export default function SpansLayers({
                     {insights.thin_layers?.length > 0 ? (
                       <div className="overflow-x-auto">
                         <table className="w-full text-sm">
-                          <thead className="bg-gray-100">
+                          <thead className="bg-[#01244a] text-white">
                             <tr>
-                              <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700">Manager</th>
-                              <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700">Report</th>
-                              <th className="px-3 py-2 text-right text-xs font-semibold text-gray-700">Level</th>
-                              <th className="px-3 py-2 text-right text-xs font-semibold text-gray-700">Action</th>
+                              <th className="px-3 py-2 text-left text-xs font-semibold">Manager</th>
+                              <th className="px-3 py-2 text-left text-xs font-semibold">Report</th>
+                              <th className="px-3 py-2 text-right text-xs font-semibold">Level</th>
+                              <th className="px-3 py-2 text-right text-xs font-semibold">Action</th>
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-gray-50">

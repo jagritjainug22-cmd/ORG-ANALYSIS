@@ -497,32 +497,53 @@ export default function ProjectWorkspace() {
       ((s?.changeLogLength ?? 0) > 0 || (s?.editMode && s?.lockAcquired)));
   });
 
-  // Shared activate-dataset logic used by both DataSourceSelector and header dropdown
-  const activateDataset = async (dataset, scenarios, scenarioId) => {
+  // Shared activate-dataset logic used by DataSourceSelector, header dropdown, and Org Chart picker
+  const activateDataset = async (dataset, scenarios, scenarioId, records = null, cols = null) => {
     setDatasetSwitching(true);
     try {
-      const data = await dbGetDatasetRecords(dataset.id, scenarioId);
-      const records = data.records || [];
-      const cols = data.columns || (records.length > 0 ? Object.keys(records[0]) : []);
-      setDfRecords(records);
-      setValidatedDf(records);
-      setColumns(cols);
+      let rec = records;
+      let columnsOut = cols;
+      if (!rec) {
+        const data = await dbGetDatasetRecords(dataset.id, scenarioId);
+        rec = data.records || [];
+        columnsOut = data.columns || (rec.length > 0 ? Object.keys(rec[0]) : []);
+      }
+      setDfRecords(rec);
+      setValidatedDf(rec);
+      setColumns(columnsOut);
       setDatasetId(dataset.id);
       setScenarios(scenarios);
       setActiveScenarioId(scenarioId);
       hydrateColumnsFromDataset(dataset);
       setColConfigCollapsed(false);
-      await fillMissingColumnsFromAutoMap(dataset, cols, records);
+      await fillMissingColumnsFromAutoMap(dataset, columnsOut, rec);
       setFilteredRowCount(null);
       const scenarioName = scenarios.find((s) => s.id === scenarioId)?.name || "Baseline";
       setActiveDatasetLabel(dataset.name + " — " + scenarioName);
       setActiveDatasetName(dataset.name);
-      // Load formula columns for this dataset
       dbListFormulas(dataset.id)
         .then((data) => setFormulas(data?.formulas || []))
         .catch(() => setFormulas([]));
-      // Refresh the cached list so any new scenarios show up
       dbListDatasets(false, true).then((d) => setSavedDatasets(d?.datasets || [])).catch(() => {});
+    } finally {
+      setDatasetSwitching(false);
+    }
+  };
+
+  const switchScenario = async (scenarioId) => {
+    if (!datasetId || scenarioId === activeScenarioId) return;
+    setDatasetSwitching(true);
+    try {
+      const data = await dbGetDatasetRecords(datasetId, scenarioId);
+      const records = data.records || [];
+      const cols = data.columns || (records.length > 0 ? Object.keys(records[0]) : []);
+      setDfRecords(records);
+      setValidatedDf(records);
+      setColumns(cols);
+      setActiveScenarioId(scenarioId);
+      setFilteredRowCount(null);
+      const scenarioName = scenarios.find((s) => s.id === scenarioId)?.name || "Baseline";
+      setActiveDatasetLabel((activeDatasetName || "Dataset") + " — " + scenarioName);
     } finally {
       setDatasetSwitching(false);
     }
@@ -571,20 +592,9 @@ export default function ProjectWorkspace() {
             setUploadedFileName={setUploadedFileName}
             columnMappings={columnMappings}
             datasetId={datasetId}
-            onDatasetPicked={async ({ dataset, scenarios: scs, activeScenarioId: sid, records, columns: cols }) => {
-              setDatasetId(dataset.id);
-              setScenarios(scs);
-              setActiveScenarioId(sid);
-              hydrateColumnsFromDataset(dataset);
-              setColConfigCollapsed(false);
-              if (cols?.length && records?.length) {
-                await fillMissingColumnsFromAutoMap(dataset, cols, records);
-              }
-              const scenarioName = scs.find((s) => s.id === sid)?.name || "Baseline";
-              setActiveDatasetLabel(dataset.name + " — " + scenarioName);
-              setActiveDatasetName(dataset.name);
-              setFilteredRowCount(null);
-            }}
+            onDatasetPicked={({ dataset, scenarios: scs, activeScenarioId: sid }) =>
+              activateDataset(dataset, scs, sid)
+            }
           />
         );
       case "Rationalise":
@@ -598,6 +608,7 @@ export default function ProjectWorkspace() {
             jobTitleCol={jobTitleCol}
             columns={columns}
             setColumns={setColumns}
+            datasetId={datasetId}
           />
         );
       case "Hierarchy":
@@ -659,6 +670,10 @@ export default function ProjectWorkspace() {
             activeScenarioId={activeScenarioId}
             setScenarios={setScenarios}
             setActiveScenarioId={setActiveScenarioId}
+            onSwitchScenario={switchScenario}
+            onActivateDataset={({ dataset, scenarios: scs, activeScenarioId: sid }) =>
+              activateDataset(dataset, scs, sid)
+            }
             setDatasetId={setDatasetId}
             setEmpCol={setEmpCol} setMgrCol={setMgrCol}
             setFteCol={setFteCol} setFlcCol={setFlcCol}
@@ -930,7 +945,7 @@ export default function ProjectWorkspace() {
         {/* RIGHT PANE */}
         <aside
           className="w-72 bg-white border-l border-gray-200 shadow-sm"
-          style={{ display: (activeModule === "Org Chart" || activeModule === "Activity Analysis" || activeModule === "Spans & Layers") ? "none" : "block" }}
+          style={{ display: (activeModule === "Org Chart" || activeModule === "Activity Analysis" || activeModule === "Spans & Layers" || activeModule === "Rationalise") ? "none" : "block" }}
         >
           <div className="p-4 border-b border-gray-200">
             <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Export & Stats</h3>

@@ -21,6 +21,7 @@ Optimisations over v1:
 
 import json
 import logging
+import math
 import os
 import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -211,8 +212,21 @@ def _normalise(value: str) -> str:
 # Fuzzy matching thresholds
 # ---------------------------------------------------------------------------
 
-_FUNC_FUZZY_THRESHOLD = 80
+_FUNC_FUZZY_THRESHOLD = 92
 _SUBFUNC_FUZZY_THRESHOLD = 78
+
+_PLACEHOLDER_SUBFUNCS = frozenset({
+    "n a", "na", "none", "null", "tbc", "unknown", "not applicable",
+    "no sub department", "no sub function", "no subfunction", "no sub dept",
+    "no sub-department", "no sub-function", "no sub deptartment",
+})
+
+
+def _is_placeholder_subfunction(value: str) -> bool:
+    s = _normalise(value)
+    if not s or s in _PLACEHOLDER_SUBFUNCS:
+        return True
+    return s.startswith("no sub ") or s.startswith("no sub-")
 _TITLE_FUZZY_THRESHOLD = 82
 
 
@@ -222,6 +236,7 @@ _TITLE_FUZZY_THRESHOLD = 82
 
 _NORM_FUNC_KEYS: dict[str, str] = {}
 _NORM_SUBFUNC_LOOKUP: dict[str, list[str]] = {}
+_NORM_SUBFUNC_EXACT: dict[tuple[str, str], str] = {}
 _NORM_TITLE_EXACT: dict[tuple[str, str], str] = {}
 _NORM_TITLE_BY_FUNC: dict[str, list[str]] = {}
 _ALL_STANDARD_TITLES: list[str] = []
@@ -229,19 +244,30 @@ _ALL_STANDARD_TITLES: list[str] = []
 
 def _rebuild_lookups(*, include_learned: bool = True):
     """Build normalised lookup structures from master data + learned aliases."""
-    global _NORM_FUNC_KEYS, _NORM_SUBFUNC_LOOKUP
+    global _NORM_FUNC_KEYS, _NORM_SUBFUNC_LOOKUP, _NORM_SUBFUNC_EXACT
     global _NORM_TITLE_EXACT, _NORM_TITLE_BY_FUNC, _ALL_STANDARD_TITLES
 
     _NORM_FUNC_KEYS = {}
     _NORM_SUBFUNC_LOOKUP = {}
+    _NORM_SUBFUNC_EXACT = {}
     for func_name, subfuncs in MASTER_TAXONOMY.items():
         key = _normalise(func_name)
         _NORM_FUNC_KEYS[key] = func_name
         _NORM_SUBFUNC_LOOKUP[key] = subfuncs
 
     if include_learned:
+        disabled = set(_LEARNED_ALIASES.get("disabled", []))
         for alias, master in _LEARNED_ALIASES.get("function_aliases", {}).items():
-            _NORM_FUNC_KEYS[_normalise(alias)] = master
+            if f"func::{alias}" not in disabled:
+                _NORM_FUNC_KEYS[_normalise(alias)] = master
+
+    if include_learned:
+        disabled = set(_LEARNED_ALIASES.get("disabled", []))
+        for func, aliases in _LEARNED_ALIASES.get("subfunction_aliases", {}).items():
+            fkey = _normalise(func)
+            for raw, std in aliases.items():
+                if f"subfunc::{func}::{raw}" not in disabled:
+                    _NORM_SUBFUNC_EXACT[(fkey, _normalise(raw))] = std
 
     _NORM_TITLE_EXACT = {}
     _NORM_TITLE_BY_FUNC = {}
@@ -255,10 +281,12 @@ def _rebuild_lookups(*, include_learned: bool = True):
         all_titles_set.update(std_titles)
 
     if include_learned:
+        disabled = set(_LEARNED_ALIASES.get("disabled", []))
         for func, aliases in _LEARNED_ALIASES.get("title_aliases", {}).items():
             fkey = _normalise(func)
             for raw, std in aliases.items():
-                _NORM_TITLE_EXACT[(fkey, _normalise(raw))] = std
+                if f"title::{func}::{raw}" not in disabled:
+                    _NORM_TITLE_EXACT[(fkey, _normalise(raw))] = std
 
     _ALL_STANDARD_TITLES = sorted(all_titles_set)
 
@@ -273,6 +301,16 @@ _rebuild_lookups()
 _MAX_ITEMS_PER_BATCH = int(os.getenv("RATIONALISATION_BATCH_SIZE", "200"))
 _MAX_LLM_WORKERS = int(os.getenv("LLM_MAX_WORKERS", "10"))
 _BATCH_MAX_TOKENS = int(os.getenv("RATIONALISATION_BATCH_MAX_TOKENS", "12000"))
+
+_DYNAMIC_BATCHING = os.getenv("RATIONALISATION_DYNAMIC_BATCHING", "true").lower() in ("1", "true", "yes")
+_TARGET_BATCH_OUTPUT_TOKENS = int(os.getenv("RATIONALISATION_TARGET_OUTPUT_TOKENS", "2000"))
+_MIN_BATCH_ITEMS = int(os.getenv("RATIONALISATION_MIN_BATCH_ITEMS", "10"))
+_DYNAMIC_MAX_BATCH_ITEMS = int(os.getenv("RATIONALISATION_DYNAMIC_MAX_BATCH_ITEMS", "55"))
+_EST_OUTPUT_TOKENS_PER_ITEM: dict[str, int] = {
+    "function": 60,
+    "subfunction": 45,
+    "title": 35,
+}
 
 _use_cache: bool = True
 _enrich_learned: bool = True
@@ -351,23 +389,34 @@ def _cache_store(entries: list[dict]) -> None:
         log.debug("Cache store failed (non-critical): %s", e)
 
 
-def _update_learned_aliases(func_map: dict, subfunc_results: list, title_results: list) -> None:
-    """Save AI-resolved mappings into auto_learned_taxonomy.json for future
-    exact matches (progressive taxonomy enrichment)."""
+def persist_approved_mappings(
+    approved_functions: list[dict],
+    approved_subfunctions: list[dict],
+    approved_titles: list[dict],
+    *,
+    enrich_learned: bool = True,
+) -> None:
+    """Save user-approved mappings to cache and optionally auto_learned_taxonomy.json."""
+    _cache_store_from_results(approved_functions, approved_subfunctions, approved_titles)
+    if not enrich_learned:
+        return
+
     changed = False
-
-    for f, data in func_map.items():
-        if data.get("method") == "ai" and data.get("resolved") != f:
-            _LEARNED_ALIASES.setdefault("function_aliases", {})[f] = data["resolved"]
+    for m in approved_functions:
+        if m.get("method") == "ai" and m.get("input") != m.get("resolved"):
+            _LEARNED_ALIASES.setdefault("function_aliases", {})[m["input"]] = m["resolved"]
             changed = True
-
-    for m in title_results:
+    for m in approved_titles:
         if m.get("method") == "ai" and m.get("input") != m.get("resolved"):
             func = m.get("function", "")
             _LEARNED_ALIASES.setdefault("title_aliases", {}).setdefault(func, {})[m["input"]] = m["resolved"]
             changed = True
-
-    if changed and _enrich_learned:
+    for m in approved_subfunctions:
+        if m.get("input") != m.get("resolved") and m.get("method") not in ("placeholder", "unresolved"):
+            func = m.get("function", "")
+            _LEARNED_ALIASES.setdefault("subfunction_aliases", {}).setdefault(func, {})[m["input"]] = m["resolved"]
+            changed = True
+    if changed:
         try:
             _save_json("auto_learned_taxonomy.json", _LEARNED_ALIASES)
             _rebuild_lookups()
@@ -378,10 +427,43 @@ def _update_learned_aliases(func_map: dict, subfunc_results: list, title_results
 def get_rationalisation_config() -> dict[str, Any]:
     """Return current batch/worker settings (for benchmarks)."""
     return {
-        "batch_size": _MAX_ITEMS_PER_BATCH,
+        "batch_size_max": _MAX_ITEMS_PER_BATCH,
         "max_workers": _MAX_LLM_WORKERS,
         "batch_max_tokens": _BATCH_MAX_TOKENS,
+        "dynamic_batching": _DYNAMIC_BATCHING,
+        "target_output_tokens_per_batch": _TARGET_BATCH_OUTPUT_TOKENS,
+        "dynamic_max_items_per_batch": _DYNAMIC_MAX_BATCH_ITEMS,
     }
+
+
+def _plan_llm_chunks(kind: str, items: list) -> list[list]:
+    """Split items into LLM batches sized for parallel throughput.
+
+  Targets ~TARGET_OUTPUT_TOKENS completion per batch so no single call
+  dominates wall-clock. Uses up to MAX_LLM_WORKERS parallel batches.
+    """
+    if not items:
+        return []
+    if not _DYNAMIC_BATCHING:
+        return [items[i : i + _MAX_ITEMS_PER_BATCH] for i in range(0, len(items), _MAX_ITEMS_PER_BATCH)]
+
+    n = len(items)
+    est_per_item = _EST_OUTPUT_TOKENS_PER_ITEM.get(kind, 40)
+    ideal_size = max(
+        _MIN_BATCH_ITEMS,
+        min(
+            _DYNAMIC_MAX_BATCH_ITEMS,
+            _MAX_ITEMS_PER_BATCH,
+            _TARGET_BATCH_OUTPUT_TOKENS // max(est_per_item, 1),
+        ),
+    )
+
+    if n <= ideal_size:
+        return [items]
+
+    num_batches = min(math.ceil(n / ideal_size), _MAX_LLM_WORKERS)
+    chunk_size = math.ceil(n / num_batches)
+    return [items[i : i + chunk_size] for i in range(0, n, chunk_size)]
 
 
 # ---------------------------------------------------------------------------
@@ -395,8 +477,8 @@ def rationalise(
     title_col: str | None,
     *,
     use_cache: bool = True,
-    enrich_learned: bool = True,
-    ignore_learned_aliases: bool = False,
+    enrich_learned: bool = False,
+    ignore_learned_aliases: bool = True,
     reset_metrics: bool = False,
 ) -> dict[str, Any]:
     """Run full rationalisation pipeline on the dataset.
@@ -470,19 +552,29 @@ def rationalise(
         if ti_fut:
             title_result, title_unresolved = ti_fut.result()
 
-    # ── Step 3: All LLM batches in one parallel pool (max workers) ───
+    # ── Step 3: LLM batches — dynamic chunk sizes, parallel workers ───
     llm_jobs: list[tuple[str, list]] = []
-    for i in range(0, len(subfunc_unresolved), _MAX_ITEMS_PER_BATCH):
-        llm_jobs.append(("subfunction", subfunc_unresolved[i:i + _MAX_ITEMS_PER_BATCH]))
-    for i in range(0, len(title_unresolved), _MAX_ITEMS_PER_BATCH):
-        llm_jobs.append(("title", title_unresolved[i:i + _MAX_ITEMS_PER_BATCH]))
+    sub_chunks = _plan_llm_chunks("subfunction", subfunc_unresolved)
+    title_chunks = _plan_llm_chunks("title", title_unresolved)
+    for chunk in sub_chunks:
+        llm_jobs.append(("subfunction", chunk))
+    for chunk in title_chunks:
+        llm_jobs.append(("title", chunk))
 
     llm_merged = _run_llm_batches_parallel(llm_jobs)
 
+    result["batch_plan"] = {
+        "subfunction_batches": [len(c) for c in sub_chunks],
+        "title_batches": [len(c) for c in title_chunks],
+        "total_llm_jobs": len(llm_jobs),
+        "workers_used": min(len(llm_jobs), _MAX_LLM_WORKERS) if llm_jobs else 0,
+    }
+
     for item in subfunc_unresolved:
         key = (item["func_raw"], item["sub_raw"])
-        if item["sub_raw"] in llm_merged["subfunction"]:
-            mapped, matched = llm_merged["subfunction"][item["sub_raw"]]
+        llm_key = key
+        if llm_key in llm_merged["subfunction"]:
+            mapped, matched = llm_merged["subfunction"][llm_key]
             subfunc_result[key] = {
                 "resolved": mapped,
                 "method": "ai",
@@ -497,8 +589,8 @@ def rationalise(
 
     for item in title_unresolved:
         key = (item["func_raw"], item["title_raw"])
-        if item["title_raw"] in llm_merged["title"]:
-            mapped, matched = llm_merged["title"][item["title_raw"]]
+        if key in llm_merged["title"]:
+            mapped, matched = llm_merged["title"][key]
             title_result[key] = {
                 "resolved": mapped,
                 "method": "ai",
@@ -531,18 +623,6 @@ def rationalise(
     # Accuracy / completeness stats
     result["accuracy"] = _build_accuracy_stats(
         subfunc_unresolved, title_unresolved, llm_merged,
-    )
-
-    _update_learned_aliases(
-        func_map,
-        result["subfunction_mappings"],
-        result["title_mappings"],
-    )
-
-    _cache_store_from_results(
-        result["function_mappings"],
-        result["subfunction_mappings"],
-        result["title_mappings"],
     )
 
     result["llm_metrics"] = get_llm_metrics()
@@ -626,11 +706,11 @@ def _resolve_functions(unique_funcs: list[str]) -> dict[str, dict]:
             result[f] = {"resolved": _NORM_FUNC_KEYS[expanded_key], "method": "exact", "confidence": "high"}
             continue
 
-        # Layer 2: Fuzzy match
+        # Layer 2: Fuzzy match (high threshold — preserve client names when uncertain)
         if master_display_names:
             match = rfprocess.extractOne(f, master_display_names, scorer=fuzz.token_sort_ratio, score_cutoff=_FUNC_FUZZY_THRESHOLD)
-            if match:
-                result[f] = {"resolved": match[0], "method": "fuzzy", "confidence": "high" if match[1] >= 90 else "medium"}
+            if match and match[1] >= _FUNC_FUZZY_THRESHOLD:
+                result[f] = {"resolved": match[0], "method": "fuzzy", "confidence": "high" if match[1] >= 95 else "medium"}
                 continue
 
         need_cache.append(f)
@@ -652,10 +732,11 @@ def _resolve_functions(unique_funcs: list[str]) -> dict[str, dict]:
     if unresolved:
         llm_results = _llm_resolve_functions(unresolved, master_display_names)
         for f in unresolved:
-            if f in llm_results and llm_results[f] != f:
-                result[f] = {"resolved": llm_results[f], "method": "ai", "confidence": "medium"}
+            resolved = llm_results.get(f, f)
+            if resolved and resolved != f:
+                result[f] = {"resolved": resolved, "method": "ai", "confidence": "medium"}
             else:
-                result[f] = {"resolved": f, "method": "unresolved", "confidence": "low"}
+                result[f] = {"resolved": f, "method": "original", "confidence": "high"}
 
     return result
 
@@ -673,12 +754,23 @@ def _preresolve_subfunctions(
     need_cache: list[dict] = []
 
     for func_raw, sub_raw in unique_pairs:
+        if _is_placeholder_subfunction(sub_raw):
+            result[(func_raw, sub_raw)] = {
+                "resolved": "Unassigned", "method": "placeholder", "confidence": "high",
+            }
+            continue
+
         resolved_func = func_map.get(func_raw, {}).get("resolved", func_raw)
         resolved_func_key = _normalise(resolved_func)
         master_subs = _NORM_SUBFUNC_LOOKUP.get(resolved_func_key, [])
         norm_master = {_normalise(s): s for s in master_subs}
 
         sub_key = _normalise(sub_raw)
+
+        learned = _NORM_SUBFUNC_EXACT.get((resolved_func_key, sub_key))
+        if learned:
+            result[(func_raw, sub_raw)] = {"resolved": learned, "method": "exact", "confidence": "high"}
+            continue
 
         if sub_key in norm_master:
             result[(func_raw, sub_raw)] = {"resolved": norm_master[sub_key], "method": "exact", "confidence": "high"}
@@ -779,7 +871,10 @@ def _preresolve_titles(
 # LLM prompts (trimmed, mega-batched, parallel)
 # ---------------------------------------------------------------------------
 
-_SYS_MSG = "Corporate data standardisation expert. Return JSON only."
+_SYS_MSG = (
+    "Corporate HR census standardisation expert. Preserve client-specific business unit "
+    "names unless clearly equivalent to a reference term. Return JSON only."
+)
 
 
 def _run_llm_batches_parallel(
@@ -798,7 +893,8 @@ def _run_llm_batches_parallel(
             return kind, _llm_subfunc_batch_with_retry(chunk)
         return kind, _llm_title_batch_with_retry(chunk)
 
-    with ThreadPoolExecutor(max_workers=_MAX_LLM_WORKERS) as pool:
+    workers = min(len(jobs), _MAX_LLM_WORKERS) or 1
+    with ThreadPoolExecutor(max_workers=workers) as pool:
         futures = [pool.submit(_run_one, kind, chunk) for kind, chunk in jobs]
         for fut in as_completed(futures):
             kind, batch_result = fut.result()
@@ -811,14 +907,16 @@ def _llm_resolve_functions(unresolved: list[str], master_list: list[str]) -> dic
     input_str = ", ".join(f'"{f}"' for f in sorted(unresolved))
     master_str = ", ".join(f'"{f}"' for f in sorted(master_list))
 
-    prompt = f"""Map each input function to the closest master function.
-Common patterns: HR=Human Resources, S&D=Sales & Distribution, R&D=Research & Development, Comms=Communications.
-If no match, map to itself.
+    prompt = f"""Standardise function names ONLY when clearly equivalent to a master reference.
+Preserve industry-specific or client-specific names (Lubricants, HSSE, Corporate, Retail, etc.) — return input unchanged if no strong match.
+Do NOT map unrelated units into Legal, Compliance, Procurement, or IT unless explicitly correct.
+Abbreviations: HR=Human Resources, S&D=Sales & Distribution, R&D=Research & Development, IT=Information Technology.
 
 Inputs: [{input_str}]
-Masters: [{master_str}]
+Master reference (optional — use only when clearly equivalent): [{master_str}]
 
-Return JSON object: {{"input": "master_or_self", ...}}"""
+Return JSON object: {{"Input Name": "Resolved Name", ...}}
+If uncertain, map each input to itself unchanged."""
 
     try:
         result = call_llm_json(
@@ -848,10 +946,21 @@ def _parse_results_list(raw: Any) -> dict[str, tuple[str, bool]]:
     }
 
 
-def _llm_subfunc_batch(items: list[dict], *, retry: bool = False) -> dict[str, tuple[str, bool]]:
+def _parse_results_keyed(raw: Any) -> dict[tuple[str, str], tuple[str, bool]]:
+    items_list = raw.get("results", raw) if isinstance(raw, dict) else raw
+    if not isinstance(items_list, list):
+        return {}
+    out: dict[tuple[str, str], tuple[str, bool]] = {}
+    for r in items_list:
+        if isinstance(r, dict) and "function" in r and "input" in r and "resolved" in r:
+            out[(str(r["function"]), str(r["input"]))] = (r["resolved"], r.get("matched", False))
+    return out
+
+
+def _llm_subfunc_batch(items: list[dict], *, retry: bool = False) -> dict[tuple[str, str], tuple[str, bool]]:
     groups: dict[str, dict] = {}
     for item in items:
-        func = item["resolved_func"]
+        func = item["func_raw"]
         groups.setdefault(func, {"inputs": [], "master": item["master_subs"]})
         groups[func]["inputs"].append(item["sub_raw"])
 
@@ -864,13 +973,15 @@ def _llm_subfunc_batch(items: list[dict], *, retry: bool = False) -> dict[str, t
     grouped_str = "\n".join(lines)
     input_keys = {item["sub_raw"] for item in items}
 
-    prompt = f"""Map each input subfunction to its best master match. Strip internal codes/prefixes (SA, numeric).
-Prefer master list. Create concise new name only if nothing fits.
-You MUST return exactly one result for every input ({len(input_keys)} inputs).
+    prompt = f"""Standardise subfunction names within each function group.
+Rules: strip internal prefixes/codes (SA, numeric); use master list only when semantically aligned;
+if input is real but no master fits, create a concise cleaned name (matched=false).
+Do NOT assign unrelated master subfunctions to placeholder or empty inputs.
 
 {grouped_str}
 
-Return JSON: {{"results": [{{"input": "exact input", "resolved": "match", "matched": true/false}}, ...]}}"""
+Return JSON — exactly {len(input_keys)} results:
+{{"results": [{{"function": "exact group function", "input": "exact input", "resolved": "...", "matched": true/false}}, ...]}}"""
 
     try:
         raw = call_llm_json(
@@ -882,28 +993,32 @@ Return JSON: {{"results": [{{"input": "exact input", "resolved": "match", "match
             batch_size=len(items),
             retry=retry,
         )
-        return _parse_results_list(raw)
+        keyed = _parse_results_keyed(raw)
+        flat = _parse_results_list(raw)
+        out: dict[tuple[str, str], tuple[str, bool]] = {}
+        for item in items:
+            k = (item["func_raw"], item["sub_raw"])
+            out[k] = keyed.get(k) or flat.get(item["sub_raw"], (item["sub_raw"], False))
+        return out
     except Exception as e:
         log.error("Mega-batch subfunction LLM failed: %s", e)
     return {}
 
 
-def _llm_subfunc_batch_with_retry(items: list[dict]) -> dict[str, tuple[str, bool]]:
+def _llm_subfunc_batch_with_retry(items: list[dict]) -> dict[tuple[str, str], tuple[str, bool]]:
     if not items:
         return {}
     result = _llm_subfunc_batch(items, retry=False)
-    missing = {item["sub_raw"] for item in items} - set(result.keys())
+    missing = [item for item in items if (item["func_raw"], item["sub_raw"]) not in result]
     if missing:
-        retry_items = [item for item in items if item["sub_raw"] in missing]
-        log.warning("Subfunction batch missing %d/%d — retrying", len(missing), len(items))
-        result.update(_llm_subfunc_batch(retry_items, retry=True))
+        result.update(_llm_subfunc_batch(missing, retry=True))
     return result
 
 
-def _llm_title_batch(items: list[dict], *, retry: bool = False) -> dict[str, tuple[str, bool]]:
+def _llm_title_batch(items: list[dict], *, retry: bool = False) -> dict[tuple[str, str], tuple[str, bool]]:
     groups: dict[str, dict] = {}
     for item in items:
-        func = item["resolved_func"]
+        func = item["func_raw"]
         groups.setdefault(func, {"inputs": [], "master": item["std_titles"]})
         groups[func]["inputs"].append(item["title_raw"])
 
@@ -916,13 +1031,15 @@ def _llm_title_batch(items: list[dict], *, retry: bool = False) -> dict[str, tup
     grouped_str = "\n".join(lines)
     input_keys = {item["title_raw"] for item in items}
 
-    prompt = f"""Map each input job title to its best master match. Expand abbreviations (Sr=Senior, Mgr=Manager, Engr=Engineer).
-Stay within functional domain. Prefer master list. Create concise new title only if nothing fits.
-You MUST return exactly one result for every input ({len(input_keys)} inputs).
+    prompt = f"""Standardise job titles within each function group.
+Expand abbreviations (Sr=Senior, Mgr=Manager, Engr=Engineer). Preserve seniority (GM, Director, VP, Head).
+Use master list when aligned; otherwise create a concise cleaned title (matched=false).
+Stay within the functional domain of each group.
 
 {grouped_str}
 
-Return JSON: {{"results": [{{"input": "exact input", "resolved": "match", "matched": true/false}}, ...]}}"""
+Return JSON — exactly {len(input_keys)} results:
+{{"results": [{{"function": "exact group function", "input": "exact input", "resolved": "...", "matched": true/false}}, ...]}}"""
 
     try:
         raw = call_llm_json(
@@ -934,21 +1051,25 @@ Return JSON: {{"results": [{{"input": "exact input", "resolved": "match", "match
             batch_size=len(items),
             retry=retry,
         )
-        return _parse_results_list(raw)
+        keyed = _parse_results_keyed(raw)
+        flat = _parse_results_list(raw)
+        out: dict[tuple[str, str], tuple[str, bool]] = {}
+        for item in items:
+            k = (item["func_raw"], item["title_raw"])
+            out[k] = keyed.get(k) or flat.get(item["title_raw"], (item["title_raw"], False))
+        return out
     except Exception as e:
         log.error("Mega-batch title LLM failed: %s", e)
     return {}
 
 
-def _llm_title_batch_with_retry(items: list[dict]) -> dict[str, tuple[str, bool]]:
+def _llm_title_batch_with_retry(items: list[dict]) -> dict[tuple[str, str], tuple[str, bool]]:
     if not items:
         return {}
     result = _llm_title_batch(items, retry=False)
-    missing = {item["title_raw"] for item in items} - set(result.keys())
+    missing = [item for item in items if (item["func_raw"], item["title_raw"]) not in result]
     if missing:
-        retry_items = [item for item in items if item["title_raw"] in missing]
-        log.warning("Title batch missing %d/%d — retrying", len(missing), len(items))
-        result.update(_llm_title_batch(retry_items, retry=True))
+        result.update(_llm_title_batch(missing, retry=True))
     return result
 
 
@@ -1013,11 +1134,158 @@ def _build_summary(func_mappings: list, subfunc_mappings: list, title_mappings: 
     for label, mappings in [("functions", func_mappings), ("subfunctions", subfunc_mappings), ("titles", title_mappings)]:
         total = len(mappings)
         summary[f"{label}_total"] = total
-        for method in ("exact", "fuzzy", "ai", "cached", "unresolved"):
+        for method in ("exact", "fuzzy", "ai", "cached", "placeholder", "original", "unresolved"):
             summary[f"{label}_{method}"] = sum(1 for m in mappings if m.get("method") == method)
     return summary
 
 
 def _method_to_source(method: str) -> str:
     return {"exact": "Master File", "fuzzy": "Master File (Fuzzy)", "ai": "Gen AI",
-            "cached": "Cached", "unresolved": "Unresolved"}.get(method, "Original")
+            "cached": "Cached", "placeholder": "Placeholder", "original": "Original",
+            "unresolved": "Unresolved"}.get(method, "Original")
+
+
+# ---------------------------------------------------------------------------
+# Learned taxonomy registry (global auto_learned_taxonomy.json)
+# ---------------------------------------------------------------------------
+
+def _ensure_learned_structure() -> None:
+    _LEARNED_ALIASES.setdefault("function_aliases", {})
+    _LEARNED_ALIASES.setdefault("subfunction_aliases", {})
+    _LEARNED_ALIASES.setdefault("title_aliases", {})
+    _LEARNED_ALIASES.setdefault("disabled", [])
+
+
+def _parse_learned_entry_id(entry_id: str) -> tuple[str, str | None, str]:
+    parts = entry_id.split("::", 2)
+    if len(parts) < 2:
+        raise ValueError(f"Invalid entry id: {entry_id}")
+    kind = parts[0]
+    if kind == "func":
+        return "function", None, parts[1]
+    if kind == "subfunc" and len(parts) == 3:
+        return "subfunction", parts[1], parts[2]
+    if kind == "title" and len(parts) == 3:
+        return "title", parts[1], parts[2]
+    raise ValueError(f"Invalid entry id: {entry_id}")
+
+
+def list_learned_taxonomy_entries() -> list[dict[str, Any]]:
+    """Flat list of learned mappings for the Mapping Registry UI."""
+    _ensure_learned_structure()
+    disabled = set(_LEARNED_ALIASES.get("disabled", []))
+    entries: list[dict[str, Any]] = []
+
+    for alias, resolved in _LEARNED_ALIASES.get("function_aliases", {}).items():
+        eid = f"func::{alias}"
+        entries.append({
+            "id": eid, "type": "function", "function": None,
+            "input": alias, "resolved": resolved, "disabled": eid in disabled,
+        })
+    for func, aliases in _LEARNED_ALIASES.get("subfunction_aliases", {}).items():
+        for raw, std in aliases.items():
+            eid = f"subfunc::{func}::{raw}"
+            entries.append({
+                "id": eid, "type": "subfunction", "function": func,
+                "input": raw, "resolved": std, "disabled": eid in disabled,
+            })
+    for func, aliases in _LEARNED_ALIASES.get("title_aliases", {}).items():
+        for raw, std in aliases.items():
+            eid = f"title::{func}::{raw}"
+            entries.append({
+                "id": eid, "type": "title", "function": func,
+                "input": raw, "resolved": std, "disabled": eid in disabled,
+            })
+
+    entries.sort(key=lambda e: (e["type"], e.get("function") or "", e["input"].lower()))
+    return entries
+
+
+def _set_learned_resolved(entry_type: str, func: str | None, inp: str, resolved: str) -> None:
+    if entry_type == "function":
+        _LEARNED_ALIASES["function_aliases"][inp] = resolved
+    elif entry_type == "subfunction":
+        _LEARNED_ALIASES["subfunction_aliases"].setdefault(func or "", {})[inp] = resolved
+    elif entry_type == "title":
+        _LEARNED_ALIASES["title_aliases"].setdefault(func or "", {})[inp] = resolved
+
+
+def _remove_learned_entry(entry_type: str, func: str | None, inp: str) -> None:
+    if entry_type == "function":
+        _LEARNED_ALIASES["function_aliases"].pop(inp, None)
+    elif entry_type == "subfunction":
+        bucket = _LEARNED_ALIASES["subfunction_aliases"].get(func or "", {})
+        bucket.pop(inp, None)
+        if not bucket:
+            _LEARNED_ALIASES["subfunction_aliases"].pop(func, None)
+    elif entry_type == "title":
+        bucket = _LEARNED_ALIASES["title_aliases"].get(func or "", {})
+        bucket.pop(inp, None)
+        if not bucket:
+            _LEARNED_ALIASES["title_aliases"].pop(func, None)
+
+
+def _entry_id_for(entry_type: str, func: str | None, inp: str) -> str:
+    if entry_type == "function":
+        return f"func::{inp}"
+    prefix = "subfunc" if entry_type == "subfunction" else "title"
+    return f"{prefix}::{func}::{inp}"
+
+
+def update_learned_taxonomy_entry(
+    entry_id: str,
+    *,
+    resolved: str | None = None,
+    disabled: bool | None = None,
+    apply_to_matching: bool = False,
+    delete: bool = False,
+) -> dict[str, Any]:
+    """Update, disable, or delete a learned mapping entry."""
+    _ensure_learned_structure()
+    entry_type, func, inp = _parse_learned_entry_id(entry_id)
+    disabled_list: list[str] = _LEARNED_ALIASES.setdefault("disabled", [])
+    updated_ids: list[str] = []
+
+    targets: list[tuple[str, str | None, str]] = [(entry_type, func, inp)]
+    if apply_to_matching and resolved is not None:
+        for e in list_learned_taxonomy_entries():
+            if e["disabled"] or e["type"] != entry_type or e["input"] != inp:
+                continue
+            if entry_type in ("subfunction", "title") and e.get("function") != func:
+                continue
+            targets.append((entry_type, e.get("function"), e["input"]))
+
+    seen: set[tuple[str, str | None, str]] = set()
+    for et, fn, raw in targets:
+        key = (et, fn, raw)
+        if key in seen:
+            continue
+        seen.add(key)
+        eid = _entry_id_for(et, fn, raw)
+
+        if delete:
+            _remove_learned_entry(et, fn, raw)
+            if eid in disabled_list:
+                disabled_list.remove(eid)
+            updated_ids.append(eid)
+            continue
+
+        if resolved is not None:
+            _set_learned_resolved(et, fn, raw, resolved)
+            updated_ids.append(eid)
+
+        if disabled is not None:
+            if disabled and eid not in disabled_list:
+                disabled_list.append(eid)
+            elif not disabled and eid in disabled_list:
+                disabled_list.remove(eid)
+            updated_ids.append(eid)
+
+    try:
+        _save_json("auto_learned_taxonomy.json", _LEARNED_ALIASES)
+        _rebuild_lookups()
+    except Exception as e:
+        log.error("Failed to persist learned taxonomy: %s", e)
+        raise
+
+    return {"updated_ids": updated_ids, "entries": list_learned_taxonomy_entries()}

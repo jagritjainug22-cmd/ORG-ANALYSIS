@@ -46,27 +46,27 @@ function ProjectFormModal({ open, onClose, onSave, editProject }) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-      <div className="bg-white rounded-xl shadow-2xl border border-gray-200 w-full max-w-md mx-4">
-        <div className="px-6 py-4 border-b bg-gray-50">
-          <h3 className="text-lg font-semibold text-gray-800">{editProject ? "Edit Project" : "Create Project"}</h3>
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+      <div className="bg-white rounded-md shadow-xl border border-gray-200 w-full max-w-md mx-4">
+        <div className="px-4 py-3 border-b bg-gray-50">
+          <h3 className="text-base font-semibold text-gray-800">{editProject ? "Edit Project" : "Create Project"}</h3>
         </div>
         <form onSubmit={handleSubmit} className="px-6 py-5 space-y-4">
           {error && <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">{error}</div>}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
             <input type="text" value={name} onChange={(e) => setName(e.target.value)}
-              className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-am-500 focus:border-am-500 outline-none" required />
+              className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none" required />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
             <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={2}
-              className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-am-500 focus:border-am-500 outline-none resize-none" placeholder="Optional" />
+              className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none resize-none" placeholder="Optional" />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Deadline</label>
             <input type="date" value={deadline} onChange={(e) => setDeadline(e.target.value)}
-              className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-am-500 focus:border-am-500 outline-none" />
+              className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none" />
           </div>
           {editProject && (
             <div>
@@ -80,8 +80,8 @@ function ProjectFormModal({ open, onClose, onSave, editProject }) {
             </div>
           )}
           <div className="flex justify-end gap-3 pt-2">
-            <button type="button" onClick={onClose} className="px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50">Cancel</button>
-            <button type="submit" disabled={saving} className="px-4 py-2 bg-am-500 hover:bg-am-600 text-white rounded-lg text-sm font-medium disabled:opacity-50">
+            <button type="button" onClick={onClose} className="px-3 py-1.5 bg-white border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50">Cancel</button>
+            <button type="submit" disabled={saving} className="px-3 py-1.5 bg-brand-600 hover:bg-brand-700 text-white rounded-md text-sm font-medium disabled:opacity-50">
               {saving ? "Saving..." : editProject ? "Update" : "Create"}
             </button>
           </div>
@@ -141,14 +141,14 @@ function AssignmentPanel({ project, onClose }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-      <div className="bg-white rounded-xl shadow-2xl border border-gray-200 w-full max-w-lg mx-4 max-h-[80vh] flex flex-col">
-        <div className="px-6 py-4 border-b bg-gray-50 flex items-center justify-between">
+      <div className="bg-white rounded-md shadow-xl border border-gray-200 w-full max-w-lg mx-4 max-h-[80vh] flex flex-col">
+        <div className="px-4 py-3 border-b bg-[#01244a] border-[#08304a] flex items-center justify-between">
           <div>
-            <h3 className="text-lg font-semibold text-gray-800">Members: {project.name}</h3>
-            <p className="text-xs text-gray-500">{assignments.length} assigned</p>
+            <h3 className="text-base font-semibold text-white">Members: {project.name}</h3>
+            <p className="text-xs text-gray-200">{assignments.length} assigned</p>
           </div>
-          <button onClick={onClose} className="p-1 hover:bg-gray-200 rounded-lg">
-            <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <button onClick={onClose} className="p-1 hover:bg-white/10 rounded-md transition">
+            <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>
@@ -160,22 +160,22 @@ function AssignmentPanel({ project, onClose }) {
           {/* Assign new user */}
           <div className="flex gap-2">
             <select value={selectedUserId} onChange={(e) => setSelectedUserId(e.target.value)}
-              className="flex-1 border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-am-500 focus:border-am-500 outline-none bg-white">
+              className="flex-1 border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none bg-white">
               <option value="">Select a user to assign...</option>
               {unassigned.map((u) => (
                 <option key={u.id} value={u.id}>{u.username}{u.display_name ? ` (${u.display_name})` : ""}</option>
               ))}
             </select>
             <button onClick={handleAssign} disabled={!selectedUserId}
-              className="px-4 py-2 bg-am-500 hover:bg-am-600 text-white rounded-lg text-sm font-medium disabled:opacity-40 transition-all">
+              className="px-3 py-1.5 bg-brand-600 hover:bg-brand-700 text-white rounded-md text-sm font-medium disabled:opacity-40 transition-all">
               Assign
             </button>
           </div>
 
           {/* Current assignments */}
-          {loading ? (
+            {loading ? (
             <div className="flex justify-center py-8">
-              <div className="w-6 h-6 border-4 border-am-100 border-t-am-500 rounded-full animate-spin"></div>
+              <div className="w-6 h-6 border-4 border-brand-100 border-t-brand-500 rounded-full animate-spin"></div>
             </div>
           ) : assignments.length === 0 ? (
             <p className="text-sm text-gray-400 text-center py-4">No users assigned yet.</p>
@@ -268,17 +268,17 @@ function DatasetPanel({ project, onClose }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-      <div className="bg-white rounded-xl shadow-2xl border border-gray-200 w-full max-w-2xl mx-4 max-h-[80vh] flex flex-col">
+      <div className="bg-white rounded-md shadow-xl border border-gray-200 w-full max-w-2xl mx-4 max-h-[80vh] flex flex-col">
         {/* Header */}
-        <div className="px-6 py-4 border-b bg-gray-50 flex items-center justify-between flex-shrink-0">
+        <div className="px-4 py-3 border-b bg-[#01244a] border-[#08304a] flex items-center justify-between flex-shrink-0">
           <div>
-            <h3 className="text-lg font-semibold text-gray-800">Datasets: {project.name}</h3>
-            <p className="text-xs text-gray-500 mt-0.5">
+            <h3 className="text-base font-semibold text-white">Datasets: {project.name}</h3>
+            <p className="text-xs text-gray-200 mt-0.5">
               {datasets === null ? "Loading…" : `${datasets.length} dataset${datasets.length !== 1 ? "s" : ""} in this project`}
             </p>
           </div>
-          <button onClick={onClose} className="p-1 hover:bg-gray-200 rounded-lg transition">
-            <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <button onClick={onClose} className="p-1 hover:bg-white/10 rounded-md transition">
+            <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>
@@ -434,18 +434,18 @@ export default function ProjectManagement() {
 
       {loading ? (
         <div className="flex justify-center py-12">
-          <div className="w-8 h-8 border-4 border-am-100 border-t-am-500 rounded-full animate-spin"></div>
+          <div className="w-8 h-8 border-4 border-brand-100 border-t-brand-500 rounded-full animate-spin"></div>
         </div>
       ) : (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+        <div className="bg-white rounded-md shadow-sm border border-gray-200 overflow-hidden">
           <table className="w-full">
             <thead>
-              <tr className="bg-gray-50 border-b border-gray-200">
-                <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Project</th>
-                <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Status</th>
-                <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Deadline</th>
-                <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Created</th>
-                <th className="text-right px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Actions</th>
+              <tr className="bg-[#01244a] border-b border-[#08304a]">
+                <th className="text-left px-4 py-2 text-xs font-semibold text-white uppercase tracking-wider">Project</th>
+                <th className="text-left px-4 py-2 text-xs font-semibold text-white uppercase tracking-wider">Status</th>
+                <th className="text-left px-4 py-2 text-xs font-semibold text-white uppercase tracking-wider">Deadline</th>
+                <th className="text-left px-4 py-2 text-xs font-semibold text-white uppercase tracking-wider">Created</th>
+                <th className="text-right px-4 py-2 text-xs font-semibold text-white uppercase tracking-wider">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
@@ -454,11 +454,11 @@ export default function ProjectManagement() {
                 const archDays = archivedDaysAgo(p);
                 return (
                   <tr key={p.id} className={`hover:bg-gray-50 transition-colors ${p.status !== "active" ? "opacity-60" : ""}`}>
-                    <td className="px-6 py-4">
+                    <td className="px-4 py-3">
                       <div className="font-medium text-gray-800">{p.name}</div>
                       {p.description && <div className="text-xs text-gray-500 mt-0.5 truncate max-w-xs">{p.description}</div>}
                     </td>
-                    <td className="px-6 py-4">
+                    <td className="px-4 py-3">
                       <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
                         p.status === "active" ? "bg-green-100 text-green-700" :
                         p.status === "archived" ? "bg-gray-100 text-gray-600" :
@@ -470,35 +470,35 @@ export default function ProjectManagement() {
                         </span>
                       )}
                     </td>
-                    <td className="px-6 py-4">
+                    <td className="px-4 py-3">
                       <span className={`text-sm ${isExpired ? "text-red-600 font-medium" : "text-gray-600"}`}>
                         {formatDate(p.deadline)}
                       </span>
                       {isExpired && <span className="ml-1 text-xs text-red-500">(expired)</span>}
                     </td>
-                    <td className="px-6 py-4 text-sm text-gray-500">{formatDate(p.created_at)}</td>
-                    <td className="px-6 py-4 text-right">
+                    <td className="px-4 py-3 text-sm text-gray-500">{formatDate(p.created_at)}</td>
+                    <td className="px-4 py-3 text-right">
                       <div className="flex items-center justify-end gap-2">
                         <button onClick={() => setAssignProject(p)}
-                          className="px-3 py-1.5 text-xs font-medium text-am-600 bg-am-50 hover:bg-am-100 rounded-lg transition-all">
+                          className="px-3 py-1.5 text-xs font-medium text-brand-700 bg-brand-50 hover:bg-brand-100 rounded-md transition-all">
                           Members
                         </button>
                         <button onClick={() => setDatasetProject(p)}
-                          className="px-3 py-1.5 text-xs font-medium text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition-all">
+                          className="px-3 py-1.5 text-xs font-medium text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded-md transition-all">
                           Datasets
                         </button>
                         <button onClick={() => { setEditProject(p); setShowForm(true); }}
-                          className="px-3 py-1.5 text-xs font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-all">
+                          className="px-3 py-1.5 text-xs font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-md transition-all">
                           Edit
                         </button>
                         {p.status === "active" && (
                           <button onClick={() => setConfirmArchive(p)}
-                            className="px-3 py-1.5 text-xs font-medium text-amber-700 bg-amber-50 hover:bg-amber-100 rounded-lg transition-all">
+                            className="px-3 py-1.5 text-xs font-medium text-brand-700 bg-brand-50 hover:bg-brand-100 rounded-md transition-all">
                             Archive
                           </button>
                         )}
                         <button onClick={() => setConfirmDelete(p)}
-                          className="px-3 py-1.5 text-xs font-medium text-red-600 bg-red-50 hover:bg-red-100 rounded-lg transition-all">
+                          className="px-3 py-1.5 text-xs font-medium text-red-600 bg-red-50 hover:bg-red-100 rounded-md transition-all">
                           Delete
                         </button>
                       </div>

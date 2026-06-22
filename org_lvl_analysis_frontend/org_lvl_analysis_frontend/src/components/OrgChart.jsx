@@ -96,6 +96,8 @@ export default function OrgChart({
   activeScenarioId,
   setScenarios,
   setActiveScenarioId,
+  onSwitchScenario,
+  onActivateDataset,
   setDatasetId,
   setEmpCol,
   setMgrCol,
@@ -1308,6 +1310,10 @@ export default function OrgChart({
     return (
       <SavedDatasetPicker
         onPick={({ dataset, scenarios: scs, activeScenarioId: sid }) => {
+          if (onActivateDataset) {
+            onActivateDataset({ dataset, scenarios: scs, activeScenarioId: sid });
+            return;
+          }
           setDatasetId?.(dataset.id);
           setScenarios?.(scs);
           setActiveScenarioId?.(sid);
@@ -1832,7 +1838,7 @@ export default function OrgChart({
         <OrgScenarioBar
           scenarios={scenarios || []}
           activeScenarioId={activeScenarioId}
-          onSwitch={setActiveScenarioId}
+          onSwitch={onSwitchScenario || setActiveScenarioId}
           onCreate={handleCreateScenario}
           onRename={handleRenameScenario}
           onDelete={handleDeleteScenario}

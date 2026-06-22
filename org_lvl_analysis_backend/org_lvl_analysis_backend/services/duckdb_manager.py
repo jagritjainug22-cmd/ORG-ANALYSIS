@@ -1,15 +1,18 @@
 """
 In-memory DuckDB manager for OrgSight.
 
-Maintains a single active DuckDB instance loaded from the current dataset's
-scenario records. Used as a fast analytical query layer — PostgreSQL remains
-the source of truth for all writes.
+One DuckDB instance per authenticated user. PostgreSQL remains the source of
+truth; DuckDB is a read-only analytical cache for the future chatbot layer.
 """
 
+from __future__ import annotations
+
 import logging
+import os
 import threading
 import time
-from typing import Any, Dict, List, Optional, Tuple
+from collections import OrderedDict
+from typing import Any, Dict, List, Optional
 
 import duckdb
 import pandas as pd
@@ -19,57 +22,98 @@ logger = logging.getLogger(__name__)
 _DROP_COLS = {"is_flagged_removed", "is_added", "data_json"}
 
 _lock = threading.Lock()
-_active: Optional[Dict[str, Any]] = None
+_sessions: "OrderedDict[int, Dict[str, Any]]" = OrderedDict()
+_MAX_USER_SESSIONS = max(1, int(os.environ.get("DUCKDB_MAX_USER_SESSIONS", "32")))
 
 
 def _make_key(project_id: int, dataset_id: int, scenario_id: int) -> str:
     return f"{project_id}:{dataset_id}:{scenario_id}"
 
 
+def _close_session_unlocked(user_id: int) -> None:
+    session = _sessions.pop(user_id, None)
+    if session is None:
+        return
+    try:
+        session["conn"].close()
+        logger.info("DuckDB closed: user_id=%s key=%s", user_id, session.get("key"))
+    except Exception as e:
+        logger.warning("Error closing DuckDB for user_id=%s: %s", user_id, e)
+
+
+def _evict_lru_unlocked() -> None:
+    while len(_sessions) >= _MAX_USER_SESSIONS:
+        oldest_user_id, oldest = _sessions.popitem(last=False)
+        try:
+            oldest["conn"].close()
+        except Exception:
+            pass
+        logger.info("DuckDB LRU evicted user_id=%s", oldest_user_id)
+
+
+def _session_public(session: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        "user_id": session["user_id"],
+        "key": session["key"],
+        "project_id": session["project_id"],
+        "dataset_id": session["dataset_id"],
+        "scenario_id": session["scenario_id"],
+        "row_count": session["row_count"],
+        "columns": [{"name": n, "type": t} for n, t in session["columns"]],
+        "loaded_at": session["loaded_at"],
+        "last_used": session["last_used"],
+        "scenario_updated_at": session.get("scenario_updated_at"),
+    }
+
+
 def load(
+    user_id: int,
     project_id: int,
     dataset_id: int,
     scenario_id: int,
     records: List[Dict[str, Any]],
+    scenario_updated_at: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """Load records into a fresh in-memory DuckDB instance.
-
-    Replaces any previously active instance (only one is kept at a time).
-    Records should be the flat merged dicts returned by
-    ``db_service.get_scenario_records()`` or equivalent — each dict is one
-    employee row with all columns from the original upload plus computed
-    hierarchy columns.
-
-    Returns metadata about the loaded instance.
-    """
-    global _active
-
-    active_records = [
-        r for r in records if not r.get("is_flagged_removed", False)
-    ]
-
+    """Load records into this user's in-memory DuckDB (replaces their prior instance)."""
+    active_records = [r for r in records if not r.get("is_flagged_removed", False)]
     df = pd.DataFrame(active_records)
-
     cols_to_drop = [c for c in _DROP_COLS if c in df.columns]
     if cols_to_drop:
         df.drop(columns=cols_to_drop, inplace=True)
 
-    key = _make_key(project_id, dataset_id, scenario_id)
+    data_key = _make_key(project_id, dataset_id, scenario_id)
 
     with _lock:
-        _close_active_unlocked()
+        existing = _sessions.get(user_id)
+        if (
+            existing
+            and existing.get("key") == data_key
+            and existing.get("scenario_updated_at") == scenario_updated_at
+            and scenario_updated_at is not None
+        ):
+            existing["last_used"] = time.time()
+            _sessions.move_to_end(user_id)
+            return {
+                **_session_public(existing),
+                "row_count": existing["row_count"],
+                "column_count": len(existing["columns"]),
+            }
+
+        _close_session_unlocked(user_id)
+        if user_id not in _sessions:
+            _evict_lru_unlocked()
 
         conn = duckdb.connect(":memory:")
         conn.execute("CREATE TABLE employees AS SELECT * FROM df")
-
         row_count = conn.execute("SELECT COUNT(*) FROM employees").fetchone()[0]
         col_info = conn.execute(
             "SELECT column_name, data_type FROM information_schema.columns "
             "WHERE table_name = 'employees' ORDER BY ordinal_position"
         ).fetchall()
 
-        _active = {
-            "key": key,
+        session = {
+            "user_id": user_id,
+            "key": data_key,
             "project_id": project_id,
             "dataset_id": dataset_id,
             "scenario_id": scenario_id,
@@ -78,97 +122,136 @@ def load(
             "columns": [(name, dtype) for name, dtype in col_info],
             "loaded_at": time.time(),
             "last_used": time.time(),
+            "scenario_updated_at": scenario_updated_at,
         }
+        _sessions[user_id] = session
+        _sessions.move_to_end(user_id)
 
     logger.info(
-        "DuckDB loaded: key=%s rows=%d cols=%d",
-        key, row_count, len(col_info),
+        "DuckDB loaded: user_id=%s key=%s rows=%d cols=%d",
+        user_id, data_key, row_count, len(col_info),
     )
-
     return {
-        "key": key,
-        "row_count": row_count,
+        **_session_public(session),
         "column_count": len(col_info),
-        "columns": [{"name": name, "type": dtype} for name, dtype in col_info],
     }
 
 
-def get_status() -> Optional[Dict[str, Any]]:
-    """Return metadata about the currently active DuckDB instance, or None."""
+def ensure_fresh(
+    user_id: int,
+    project_id: int,
+    dataset_id: int,
+    scenario_id: int,
+) -> Dict[str, Any]:
+    """Reload DuckDB from Postgres when scenarios.updated_at is newer than loaded snapshot."""
+    from services import db_service
+
+    scenario = db_service.get_scenario(scenario_id)
+    if not scenario:
+        raise ValueError(f"Scenario {scenario_id} not found")
+    if scenario.get("dataset_id") != dataset_id:
+        raise ValueError("Scenario does not belong to dataset")
+
+    current_updated_at = scenario.get("updated_at")
     with _lock:
-        if _active is None:
+        session = _sessions.get(user_id)
+        fresh = (
+            session is not None
+            and session.get("key") == _make_key(project_id, dataset_id, scenario_id)
+            and session.get("scenario_updated_at") == current_updated_at
+            and current_updated_at is not None
+        )
+
+    if fresh:
+        with _lock:
+            session = _sessions.get(user_id)
+            if session:
+                session["last_used"] = time.time()
+                _sessions.move_to_end(user_id)
+        return {**_session_public(session), "reloaded": False}
+
+    records = db_service.get_scenario_records(scenario_id)
+    if not records:
+        raise ValueError(f"No records found for scenario {scenario_id}")
+
+    meta = load(
+        user_id=user_id,
+        project_id=project_id,
+        dataset_id=dataset_id,
+        scenario_id=scenario_id,
+        records=records,
+        scenario_updated_at=current_updated_at,
+    )
+    return {**meta, "reloaded": True}
+
+
+def get_status(user_id: int) -> Optional[Dict[str, Any]]:
+    with _lock:
+        session = _sessions.get(user_id)
+        if session is None:
             return None
-        return {
-            "key": _active["key"],
-            "project_id": _active["project_id"],
-            "dataset_id": _active["dataset_id"],
-            "scenario_id": _active["scenario_id"],
-            "row_count": _active["row_count"],
-            "columns": [{"name": n, "type": t} for n, t in _active["columns"]],
-            "loaded_at": _active["loaded_at"],
-            "last_used": _active["last_used"],
+        session["last_used"] = time.time()
+        _sessions.move_to_end(user_id)
+        return _session_public(session)
+
+
+def get_schema(user_id: int) -> Optional[Dict[str, Any]]:
+    with _lock:
+        session = _sessions.get(user_id)
+        if session is None:
+            return None
+        session["last_used"] = time.time()
+        _sessions.move_to_end(user_id)
+        conn = session["conn"]
+        columns = session["columns"]
+        row_count = session["row_count"]
+        meta = {
+            "user_id": session["user_id"],
+            "key": session["key"],
+            "dataset_id": session["dataset_id"],
+            "scenario_id": session["scenario_id"],
         }
 
+        schema = []
+        for col_name, col_type in columns:
+            try:
+                samples = conn.execute(
+                    f'SELECT DISTINCT "{col_name}" FROM employees '
+                    f"WHERE \"{col_name}\" IS NOT NULL LIMIT 5"
+                ).fetchall()
+                sample_values = [str(row[0]) for row in samples]
+            except Exception:
+                sample_values = []
+            try:
+                unique_count = conn.execute(
+                    f'SELECT COUNT(DISTINCT "{col_name}") FROM employees'
+                ).fetchone()[0]
+            except Exception:
+                unique_count = 0
+            schema.append({
+                "name": col_name,
+                "type": col_type,
+                "unique_count": unique_count,
+                "sample_values": sample_values,
+            })
 
-def get_schema() -> Optional[Dict[str, Any]]:
-    """Return column schema with sample values from the active instance."""
+    return {**meta, "row_count": row_count, "columns": schema}
+
+
+def query(user_id: int, sql: str, max_rows: int = 10_000) -> Dict[str, Any]:
     with _lock:
-        if _active is None:
-            return None
-        conn = _active["conn"]
-        _active["last_used"] = time.time()
+        session = _sessions.get(user_id)
+        if session is None:
+            raise RuntimeError("No DuckDB instance is loaded for this user")
+        session["last_used"] = time.time()
+        _sessions.move_to_end(user_id)
+        conn = session["conn"]
 
-    schema = []
-    for col_name, col_type in _active["columns"]:
-        try:
-            samples = conn.execute(
-                f'SELECT DISTINCT "{col_name}" FROM employees '
-                f"WHERE \"{col_name}\" IS NOT NULL LIMIT 5"
-            ).fetchall()
-            sample_values = [str(row[0]) for row in samples]
-        except Exception:
-            sample_values = []
-
-        try:
-            unique_count = conn.execute(
-                f'SELECT COUNT(DISTINCT "{col_name}") FROM employees'
-            ).fetchone()[0]
-        except Exception:
-            unique_count = 0
-
-        schema.append({
-            "name": col_name,
-            "type": col_type,
-            "unique_count": unique_count,
-            "sample_values": sample_values,
-        })
-
-    return {
-        "key": _active["key"],
-        "dataset_id": _active["dataset_id"],
-        "scenario_id": _active["scenario_id"],
-        "row_count": _active["row_count"],
-        "columns": schema,
-    }
-
-
-def query(sql: str, max_rows: int = 10_000) -> Dict[str, Any]:
-    """Execute a read-only SQL query against the active DuckDB instance.
-
-    Returns the result as a list of dicts plus column names.
-    Raises RuntimeError if no instance is loaded.
-    """
-    with _lock:
-        if _active is None:
-            raise RuntimeError("No DuckDB instance is loaded")
-        conn = _active["conn"]
-        _active["last_used"] = time.time()
-
-    result = conn.execute(sql)
-    columns = [desc[0] for desc in result.description]
-    rows = result.fetchmany(max_rows)
-    data = [dict(zip(columns, row)) for row in rows]
-    total = conn.execute(f"SELECT COUNT(*) FROM ({sql}) _q").fetchone()[0]
+        result = conn.execute(sql)
+        columns = [desc[0] for desc in result.description]
+        rows = result.fetchmany(max_rows)
+        data = [dict(zip(columns, row)) for row in rows]
+        total = conn.execute(f"SELECT COUNT(*) FROM ({sql}) _q").fetchone()[0]
 
     return {
         "columns": columns,
@@ -179,42 +262,44 @@ def query(sql: str, max_rows: int = 10_000) -> Dict[str, Any]:
     }
 
 
-def sample_rows(n: int = 5) -> Optional[List[Dict[str, Any]]]:
-    """Return n sample rows from the active instance for verification."""
+def sample_rows(user_id: int, n: int = 5) -> Optional[List[Dict[str, Any]]]:
     with _lock:
-        if _active is None:
+        session = _sessions.get(user_id)
+        if session is None:
             return None
-        conn = _active["conn"]
-        _active["last_used"] = time.time()
+        session["last_used"] = time.time()
+        _sessions.move_to_end(user_id)
+        conn = session["conn"]
+        result = conn.execute(f"SELECT * FROM employees LIMIT {int(n)}")
+        columns = [desc[0] for desc in result.description]
+        rows = result.fetchall()
 
-    result = conn.execute(f"SELECT * FROM employees LIMIT {int(n)}")
-    columns = [desc[0] for desc in result.description]
-    rows = result.fetchall()
     return [dict(zip(columns, row)) for row in rows]
 
 
-def is_loaded_for(project_id: int, dataset_id: int, scenario_id: int) -> bool:
-    """Check if DuckDB is loaded for the given key."""
+def is_loaded_for(
+    user_id: int,
+    project_id: int,
+    dataset_id: int,
+    scenario_id: int,
+) -> bool:
     with _lock:
-        if _active is None:
+        session = _sessions.get(user_id)
+        if session is None:
             return False
-        return _active["key"] == _make_key(project_id, dataset_id, scenario_id)
+        return session["key"] == _make_key(project_id, dataset_id, scenario_id)
 
 
-def close():
-    """Tear down the active DuckDB instance."""
-    global _active
+def close(user_id: Optional[int] = None) -> None:
+    """Close one user's session, or all sessions when user_id is omitted."""
     with _lock:
-        _close_active_unlocked()
+        if user_id is not None:
+            _close_session_unlocked(user_id)
+            return
+        for uid in list(_sessions.keys()):
+            _close_session_unlocked(uid)
 
 
-def _close_active_unlocked():
-    """Close the active connection (caller must hold _lock)."""
-    global _active
-    if _active is not None:
-        try:
-            _active["conn"].close()
-            logger.info("DuckDB closed: key=%s", _active["key"])
-        except Exception as e:
-            logger.warning("Error closing DuckDB: %s", e)
-        _active = None
+def active_user_count() -> int:
+    with _lock:
+        return len(_sessions)

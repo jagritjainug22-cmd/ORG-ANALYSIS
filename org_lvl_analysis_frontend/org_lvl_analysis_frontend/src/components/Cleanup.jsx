@@ -41,7 +41,7 @@ export default function Cleanup({ df, setDf, countryCol }) {
   return (
     <div className="space-y-6">
       {/* Header Section */}
-      <div className="bg-brand-50 border border-brand-200 rounded-lg p-6">
+      <div className="bg-brand-50 border border-brand-200 rounded-lg p-3">
         <div className="flex items-start gap-4">
           <div className="w-12 h-12 bg-brand-500 rounded-lg flex items-center justify-center flex-shrink-0">
             <svg
@@ -59,7 +59,7 @@ export default function Cleanup({ df, setDf, countryCol }) {
             </svg>
           </div>
           <div className="flex-1">
-            <h3 className="text-xl font-bold text-gray-900 mb-2">
+            <h3 className="text-base font-bold text-gray-900 mb-1">
               Data Cleanup
             </h3>
             <p className="text-sm text-gray-600">
@@ -70,8 +70,8 @@ export default function Cleanup({ df, setDf, countryCol }) {
       </div>
 
       {/* Configuration Section */}
-      <div className="bg-white border border-gray-200 rounded-lg p-6">
-        <h4 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
+      <div className="bg-white border border-gray-200 rounded-lg p-4">
+        <h4 className="text-base font-semibold text-gray-800 mb-3 flex items-center gap-2">
           <svg
             className="w-5 h-5 text-brand-500"
             fill="none"
@@ -173,12 +173,12 @@ export default function Cleanup({ df, setDf, countryCol }) {
         <button
           onClick={run}
           disabled={isProcessing || !df || df.length === 0}
-          className="flex-1 px-6 py-4 bg-brand-500 hover:bg-brand-600 text-white rounded-lg font-semibold shadow-lg hover:shadow-xl transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3"
+          className="flex-1 px-4 py-2 bg-brand-500 hover:bg-brand-600 text-white rounded-md font-semibold shadow-sm hover:shadow-md transition-all duration-150 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 text-sm"
         >
           {isProcessing ? (
             <>
               <svg
-                className="animate-spin h-6 w-6 text-white"
+                className="animate-spin h-5 w-5 text-white"
                 xmlns="http://www.w3.org/2000/svg"
                 fill="none"
                 viewBox="0 0 24 24"
@@ -197,12 +197,12 @@ export default function Cleanup({ df, setDf, countryCol }) {
                   d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
                 ></path>
               </svg>
-              <span className="text-lg">Processing Cleanup...</span>
+              <span className="text-sm">Processing Cleanup...</span>
             </>
           ) : (
             <>
               <svg
-                className="w-6 h-6"
+                className="w-5 h-5"
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
@@ -214,7 +214,7 @@ export default function Cleanup({ df, setDf, countryCol }) {
                   d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
                 />
               </svg>
-              <span className="text-lg">Run Cleanup Process</span>
+              <span className="text-sm">Run Cleanup Process</span>
             </>
           )}
         </button>
@@ -243,7 +243,7 @@ export default function Cleanup({ df, setDf, countryCol }) {
 
       {/* Success Result */}
       {result && !error && (
-        <div className="bg-gradient-to-br from-green-50 to-emerald-50 border border-green-200 rounded-lg p-6 animate-fadeIn">
+        <div className="bg-gradient-to-br from-green-50 to-emerald-50 border border-green-200 rounded-lg p-4 animate-fadeIn">
           <div className="flex items-center gap-3 mb-4">
             <div className="w-12 h-12 bg-green-600 rounded-lg flex items-center justify-center">
               <svg
@@ -261,7 +261,7 @@ export default function Cleanup({ df, setDf, countryCol }) {
               </svg>
             </div>
             <div>
-              <h4 className="font-bold text-green-900 text-lg">
+              <h4 className="font-bold text-green-900 text-base">
                 Cleanup Completed Successfully!
               </h4>
               <p className="text-sm text-green-700">
@@ -273,7 +273,7 @@ export default function Cleanup({ df, setDf, countryCol }) {
 
           <div className="grid grid-cols-3 gap-4">
             {/* Original Count */}
-            <div className="bg-white rounded-lg p-4 border border-green-200">
+            <div className="bg-white rounded-lg p-3 border border-green-200">
               <div className="flex items-center gap-2 mb-2">
                 <svg
                   className="w-5 h-5 text-gray-600"

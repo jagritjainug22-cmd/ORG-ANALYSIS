@@ -36,9 +36,9 @@ export default function ConfirmDialog({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-      <div className="bg-white rounded-xl shadow-2xl border border-gray-200 w-full max-w-md mx-4 overflow-hidden">
-        <div className={`px-6 py-4 border-b ${destructive ? "bg-red-50 border-red-200" : "bg-gray-50 border-gray-200"}`}>
-          <h3 className={`text-lg font-semibold ${destructive ? "text-red-800" : "text-gray-800"}`}>
+      <div className="bg-white rounded-md shadow-xl border border-gray-200 w-full max-w-md mx-4 overflow-hidden">
+        <div className={`px-4 py-3 border-b bg-[#01244a] border-[#08304a]`}>
+          <h3 className={`text-base font-semibold text-white`}>
             {title}
           </h3>
         </div>
@@ -53,14 +53,14 @@ export default function ConfirmDialog({
                 type="text"
                 value={typed}
                 onChange={(e) => setTyped(e.target.value)}
-                className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-red-500 focus:border-transparent font-mono"
+                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-brand-500 focus:border-transparent font-mono"
                 placeholder={confirmText}
                 autoFocus
               />
             </div>
           )}
         </div>
-        <div className="px-6 py-4 bg-gray-50 border-t border-gray-200 flex justify-end gap-3">
+        <div className="px-4 py-3 bg-gray-50 border-t border-gray-200 flex justify-end gap-3">
           <button
             onClick={handleCancel}
             className="px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-all"

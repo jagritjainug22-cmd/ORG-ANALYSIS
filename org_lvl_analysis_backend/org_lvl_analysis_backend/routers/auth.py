@@ -195,6 +195,11 @@ async def logout(
         release_all_ds_locks(user["id"])
     except Exception:
         pass
+    try:
+        from services import duckdb_manager
+        duckdb_manager.close(user["id"])
+    except Exception:
+        pass
 
     raw_token = request.cookies.get(REFRESH_COOKIE_NAME)
     if raw_token:

@@ -1,11 +1,15 @@
 import React, { useState, useMemo, useCallback } from "react";
 import { rationalisePropose, rationaliseApply } from "../api/backend";
+import MappingRegistry from "./MappingRegistry";
+import ExportExcel from "./ExportExcel";
 
 const METHOD_BADGE = {
   exact:      { bg: "bg-green-100",  text: "text-green-700",  label: "Master" },
   fuzzy:      { bg: "bg-blue-100",   text: "text-blue-700",   label: "Fuzzy" },
   ai:         { bg: "bg-purple-100", text: "text-purple-700", label: "AI" },
   cached:     { bg: "bg-cyan-100",   text: "text-cyan-700",   label: "Cached" },
+  placeholder:{ bg: "bg-gray-100",   text: "text-gray-600",   label: "Placeholder" },
+  original:   { bg: "bg-slate-100",  text: "text-slate-600",  label: "Original" },
   unresolved: { bg: "bg-red-100",    text: "text-red-700",    label: "Unresolved" },
 };
 
@@ -100,7 +104,9 @@ export default function Rationalise({
   setColumns,
   datasetId = null,
 }) {
+  const [viewMode, setViewMode] = useState("run");
   const [activeTab, setActiveTab] = useState("functions");
+  const [useLearnedAliases, setUseLearnedAliases] = useState(false);
 
   // Run state
   const [running, setRunning] = useState(false);
@@ -144,7 +150,7 @@ export default function Rationalise({
     setSubfuncAccepted({});
     setTitleAccepted({});
     try {
-      const res = await rationalisePropose(dfRecords, funcCol, subfuncCol, jobTitleCol);
+      const res = await rationalisePropose(dfRecords, funcCol, subfuncCol, jobTitleCol, useLearnedAliases);
       setRationalisationResult(res);
     } catch (err) {
       console.error("Rationalise error:", err);
@@ -225,17 +231,43 @@ export default function Rationalise({
     <div className="space-y-5">
       {/* Header */}
       <div className="bg-brand-50 border border-brand-100 rounded-lg p-5">
-        <div className="flex items-start gap-3">
-          <div className="w-10 h-10 bg-brand-500 rounded-lg flex items-center justify-center flex-shrink-0">
-            <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" /></svg>
+        <div className="flex items-start justify-between gap-4 flex-wrap">
+          <div className="flex items-start gap-3">
+            <div className="w-10 h-10 bg-brand-500 rounded-lg flex items-center justify-center flex-shrink-0">
+              <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" /></svg>
+            </div>
+            <div>
+              <h3 className="text-lg font-bold text-brand-800" style={{ fontFamily: "Manrope, Inter, sans-serif" }}>Rationalise</h3>
+              <p className="text-sm text-slate-500">Map your titles, functions, and subfunctions to standard categories. Review AI proposals, override where needed, then apply.</p>
+            </div>
           </div>
-          <div>
-            <h3 className="text-lg font-bold text-brand-800" style={{ fontFamily: "Manrope, Inter, sans-serif" }}>Rationalise</h3>
-            <p className="text-sm text-slate-500">Map your titles, functions, and subfunctions to standard categories. Review AI proposals, override where needed, then apply.</p>
-          </div>
+          <ExportExcel df={dfRecords} compact />
+        </div>
+
+        <div className="flex mt-4 p-1 bg-white/80 border border-brand-100 rounded-lg w-fit">
+          <button
+            onClick={() => setViewMode("run")}
+            className={`px-4 py-2 text-sm font-medium rounded-md transition ${
+              viewMode === "run" ? "bg-brand-500 text-white shadow-sm" : "text-slate-600 hover:text-brand-700"
+            }`}
+          >
+            Run Rationalisation
+          </button>
+          <button
+            onClick={() => setViewMode("registry")}
+            className={`px-4 py-2 text-sm font-medium rounded-md transition ${
+              viewMode === "registry" ? "bg-brand-500 text-white shadow-sm" : "text-slate-600 hover:text-brand-700"
+            }`}
+          >
+            Mapping Registry
+          </button>
         </div>
       </div>
 
+      {viewMode === "registry" && <MappingRegistry />}
+
+      {viewMode === "run" && (
+      <>
       {applied && (
         <div className="bg-green-50 border border-green-200 rounded-lg px-4 py-3 text-sm text-green-700 flex items-center gap-2">
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
@@ -251,6 +283,20 @@ export default function Rationalise({
               Select at least one of <span className="font-semibold">Function</span>, <span className="font-semibold">Sub-Function</span>, or <span className="font-semibold">Job Title</span> in the Column Configuration bar above.
             </div>
           )}
+          <label className="flex items-start gap-2.5 px-1 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={useLearnedAliases}
+              onChange={(e) => setUseLearnedAliases(e.target.checked)}
+              className="mt-0.5 rounded border-gray-300 text-brand-500 focus:ring-brand-500"
+            />
+            <span className="text-sm text-slate-600">
+              Use previously learned mapping aliases
+              <span className="block text-xs text-slate-400 mt-0.5">
+                Off by default — uses only the base master taxonomy and AI, not auto_learned_taxonomy.json
+              </span>
+            </span>
+          </label>
           <button
             onClick={handleRun}
             disabled={!hasRequiredCols || running}
@@ -335,6 +381,8 @@ export default function Rationalise({
             <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm text-red-700">{applyError}</div>
           )}
         </>
+      )}
+      </>
       )}
     </div>
   );

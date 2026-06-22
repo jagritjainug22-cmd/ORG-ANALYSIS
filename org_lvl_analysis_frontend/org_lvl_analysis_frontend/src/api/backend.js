@@ -891,11 +891,34 @@ export const autoMapColumns = (columns, sampleRows) =>
   axios.post(`${getProjectUrl()}/auto-map-columns`, { columns, sample_rows: sampleRows }, { headers: jsonHeaders() })
     .then(r => r.data?.mappings ?? r.data);
 
-export const rationalisePropose = (records, funcCol, subfuncCol, titleCol) =>
-  axios.post(`${getProjectUrl()}/rationalise`, { records, func_col: funcCol || null, subfunc_col: subfuncCol || null, title_col: titleCol || null }, { headers: jsonHeaders(), timeout: 300000 }).then(r => r.data);
+export const rationalisePropose = (records, funcCol, subfuncCol, titleCol, useLearnedAliases = false) =>
+  axios.post(`${getProjectUrl()}/rationalise`, {
+    records,
+    func_col: funcCol || null,
+    subfunc_col: subfuncCol || null,
+    title_col: titleCol || null,
+    ignore_learned_aliases: !useLearnedAliases,
+  }, { headers: jsonHeaders(), timeout: 300000 }).then(r => r.data);
 
 export const rationaliseApply = (body) =>
   axios.post(`${getProjectUrl()}/rationalise/apply`, body, { headers: jsonHeaders() }).then(r => r.data);
+
+export const getLearnedTaxonomy = () =>
+  axios.get(`${getProjectUrl()}/learned-taxonomy`).then(r => r.data?.entries ?? []);
+
+export const patchLearnedMapping = (payload) =>
+  axios.patch(`${getProjectUrl()}/learned-taxonomy`, payload, { headers: jsonHeaders() }).then(r => r.data);
+
+// Ask OrgSight chat layer (DuckDB) — UI to be added later
+export const chatEnsure = (datasetId, scenarioId) =>
+  axios.post(`${getProjectUrl()}/chat/ensure`, { dataset_id: datasetId, scenario_id: scenarioId }, { headers: jsonHeaders() })
+    .then(r => r.data);
+
+export const chatStatus = () =>
+  axios.get(`${getProjectUrl()}/chat/status`, { headers: getHeaders() }).then(r => r.data);
+
+export const chatCloseSession = () =>
+  axios.delete(`${getProjectUrl()}/chat/session`, { headers: getHeaders() }).then(r => r.data);
 
 // ---------------------------------------------------------------------------
 

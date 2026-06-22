@@ -135,7 +135,7 @@ export default function Hierarchy({
   return (
     <div className="space-y-6">
       {/* Header Section */}
-      <div className="bg-brand-50 border border-brand-200 rounded-lg p-6">
+      <div className="bg-brand-50 border border-brand-200 rounded-lg p-3">
         <div className="flex items-start gap-4">
           <div className="w-12 h-12 bg-brand-500 rounded-lg flex items-center justify-center flex-shrink-0">
             <svg
@@ -153,10 +153,10 @@ export default function Hierarchy({
             </svg>
           </div>
           <div className="flex-1">
-            <h3 className="text-xl font-bold text-gray-900 mb-2">
+            <h3 className="text-base font-bold text-gray-900 mb-1">
               Hierarchy Analysis
             </h3>
-            <p className="text-sm text-gray-600">
+            <p className="text-xs text-gray-500">
               Compute organizational hierarchy levels, reporting chains, and span metrics for your data.
             </p>
           </div>
@@ -168,12 +168,12 @@ export default function Hierarchy({
         <button
           onClick={runPreview}
           disabled={!canRun || loading}
-          className="flex-1 px-6 py-4 bg-brand-500 hover:bg-brand-600 text-white rounded-lg font-semibold shadow-lg hover:shadow-xl transition-all duration-200 disabled:bg-gray-200 disabled:text-gray-500 disabled:cursor-not-allowed flex items-center justify-center gap-3"
+          className="flex-1 px-4 py-2 bg-brand-500 hover:bg-brand-600 text-white rounded-md font-semibold shadow-sm hover:shadow-md transition-all duration-150 disabled:bg-gray-200 disabled:text-gray-500 disabled:cursor-not-allowed flex items-center justify-center gap-2 text-sm"
         >
           {loading ? (
             <>
               <svg
-                className="animate-spin h-6 w-6 text-white"
+                className="animate-spin h-5 w-5 text-white"
                 xmlns="http://www.w3.org/2000/svg"
                 fill="none"
                 viewBox="0 0 24 24"
@@ -192,12 +192,12 @@ export default function Hierarchy({
                   d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
                 ></path>
               </svg>
-              <span className="text-lg">Computing Hierarchy...</span>
+                <span className="text-sm">Computing Hierarchy...</span>
             </>
           ) : (
             <>
               <svg
-                className="w-6 h-6"
+                  className="w-5 h-5"
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
@@ -209,7 +209,7 @@ export default function Hierarchy({
                   d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"
                 />
               </svg>
-              <span className="text-lg">Run Hierarchy Analysis</span>
+              <span className="text-sm">Run Hierarchy Analysis</span>
             </>
           )}
         </button>
@@ -217,7 +217,7 @@ export default function Hierarchy({
         <button
           onClick={downloadExcel}
           disabled={!canRun || !preview || preview.length === 0}
-          className="px-6 py-4 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white rounded-lg font-semibold shadow-lg hover:shadow-xl transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-3"
+          className="px-4 py-2 bg-brand-500 hover:bg-brand-600 text-white rounded-md font-semibold shadow-sm hover:shadow-md transition-all duration-150 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 text-sm"
         >
           <svg
             className="w-6 h-6"
@@ -258,12 +258,12 @@ export default function Hierarchy({
       )}
 
       {/* Success Result */}
-      {result && !error && (
-        <div className="bg-gradient-to-br from-green-50 to-emerald-50 border border-green-200 rounded-lg p-6 animate-fadeIn">
+        {result && !error && (
+          <div className="bg-brand-50 border border-brand-200 rounded-lg p-4 animate-fadeIn">
           <div className="flex items-center gap-3 mb-4">
-            <div className="w-12 h-12 bg-green-600 rounded-lg flex items-center justify-center">
+            <div className="w-9 h-9 bg-brand-600 rounded-lg flex items-center justify-center">
               <svg
-                className="w-7 h-7 text-white"
+                className="w-6 h-6 text-white"
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
@@ -277,10 +277,10 @@ export default function Hierarchy({
               </svg>
             </div>
             <div>
-              <h4 className="font-bold text-green-900 text-lg">
+              <h4 className="font-bold text-brand-900 text-base">
                 Hierarchy Analysis Complete!
               </h4>
-              <p className="text-sm text-green-700">
+              <p className="text-xs text-brand-700">
                 Organizational structure has been computed successfully
               </p>
             </div>
@@ -383,12 +383,12 @@ export default function Hierarchy({
 
           <div className="overflow-x-auto max-h-96">
             <table className="w-full text-sm">
-              <thead className="bg-gray-100 sticky top-0 z-10">
+                <thead className="bg-[#01244a] text-white sticky top-0 z-10">
                 <tr>
                   {Object.keys(preview[0]).map((col) => (
                     <th
                       key={col}
-                      className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider border-b border-gray-200 whitespace-nowrap"
+                      className="px-4 py-3 text-left text-xs font-semibold text-white uppercase tracking-wider border-b border-gray-200 whitespace-nowrap"
                     >
                       {col}
                     </th>
@@ -415,31 +415,20 @@ export default function Hierarchy({
       )}
 
       {/* Info Box */}
-      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-        <div className="flex items-start gap-3">
-          <svg
-            className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0"
-            fill="currentColor"
-            viewBox="0 0 20 20"
-          >
-            <path
-              fillRule="evenodd"
-              d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z"
-              clipRule="evenodd"
-            />
+      <details className="bg-blue-50 border border-blue-200 rounded-lg">
+        <summary className="px-3 py-2 text-xs font-medium text-blue-900 cursor-pointer flex items-center gap-1.5">
+          <svg className="w-3.5 h-3.5 text-blue-600 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+            <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
           </svg>
-          <div>
-            <p className="text-sm font-medium text-blue-900 mb-1">
-              Hierarchy Computation
-            </p>
-            <ul className="text-xs text-blue-700 space-y-1">
-              <li>• <strong>Levels:</strong> Calculates hierarchical level for each employee</li>
-              <li>• <strong>Chains:</strong> Builds complete reporting chains from employee to top manager</li>
-              <li>• <strong>Total Reports:</strong> Counts all direct and indirect reports</li>
-            </ul>
-          </div>
-        </div>
-      </div>
+          Hierarchy Computation
+        </summary>
+        <ul className="px-3 pb-2 text-[11px] text-blue-700 space-y-0.5 columns-2">
+          <li>• <strong>Levels:</strong> Calculates hierarchical level for each employee</li>
+          <li>• <strong>Chains:</strong> Builds complete reporting chains from employee to top manager</li>
+          <li>• <strong>Total Reports:</strong> Counts all direct and indirect reports</li>
+        </ul>
+      </details>
+      
     </div>
   );
 }

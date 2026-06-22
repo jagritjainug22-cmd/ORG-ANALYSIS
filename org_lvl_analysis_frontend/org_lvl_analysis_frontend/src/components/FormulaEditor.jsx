@@ -195,7 +195,7 @@ function ExpressionInput({ value, onChange, columns, placeholder, inputRef }) {
         onBlur={() => setTimeout(() => setDropdownOpen(false), 150)}
         placeholder={placeholder}
         rows={2}
-        className="w-full font-mono text-sm rounded-xl border border-gray-300 focus:ring-2 focus:ring-am-500 focus:border-am-500 px-3.5 py-3 placeholder-gray-400 outline-none transition resize-none leading-relaxed"
+        className="w-full font-mono text-sm rounded-xl border border-gray-300 focus:ring-2 focus:ring-brand-500 focus:border-brand-500 px-3.5 py-3 placeholder-gray-400 outline-none transition resize-none leading-relaxed"
       />
 
       {/* Autocomplete dropdown */}
@@ -203,7 +203,7 @@ function ExpressionInput({ value, onChange, columns, placeholder, inputRef }) {
         <div className="absolute left-0 top-full mt-1 z-50 w-full max-h-52 overflow-y-auto bg-white border border-gray-200 rounded-xl shadow-xl">
           {/* Header hint */}
           <div className="px-3 py-2 bg-gray-50 border-b border-gray-100 flex items-center gap-2 sticky top-0">
-            <svg className="w-3.5 h-3.5 text-am-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-3.5 h-3.5 text-brand-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
             </svg>
             <span className="text-xs text-gray-500">
@@ -217,9 +217,9 @@ function ExpressionInput({ value, onChange, columns, placeholder, inputRef }) {
                 type="button"
                 onMouseDown={(e) => { e.preventDefault(); insertColumn(col); }}
                 className={`w-full text-left px-3.5 py-2.5 text-sm flex items-center gap-2 transition-colors ${
-                  i === highlightIdx
-                    ? "bg-am-500 text-white"
-                    : "text-gray-800 hover:bg-am-50 hover:text-am-700"
+                    i === highlightIdx
+                      ? "bg-brand-500 text-white"
+                      : "text-gray-800 hover:bg-brand-50 hover:text-brand-700"
                 }`}
               >
                 <span className={`font-mono text-xs px-1.5 py-0.5 rounded shrink-0 ${
@@ -386,17 +386,17 @@ export default function FormulaEditor({
     <div className="space-y-5 animate-fadeInUp">
 
       {/* ── Hero ── */}
-      <div className="bg-am-50 border border-am-200 rounded-xl p-6">
+      <div className="bg-brand-50 border border-brand-200 rounded-xl p-6">
         <div className="flex items-start justify-between gap-4">
           <div className="flex items-start gap-4">
-            <div className="w-12 h-12 bg-am-500 rounded-xl flex items-center justify-center flex-shrink-0 shadow-sm">
+            <div className="w-12 h-12 bg-brand-500 rounded-xl flex items-center justify-center flex-shrink-0 shadow-sm">
               <CalcIcon />
             </div>
             <div>
               <h2 className="text-xl font-bold text-gray-900 tracking-tight">Formula Columns</h2>
               <p className="text-sm text-gray-500 mt-1 leading-relaxed">
                 Define derived metrics — like{" "}
-                <span className="font-mono text-xs bg-am-100 text-am-700 px-1.5 py-0.5 rounded">[Fully loaded cost] / [FTE]</span>
+                <span className="font-mono text-xs bg-brand-100 text-brand-700 px-1.5 py-0.5 rounded">[Fully loaded cost] / [FTE]</span>
                 {" "}— and they appear everywhere: Hierarchy, Crosstab, and the Org Chart detail panel.
               </p>
             </div>
@@ -434,7 +434,7 @@ export default function FormulaEditor({
       <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
         {loading ? (
           <div className="flex items-center justify-center py-14 gap-3">
-            <div className="w-5 h-5 border-2 border-am-500 border-t-transparent rounded-full animate-spin" />
+            <div className="w-5 h-5 border-2 border-brand-500 border-t-transparent rounded-full animate-spin" />
             <span className="text-sm text-gray-500">Loading formulas…</span>
           </div>
         ) : (
@@ -475,7 +475,7 @@ export default function FormulaEditor({
                         <span className="text-sm font-semibold text-gray-900">{formula.col_name}</span>
                       </div>
                       <div className="px-4 py-3.5">
-                        <span className="font-mono text-xs px-2.5 py-1.5 bg-am-50 text-am-700 border border-am-200 rounded-lg leading-relaxed break-all">
+                        <span className="font-mono text-xs px-2.5 py-1.5 bg-brand-50 text-brand-700 border border-brand-200 rounded-lg leading-relaxed break-all">
                           {formula.expression}
                         </span>
                       </div>
@@ -521,7 +521,7 @@ export default function FormulaEditor({
                     value={newColName}
                     onChange={(e) => { setNewColName(e.target.value); setAddError(null); }}
                     placeholder="e.g.  Cost_per_FTE"
-                    className="w-full font-semibold text-sm rounded-xl border border-gray-300 focus:ring-2 focus:ring-am-500 focus:border-am-500 px-3.5 py-2.5 placeholder-gray-400 outline-none transition"
+                    className="w-full font-semibold text-sm rounded-xl border border-gray-300 focus:ring-2 focus:ring-brand-500 focus:border-brand-500 px-3.5 py-2.5 placeholder-gray-400 outline-none transition"
                   />
                 </div>
 
@@ -578,7 +578,7 @@ export default function FormulaEditor({
                   <button
                     onClick={handleAdd}
                     disabled={saving || !newColName.trim() || !newExpression.trim()}
-                    className="inline-flex items-center gap-2 px-5 py-2.5 bg-am-500 hover:bg-am-600 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-semibold rounded-xl shadow-sm transition-all duration-150"
+                    className="inline-flex items-center gap-2 px-5 py-2.5 bg-brand-500 hover:bg-brand-600 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-semibold rounded-xl shadow-sm transition-all duration-150"
                   >
                     {saving ? (
                       <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
@@ -604,7 +604,7 @@ export default function FormulaEditor({
               <div className="px-4 py-3 border-t border-gray-100 bg-gray-50/40">
                 <button
                   onClick={openAddForm}
-                  className="inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold text-am-600 hover:text-am-700 hover:bg-am-50 border border-am-200 hover:border-am-300 rounded-xl transition-all duration-150"
+                  className="inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold text-brand-600 hover:text-brand-700 hover:bg-brand-50 border border-brand-200 hover:border-brand-300 rounded-xl transition-all duration-150"
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />

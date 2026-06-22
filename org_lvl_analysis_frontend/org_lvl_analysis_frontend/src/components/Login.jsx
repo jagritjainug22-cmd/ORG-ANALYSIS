@@ -80,7 +80,7 @@ export default function Login({ setToken, setUsername, onLoginComplete }) {
   return (
     <div className="w-full max-w-sm">
       <div className="mb-8">
-        <h2 className="text-3xl font-semibold text-gray-900 tracking-tight">
+        <h2 className="text-3xl font-semibold font-display text-gray-900 tracking-tight">
           {mustChangePassword ? "Set a new password" : "Welcome back"}
         </h2>
         <p className="text-sm text-gray-500 mt-2">
@@ -107,7 +107,7 @@ export default function Login({ setToken, setUsername, onLoginComplete }) {
               placeholder="At least 8 characters"
               value={newPass}
               onChange={(e) => { setNewPass(e.target.value); setError(""); }}
-              className="w-full px-4 py-2.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-am-500 focus:border-am-500 outline-none transition text-gray-900 placeholder-gray-400 text-sm"
+              className="w-full px-4 py-2.5 border border-gray-300 rounded-md focus:ring-2 focus:border-brand-500 focus:border-brand-500 outline-none transition text-gray-900 placeholder-gray-400 text-sm"
               disabled={isLoading}
             />
           </div>
@@ -121,7 +121,7 @@ export default function Login({ setToken, setUsername, onLoginComplete }) {
               placeholder="Re-enter new password"
               value={confirmPass}
               onChange={(e) => { setConfirmPass(e.target.value); setError(""); }}
-              className="w-full px-4 py-2.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-am-500 focus:border-am-500 outline-none transition text-gray-900 placeholder-gray-400 text-sm"
+              className="w-full px-4 py-2.5 border border-gray-300 rounded-md focus:ring-2 focus:border-brand-500 focus:border-brand-500 outline-none transition text-gray-900 placeholder-gray-400 text-sm"
               disabled={isLoading}
             />
           </div>
@@ -181,7 +181,7 @@ export default function Login({ setToken, setUsername, onLoginComplete }) {
                   setUser(e.target.value);
                   setError("");
                 }}
-                className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-am-500 focus:border-am-500 outline-none transition text-gray-900 placeholder-gray-400 text-sm"
+                className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-md focus:ring-2 focus:border-brand-500 focus:border-brand-500 outline-none transition text-gray-900 placeholder-gray-400 text-sm"
                 disabled={isLoading}
                 autoComplete="username"
               />
@@ -226,7 +226,7 @@ export default function Login({ setToken, setUsername, onLoginComplete }) {
           <button
             type="submit"
             disabled={isLoading}
-            className="w-full bg-am-500 hover:bg-am-600 text-white font-medium py-2.5 px-4 rounded-md transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 text-sm"
+            className="w-full bg-brand-500 hover:bg-brand-600 text-white font-medium py-2.5 px-4 rounded-md transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 text-sm"
           >
             {isLoading ? (
               <>

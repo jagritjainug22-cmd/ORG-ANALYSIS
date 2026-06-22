@@ -221,7 +221,7 @@ const MAPPING_LABELS = {
   status: "Status",
 };
 
-const PRIMARY_BTN = "bg-am-500 text-white hover:bg-am-600 disabled:bg-gray-200 disabled:text-gray-500 disabled:cursor-not-allowed transition shadow-sm";
+const PRIMARY_BTN = "bg-brand-500 text-white hover:bg-brand-600 disabled:bg-gray-200 disabled:text-gray-500 disabled:cursor-not-allowed transition shadow-sm";
 
 export default function UploadAndPrepare({
   onSmartUpload,
@@ -241,6 +241,7 @@ export default function UploadAndPrepare({
   setUploadedFileName,
   onDatasetPicked,
   columnMappings,
+  datasetId = null,
 }) {
   const [isDragging, setIsDragging] = useState(false);
   const [uploadError, setUploadError] = useState(null);
@@ -296,7 +297,7 @@ export default function UploadAndPrepare({
       let workingDf = dfRecords;
 
       // Cleanup
-      const cleanRes = await cleanupApi(workingDf, true, countryCol || null);
+      const cleanRes = await cleanupApi(workingDf, true, countryCol || null, datasetId || null);
       setCleanupResult({ removed: cleanRes.removed });
       if (cleanRes.df) {
         workingDf = cleanRes.df;
@@ -306,7 +307,7 @@ export default function UploadAndPrepare({
 
       // Validate
       if (empCol && mgrCol) {
-        const valRes = await validateApi(workingDf, empCol, mgrCol);
+        const valRes = await validateApi(workingDf, empCol, mgrCol, null, false, datasetId || null);
         const parsed = parseValidationResponse(valRes);
         const readiness = computeHierarchyReadiness(
           parsed.flaggedRecords,
@@ -362,7 +363,7 @@ export default function UploadAndPrepare({
       {/* Header */}
       <div className="bg-brand-50 border border-brand-100 rounded-lg p-5">
         <div className="flex items-start gap-3">
-          <div className="w-10 h-10 bg-am-500 rounded-lg flex items-center justify-center flex-shrink-0">
+          <div className="w-10 h-10 bg-brand-500 rounded-lg flex items-center justify-center flex-shrink-0">
             <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" /></svg>
           </div>
           <div>

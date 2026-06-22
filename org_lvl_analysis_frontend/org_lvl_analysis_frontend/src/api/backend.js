@@ -306,14 +306,16 @@ const postJson = (url, df, params = {}, responseType = "json") =>
   }).then(r => r.data);
 
 // ---------------------- CORE ENDPOINTS ----------------------
-export const cleanup = (df, removeExclusion = true, countryCol = null) => {
+export const cleanup = (df, removeExclusion = true, countryCol = null, datasetId = null) => {
   const params = { remove_exclusion: removeExclusion };
   if (countryCol) params.country_col = countryCol;
+  if (datasetId) params.dataset_id = datasetId;
   return postJson(`${getProjectUrl()}/cleanup`, df, params);
 };
 
-export const validate = (df, empCol, mgrCol, spanCol = null, download = false) => {
+export const validate = (df, empCol, mgrCol, spanCol = null, download = false, datasetId = null) => {
   const params = { emp_col: empCol, mgr_col: mgrCol, span_col: spanCol || "", download };
+  if (datasetId) params.dataset_id = datasetId;
   return axios.post(`${getProjectUrl()}/validate`, df, {
     headers: getHeaders({ "Content-Type": "application/json" }),
     params,
@@ -455,9 +457,34 @@ export const getUserStats = async (username) => {
 // =================================================================
 const jsonHeaders = () => getHeaders({ "Content-Type": "application/json" });
 
-export const dbSaveBaseline = async ({ name, records, empCol, mgrCol, fteCol = null, flcCol = null, jobTitleCol = null, countryCol = null }) => {
-  const body = { name, records, emp_col: empCol, mgr_col: mgrCol, fte_col: fteCol, flc_col: flcCol, job_title_col: jobTitleCol, country_col: countryCol };
+export const dbSaveBaseline = async ({
+  name, records, empCol, mgrCol,
+  fteCol = null, flcCol = null, jobTitleCol = null, countryCol = null,
+  funcCol = null, subfuncCol = null, gradeCol = null, divisionCol = null,
+  entityCol = null, startDateCol = null, basicPayCol = null,
+  contractTypeCol = null, statusCol = null,
+}) => {
+  const body = {
+    name, records,
+    emp_col: empCol, mgr_col: mgrCol,
+    fte_col: fteCol, flc_col: flcCol,
+    job_title_col: jobTitleCol, country_col: countryCol,
+    func_col: funcCol, subfunc_col: subfuncCol,
+    grade_col: gradeCol, division_col: divisionCol,
+    entity_col: entityCol, start_date_col: startDateCol,
+    basic_pay_col: basicPayCol, contract_type_col: contractTypeCol,
+    status_col: statusCol,
+  };
   const res = await axios.post(`${getProjectUrl()}/db/save_baseline`, body, { headers: jsonHeaders() });
+  return res.data;
+};
+
+export const dbUpdateColumnConfig = async (datasetId, columns) => {
+  const res = await axios.patch(
+    `${getProjectUrl()}/db/datasets/${datasetId}/column-config`,
+    columns,
+    { headers: jsonHeaders() },
+  );
   return res.data;
 };
 

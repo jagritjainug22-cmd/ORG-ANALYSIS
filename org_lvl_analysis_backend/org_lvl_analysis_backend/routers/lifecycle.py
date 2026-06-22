@@ -78,6 +78,33 @@ class SaveBaselineBody(BaseModel):
     flc_col: Optional[str] = None
     job_title_col: Optional[str] = None
     country_col: Optional[str] = None
+    func_col: Optional[str] = None
+    subfunc_col: Optional[str] = None
+    grade_col: Optional[str] = None
+    division_col: Optional[str] = None
+    entity_col: Optional[str] = None
+    start_date_col: Optional[str] = None
+    basic_pay_col: Optional[str] = None
+    contract_type_col: Optional[str] = None
+    status_col: Optional[str] = None
+
+
+class ColumnConfigBody(BaseModel):
+    emp_col: Optional[str] = None
+    mgr_col: Optional[str] = None
+    fte_col: Optional[str] = None
+    flc_col: Optional[str] = None
+    job_title_col: Optional[str] = None
+    country_col: Optional[str] = None
+    func_col: Optional[str] = None
+    subfunc_col: Optional[str] = None
+    grade_col: Optional[str] = None
+    division_col: Optional[str] = None
+    entity_col: Optional[str] = None
+    start_date_col: Optional[str] = None
+    basic_pay_col: Optional[str] = None
+    contract_type_col: Optional[str] = None
+    status_col: Optional[str] = None
 
 class MoveBody(BaseModel):
     emp_id: str
@@ -202,6 +229,7 @@ class RationaliseApplyBody(BaseModel):
     approved_functions: List[Dict] = []
     approved_subfunctions: List[Dict] = []
     approved_titles: List[Dict] = []
+    dataset_id: Optional[int] = None
 
 
 # ---------------------------------------------------------------------------
@@ -817,6 +845,7 @@ def cleanup_endpoint(
     project_id: int,
     remove_exclusion: bool = True,
     country_col: Optional[str] = None,
+    dataset_id: Optional[int] = Query(None),
     user: dict = Depends(require_project_access()),
 ):
     username = user["username"]
@@ -828,6 +857,9 @@ def cleanup_endpoint(
         df = df.replace([np.inf, -np.inf], np.nan)
         rows_output = len(df)
         records = df.to_dict(orient="records")
+        if dataset_id is not None:
+            _require_dataset_in_project(dataset_id, project_id)
+            db_service.touch_dataset_pipeline(dataset_id, "cleanup")
         write_activity_log(
             username=username, action="process", module="Cleanup",
             rows_input=rows_input, rows_output=rows_output, status="success",
@@ -978,6 +1010,9 @@ def rationalise_apply_endpoint(
             approved_subfunctions=body.approved_subfunctions,
             approved_titles=body.approved_titles,
         )
+        if body.dataset_id is not None:
+            _require_dataset_in_project(body.dataset_id, project_id)
+            db_service.touch_dataset_pipeline(body.dataset_id, "rationalise")
         write_activity_log(
             username=username, action="process", module="RationaliseApply",
             rows_input=len(body.records), rows_output=len(updated),
@@ -1105,6 +1140,7 @@ async def validate_endpoint(
     mgr_col: str = Query(...),
     span_col: str | None = Query(None),
     download: bool = Query(False),
+    dataset_id: Optional[int] = Query(None),
     user: dict = Depends(require_project_access()),
 ):
     username = user["username"]
@@ -1130,6 +1166,10 @@ async def validate_endpoint(
         df_flags = result["df_with_flags"].replace([np.inf, -np.inf], np.nan)
         records = df_flags.where(pd.notnull(df_flags), None).to_dict(orient="records")
         circular_ids = result.get("circular_reference_ids", [])
+
+        if dataset_id is not None and not download:
+            _require_dataset_in_project(dataset_id, project_id)
+            db_service.touch_dataset_pipeline(dataset_id, "validate")
 
         write_activity_log(
             username=username, action="process", module="Validate",
@@ -1842,6 +1882,11 @@ def db_save_baseline(
             emp_col=body.emp_col, mgr_col=body.mgr_col,
             fte_col=body.fte_col, flc_col=body.flc_col,
             job_title_col=body.job_title_col, country_col=body.country_col,
+            func_col=body.func_col, subfunc_col=body.subfunc_col,
+            grade_col=body.grade_col, division_col=body.division_col,
+            entity_col=body.entity_col, start_date_col=body.start_date_col,
+            basic_pay_col=body.basic_pay_col, contract_type_col=body.contract_type_col,
+            status_col=body.status_col,
             project_id=project_id,
         )
         scenarios = db_service.list_scenarios(dataset_id)
@@ -1912,6 +1957,19 @@ def db_get_dataset(
 ):
     ds = _require_dataset_in_project(dataset_id, project_id)
     return {"dataset": ds, "scenarios": db_service.list_scenarios(dataset_id)}
+
+
+@router.patch("/db/datasets/{dataset_id}/column-config")
+def db_update_column_config(
+    dataset_id: int,
+    body: ColumnConfigBody,
+    project_id: int,
+    _user: dict = Depends(require_project_access()),
+):
+    _require_dataset_in_project(dataset_id, project_id)
+    columns = body.model_dump(exclude_unset=True)
+    db_service.update_dataset_column_config(dataset_id, columns)
+    return {"status": "updated", "dataset_id": dataset_id}
 
 
 @router.delete("/db/datasets/{dataset_id}")

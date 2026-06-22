@@ -190,10 +190,10 @@ export default function CompletenessHeatmap({ dfRecords = [], columns = [], empC
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
             </svg>
           </button>
-          {Array.from({ length: pageCount }, (_, i) => (
+            {Array.from({ length: pageCount }, (_, i) => (
             <button
               key={i} type="button" onClick={() => onPage(i)}
-              className={`w-7 h-7 rounded-lg text-xs font-semibold transition-colors ${i === page ? "bg-am-500 text-white" : "text-gray-500 hover:bg-gray-200"}`}
+              className={`w-7 h-7 rounded-lg text-xs font-semibold transition-colors ${i === page ? "bg-brand-500 text-white" : "text-gray-500 hover:bg-gray-200"}`}
             >
               {i + 1}
             </button>
@@ -217,14 +217,14 @@ export default function CompletenessHeatmap({ dfRecords = [], columns = [], empC
       {/* ─── Controls ─── */}
       <div className="bg-white border border-gray-200 rounded-xl px-5 py-4 shadow-sm">
         <div className="flex flex-wrap items-center gap-4">
-          <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2">
             <span className="text-sm text-gray-700 font-medium">
               Fields: <span className="font-bold text-gray-900">{selectedFields.length}</span> of {allColumns.length}
             </span>
             <button
               type="button"
               onClick={() => setShowConfigure(!showConfigure)}
-              className={`text-xs font-semibold px-2.5 py-1 rounded-lg border transition-all ${showConfigure ? "bg-am-500 text-white border-am-500" : "text-am-600 border-am-200 hover:bg-am-50"}`}
+              className={`text-xs font-semibold px-2.5 py-1 rounded-lg border transition-all ${showConfigure ? "bg-brand-500 text-white border-brand-500" : "text-brand-600 border-brand-200 hover:bg-brand-50"}`}
             >
               {showConfigure ? "Done" : "Configure"}
             </button>
@@ -235,7 +235,7 @@ export default function CompletenessHeatmap({ dfRecords = [], columns = [], empC
             <select
               value={groupCol}
               onChange={(e) => setGroupCol(e.target.value)}
-              className="text-sm font-medium rounded-lg border border-gray-300 focus:ring-2 focus:ring-am-500 px-2.5 py-1.5 bg-white outline-none"
+              className="text-sm font-medium rounded-lg border border-gray-300 focus:ring-2 focus:ring-brand-500 px-2.5 py-1.5 bg-white outline-none"
             >
               {allColumns.map((c) => <option key={c} value={c}>{c}</option>)}
             </select>
@@ -246,7 +246,7 @@ export default function CompletenessHeatmap({ dfRecords = [], columns = [], empC
               <input
                 type="checkbox" checked={showBlankGroup}
                 onChange={(e) => setShowBlankGroup(e.target.checked)}
-                className="rounded border-gray-300 text-am-500 focus:ring-am-500 w-3.5 h-3.5"
+                className="rounded border-gray-300 text-brand-500 focus:ring-brand-500 w-3.5 h-3.5"
               />
               Show "(blank)" group
             </label>
@@ -254,7 +254,7 @@ export default function CompletenessHeatmap({ dfRecords = [], columns = [], empC
           <button
             onClick={runAnalysis}
             disabled={loading || !dfRecords?.length}
-            className="ml-auto px-4 py-2 bg-am-500 hover:bg-am-600 disabled:opacity-50 text-white text-sm font-semibold rounded-xl shadow-sm transition-all inline-flex items-center gap-2"
+            className="ml-auto px-4 py-2 bg-brand-500 hover:bg-brand-600 disabled:opacity-50 text-white text-sm font-semibold rounded-xl shadow-sm transition-all inline-flex items-center gap-2"
           >
             {loading && <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />}
             Analyze
@@ -266,16 +266,16 @@ export default function CompletenessHeatmap({ dfRecords = [], columns = [], empC
             <input
               type="text" value={fieldFilter} onChange={(e) => setFieldFilter(e.target.value)}
               placeholder="Search fields…"
-              className="w-full text-sm px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-am-500 outline-none mb-3"
+              className="w-full text-sm px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none mb-3"
             />
             <div className="flex gap-3 mb-3">
-              <button type="button" onClick={() => setSelectedFields(defaultFields(allColumns, empCol, mgrCol))} className="text-xs text-am-600 hover:underline font-medium">Select all</button>
+              <button type="button" onClick={() => setSelectedFields(defaultFields(allColumns, empCol, mgrCol))} className="text-xs text-brand-600 hover:underline font-medium">Select all</button>
               <button type="button" onClick={() => setSelectedFields([])} className="text-xs text-gray-500 hover:underline">Clear</button>
             </div>
             <div className="max-h-48 overflow-y-auto grid grid-cols-2 sm:grid-cols-3 gap-1">
               {filteredFieldOptions.map((col) => (
                 <label key={col} className="flex items-center gap-2 text-sm text-gray-700 px-2 py-1.5 rounded-lg hover:bg-gray-50 cursor-pointer">
-                  <input type="checkbox" checked={selectedFields.includes(col)} onChange={() => toggleField(col)} className="rounded border-gray-300 text-am-500 focus:ring-am-500 w-3.5 h-3.5" />
+                  <input type="checkbox" checked={selectedFields.includes(col)} onChange={() => toggleField(col)} className="rounded border-gray-300 text-brand-500 focus:ring-brand-500 w-3.5 h-3.5" />
                   <span className="truncate">{col}</span>
                 </label>
               ))}
@@ -423,8 +423,8 @@ export default function CompletenessHeatmap({ dfRecords = [], columns = [], empC
 
       {/* ─── Drill-down ─── */}
       {drillDown && (
-        <div ref={drillDownRef} className="rounded-xl border border-am-200 overflow-hidden shadow-sm animate-fadeInUp">
-          <div className="flex items-center justify-between px-5 py-3 bg-am-500 text-white">
+        <div ref={drillDownRef} className="rounded-xl border border-brand-200 overflow-hidden shadow-sm animate-fadeInUp">
+          <div className="flex items-center justify-between px-5 py-3 bg-brand-500 text-white">
             <p className="text-sm font-semibold">
               {drillDown.missing} row{drillDown.missing !== 1 ? "s" : ""} missing{" "}
               <span className="font-mono opacity-80">{drillDown.field}</span>{" "}in{" "}

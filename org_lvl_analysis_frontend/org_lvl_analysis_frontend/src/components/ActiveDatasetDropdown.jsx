@@ -129,23 +129,23 @@ export default function ActiveDatasetDropdown({
 
       {/* Pill + dropdown */}
       <div className="relative flex items-center gap-1.5" ref={ref}>
-        <svg className="w-3.5 h-3.5 text-gray-300 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <svg className="w-3.5 h-3.5 text-white flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
         </svg>
 
         <button
           onClick={() => setOpen((v) => !v)}
           className={`group inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border transition-all ${
-            open
-              ? "bg-[#01244a] text-white border-[#01244a] shadow-sm"
-              : "bg-[#01244a]/8 text-[#01244a] border-[#01244a]/20 hover:bg-[#01244a]/14 hover:border-[#01244a]/35"
+              open
+                ? "bg-brand-800 text-white border-brand-800 shadow-sm"
+                : "bg-brand-800/8 text-white border-brand-800/20 hover:bg-brand-800/14 hover:border-brand-800/35"
           } max-w-[260px]`}
           title={label}
         >
-          <svg className={`w-3 h-3 flex-shrink-0 ${open ? "text-[#c5a84a]" : "text-[#c5a84a]"}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg className={`w-3 h-3 flex-shrink-0 text-white`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4" />
           </svg>
-          <span className="truncate max-w-[180px]">{label}</span>
+          <span className="truncate max-w-[180px] text-white">{label}</span>
           <svg
             className={`w-3 h-3 flex-shrink-0 transition-transform ${open ? "rotate-180" : ""}`}
             fill="none" stroke="currentColor" viewBox="0 0 24 24"
@@ -203,14 +203,14 @@ export default function ActiveDatasetDropdown({
                           disabled={isLoading || (loadingPickId !== null && !isLoading)}
                           className={`w-full flex items-center gap-3 px-4 py-3 text-left transition-colors ${
                             isActive
-                              ? "bg-[#01244a]/5"
-                              : "hover:bg-gray-50"
+                              ? "bg-brand-800/6"
+                                              : "hover:bg-gray-50"
                           } ${(loadingPickId !== null && !isLoading) ? "opacity-40 cursor-not-allowed" : ""}`}
                         >
                           {/* Avatar */}
                           <div
                             className="w-8 h-8 rounded-lg flex items-center justify-center text-white text-[10px] font-bold flex-shrink-0"
-                            style={{ background: isActive ? NAVY : "#64748b" }}
+                            style={{ background: isActive ? "#0b2b4a" : "#64748b" }}
                           >
                             {isLoading ? (
                               <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none">
@@ -223,11 +223,11 @@ export default function ActiveDatasetDropdown({
                           {/* Info */}
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-1.5">
-                              <span className={`text-sm font-semibold truncate ${isActive ? "text-[#01244a]" : "text-gray-800"}`}>
+                              <span className={`text-sm font-semibold truncate ${isActive ? "text-white" : "text-gray-800"}`}>
                                 {d.name}
                               </span>
                               {isActive && (
-                                <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-[#01244a] text-white flex-shrink-0">
+                                <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-brand-800 text-white flex-shrink-0">
                                   <svg className="w-2 h-2" fill="currentColor" viewBox="0 0 20 20">
                                     <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
                                   </svg>

@@ -24,7 +24,7 @@ function LoginPage() {
         className="hidden lg:flex relative flex-col justify-between p-12 text-white overflow-hidden"
         style={{
           background:
-            "linear-gradient(135deg, #0A3D4F 0%, #0D6B5F 55%, #1a8a7d 100%)",
+            "linear-gradient(135deg, #0a3f86 0%, #155bb2 55%, #315f9b 100%)",
         }}
       >
         {/* subtle decorative grid */}
@@ -96,10 +96,10 @@ function LoginPage() {
       </div>
 
       {/* RIGHT: Login form */}
-      <div className="flex items-center justify-center p-6 sm:p-12 bg-gray-50">
+      <div className="flex items-center justify-center p-6 sm:p-12 bg-surface-soft">
         {/* Mobile brand header */}
         <div className="absolute top-6 left-6 lg:hidden flex items-center gap-2">
-          <span className="text-am-500 font-bold text-lg">A&amp;M</span>
+          <span className="text-brand-500 font-bold text-lg">A&amp;M</span>
           <span className="text-gray-500 text-sm">OrgSight</span>
         </div>
 
@@ -138,11 +138,11 @@ function RequireAdmin({ children }) {
 export default function App() {
   const { isAuthenticated, mustChangePassword, loading } = useAuth();
 
-  if (loading) {
+    if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="min-h-screen bg-surface-soft flex items-center justify-center">
         <div className="flex flex-col items-center gap-3">
-          <div className="w-10 h-10 border-4 border-am-100 border-t-am-500 rounded-full animate-spin"></div>
+          <div className="w-10 h-10 border-4 border-brand-100 border-t-brand-500 rounded-full animate-spin"></div>
           <p className="text-gray-500 text-sm">Restoring session...</p>
         </div>
       </div>

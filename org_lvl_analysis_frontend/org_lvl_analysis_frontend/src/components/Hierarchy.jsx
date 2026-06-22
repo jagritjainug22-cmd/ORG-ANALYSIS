@@ -11,6 +11,15 @@ export default function Hierarchy({
   fteCol,
   jobTitleCol,
   countryCol,
+  funcCol,
+  subfuncCol,
+  gradeCol,
+  divisionCol,
+  entityCol,
+  startDateCol,
+  basicPayCol,
+  contractTypeCol,
+  statusCol,
   onBaselineSaved,
   uploadedFileName,
   formulas = [],
@@ -72,6 +81,15 @@ export default function Hierarchy({
             flcCol: flcCol || null,
             jobTitleCol: jobTitleCol || null,
             countryCol: countryCol || null,
+            funcCol: funcCol || null,
+            subfuncCol: subfuncCol || null,
+            gradeCol: gradeCol || null,
+            divisionCol: divisionCol || null,
+            entityCol: entityCol || null,
+            startDateCol: startDateCol || null,
+            basicPayCol: basicPayCol || null,
+            contractTypeCol: contractTypeCol || null,
+            statusCol: statusCol || null,
           });
           const defaultScenario = (saved.scenarios || []).find((s) => s.name === "Baseline")
             || (saved.scenarios || [])[0];
@@ -117,9 +135,9 @@ export default function Hierarchy({
   return (
     <div className="space-y-6">
       {/* Header Section */}
-      <div className="bg-am-50 border border-am-200 rounded-lg p-6">
+      <div className="bg-brand-50 border border-brand-200 rounded-lg p-6">
         <div className="flex items-start gap-4">
-          <div className="w-12 h-12 bg-am-500 rounded-lg flex items-center justify-center flex-shrink-0">
+          <div className="w-12 h-12 bg-brand-500 rounded-lg flex items-center justify-center flex-shrink-0">
             <svg
               className="w-7 h-7 text-white"
               fill="none"
@@ -150,7 +168,7 @@ export default function Hierarchy({
         <button
           onClick={runPreview}
           disabled={!canRun || loading}
-          className="flex-1 px-6 py-4 bg-am-500 hover:bg-am-600 text-white rounded-lg font-semibold shadow-lg hover:shadow-xl transition-all duration-200 disabled:bg-gray-200 disabled:text-gray-500 disabled:cursor-not-allowed flex items-center justify-center gap-3"
+          className="flex-1 px-6 py-4 bg-brand-500 hover:bg-brand-600 text-white rounded-lg font-semibold shadow-lg hover:shadow-xl transition-all duration-200 disabled:bg-gray-200 disabled:text-gray-500 disabled:cursor-not-allowed flex items-center justify-center gap-3"
         >
           {loading ? (
             <>

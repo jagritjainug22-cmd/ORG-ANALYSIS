@@ -98,6 +98,7 @@ export default function Rationalise({
   jobTitleCol,
   columns,
   setColumns,
+  datasetId = null,
 }) {
   const [activeTab, setActiveTab] = useState("functions");
 
@@ -192,6 +193,7 @@ export default function Rationalise({
         approved_functions: buildApproved(funcMappings, funcOverrides, funcAccepted),
         approved_subfunctions: buildApproved(subfuncMappings, subfuncOverrides, subfuncAccepted, true),
         approved_titles: buildApproved(titleMappings, titleOverrides, titleAccepted, true),
+        dataset_id: datasetId || null,
       };
       const res = await rationaliseApply(body);
       if (res?.records) {
@@ -224,7 +226,7 @@ export default function Rationalise({
       {/* Header */}
       <div className="bg-brand-50 border border-brand-100 rounded-lg p-5">
         <div className="flex items-start gap-3">
-          <div className="w-10 h-10 bg-am-500 rounded-lg flex items-center justify-center flex-shrink-0">
+          <div className="w-10 h-10 bg-brand-500 rounded-lg flex items-center justify-center flex-shrink-0">
             <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" /></svg>
           </div>
           <div>
@@ -252,7 +254,7 @@ export default function Rationalise({
           <button
             onClick={handleRun}
             disabled={!hasRequiredCols || running}
-            className="w-full py-3 bg-am-500 text-white rounded-lg text-sm font-semibold hover:bg-am-600 disabled:bg-gray-200 disabled:text-gray-500 disabled:cursor-not-allowed transition shadow-sm flex items-center justify-center gap-2"
+            className="w-full py-3 bg-brand-500 text-white rounded-lg text-sm font-semibold hover:bg-brand-600 disabled:bg-gray-200 disabled:text-gray-500 disabled:cursor-not-allowed transition shadow-sm flex items-center justify-center gap-2"
           >
             {running ? (
               <>
@@ -318,7 +320,7 @@ export default function Rationalise({
             <button
               onClick={handleApply}
               disabled={applying || totalAccepted === 0}
-              className="px-6 py-2.5 bg-am-500 text-white rounded-lg text-sm font-semibold hover:bg-am-600 disabled:bg-gray-200 disabled:text-gray-500 disabled:cursor-not-allowed transition shadow-sm"
+              className="px-6 py-2.5 bg-brand-500 text-white rounded-lg text-sm font-semibold hover:bg-brand-600 disabled:bg-gray-200 disabled:text-gray-500 disabled:cursor-not-allowed transition shadow-sm"
             >
               {applying ? (
                 <span className="flex items-center gap-2">

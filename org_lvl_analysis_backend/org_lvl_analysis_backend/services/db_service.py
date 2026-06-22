@@ -634,6 +634,28 @@ def _migrate_v10(conn: PgConnection) -> None:
     c.execute("CREATE INDEX IF NOT EXISTS idx_rat_cache_lookup ON rationalisation_cache(input_value, input_type, context_func)")
 
 
+def _migrate_v11(conn: PgConnection) -> None:
+    """v11: extended column mappings + pipeline timestamps on datasets."""
+    c = conn.cursor()
+    existing = {
+        row["column_name"]
+        for row in c.execute(
+            """
+            SELECT column_name FROM information_schema.columns
+            WHERE table_schema = 'public' AND table_name = 'datasets'
+            """
+        ).fetchall()
+    }
+    new_cols = [
+        "func_col", "subfunc_col", "grade_col", "division_col", "entity_col",
+        "start_date_col", "basic_pay_col", "contract_type_col", "status_col",
+        "last_cleanup_at", "last_validate_at", "last_rationalise_at",
+    ]
+    for col in new_cols:
+        if col not in existing:
+            c.execute(f"ALTER TABLE datasets ADD COLUMN {col} TEXT")
+
+
 _MIGRATIONS = [
     (1, "projects + assignments + audit_log tables", _migrate_v1),
     (2, "project_id on datasets + Legacy project backfill", _migrate_v2),
@@ -645,7 +667,22 @@ _MIGRATIONS = [
     (8, "effective_date on change_log", _migrate_v8),
     (9, "dataset_formulas table", _migrate_v9),
     (10, "rationalisation_cache table", _migrate_v10),
+    (11, "extended column mappings + pipeline timestamps on datasets", _migrate_v11),
 ]
+
+
+# All optional column fields stored on the datasets row (snake_case DB keys).
+DATASET_COLUMN_FIELDS = (
+    "emp_col", "mgr_col", "fte_col", "flc_col", "job_title_col", "country_col",
+    "func_col", "subfunc_col", "grade_col", "division_col", "entity_col",
+    "start_date_col", "basic_pay_col", "contract_type_col", "status_col",
+)
+
+PIPELINE_TIMESTAMP_FIELDS = {
+    "cleanup": "last_cleanup_at",
+    "validate": "last_validate_at",
+    "rationalise": "last_rationalise_at",
+}
 
 
 def _run_migrations() -> None:
@@ -782,6 +819,15 @@ def save_baseline(
     flc_col: Optional[str] = None,
     job_title_col: Optional[str] = None,
     country_col: Optional[str] = None,
+    func_col: Optional[str] = None,
+    subfunc_col: Optional[str] = None,
+    grade_col: Optional[str] = None,
+    division_col: Optional[str] = None,
+    entity_col: Optional[str] = None,
+    start_date_col: Optional[str] = None,
+    basic_pay_col: Optional[str] = None,
+    contract_type_col: Optional[str] = None,
+    status_col: Optional[str] = None,
     project_id: Optional[int] = None,
 ) -> int:
     """Persist a fully-processed dataset as the baseline and create a default
@@ -794,11 +840,15 @@ def save_baseline(
             """
             INSERT INTO datasets
                 (name, username, upload_time, emp_col, mgr_col, fte_col, flc_col,
-                 job_title_col, country_col, row_count, project_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 job_title_col, country_col, func_col, subfunc_col, grade_col,
+                 division_col, entity_col, start_date_col, basic_pay_col,
+                 contract_type_col, status_col, row_count, project_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (name, username, now, emp_col, mgr_col, fte_col, flc_col,
-             job_title_col, country_col, len(records), project_id),
+             job_title_col, country_col, func_col, subfunc_col, grade_col,
+             division_col, entity_col, start_date_col, basic_pay_col,
+             contract_type_col, status_col, len(records), project_id),
         )
         dataset_id = c.lastrowid
 
@@ -876,6 +926,31 @@ def get_dataset(dataset_id: int) -> Optional[Dict[str, Any]]:
     with _connect_ro() as conn:
         row = conn.execute("SELECT * FROM datasets WHERE id = ?", (dataset_id,)).fetchone()
         return dict(row) if row else None
+
+
+def update_dataset_column_config(dataset_id: int, columns: Dict[str, Optional[str]]) -> None:
+    """Persist column mapping fields on an existing dataset row."""
+    allowed = set(DATASET_COLUMN_FIELDS)
+    updates = {k: v for k, v in columns.items() if k in allowed}
+    if not updates:
+        return
+    set_clause = ", ".join(f"{col} = ?" for col in updates)
+    params = list(updates.values()) + [dataset_id]
+    with _connect() as conn:
+        conn.execute(
+            f"UPDATE datasets SET {set_clause} WHERE id = ?",
+            params,
+        )
+
+
+def touch_dataset_pipeline(dataset_id: int, step: str) -> None:
+    """Record when cleanup, validate, or rationalise was last run for a dataset."""
+    col = PIPELINE_TIMESTAMP_FIELDS.get(step)
+    if not col:
+        return
+    now = datetime.utcnow().isoformat()
+    with _connect() as conn:
+        conn.execute(f"UPDATE datasets SET {col} = ? WHERE id = ?", (now, dataset_id))
 
 
 def get_dataset_preview(

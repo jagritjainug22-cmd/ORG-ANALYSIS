@@ -249,9 +249,9 @@ export default function Crosstab({ df, fteCol, flcCol, formulas = [], datasetId 
   return (
     <div className="space-y-6">
       {/* Header Section */}
-      <div className="bg-am-50 border border-am-200 rounded-lg p-6">
+      <div className="bg-brand-50 border border-brand-200 rounded-lg p-6">
         <div className="flex items-start gap-4">
-          <div className="w-12 h-12 bg-am-500 rounded-lg flex items-center justify-center flex-shrink-0">
+          <div className="w-12 h-12 bg-brand-500 rounded-lg flex items-center justify-center flex-shrink-0">
             <svg
               className="w-7 h-7 text-white"
               fill="none"
@@ -281,7 +281,7 @@ export default function Crosstab({ df, fteCol, flcCol, formulas = [], datasetId 
       <div className="bg-white border border-gray-200 rounded-lg p-6">
         <h4 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
           <svg
-            className="w-5 h-5 text-am-500"
+            className="w-5 h-5 text-brand-500"
             fill="none"
             stroke="currentColor"
             viewBox="0 0 24 24"
@@ -304,7 +304,7 @@ export default function Crosstab({ df, fteCol, flcCol, formulas = [], datasetId 
             <select
               value={colX}
               onChange={(e) => setColX(e.target.value)}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-am-500 focus:border-am-500 outline-none transition-all bg-white hover:border-gray-400"
+              className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition-all bg-white hover:border-gray-400"
             >
               <option value="">Select column...</option>
               {columns.map((c) => (
@@ -325,7 +325,7 @@ export default function Crosstab({ df, fteCol, flcCol, formulas = [], datasetId 
             <select
               value={colY}
               onChange={(e) => setColY(e.target.value)}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-am-500 focus:border-am-500 outline-none transition-all bg-white hover:border-gray-400"
+              className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition-all bg-white hover:border-gray-400"
             >
               <option value="">Select column...</option>
               {columns.map((c) => (
@@ -360,10 +360,10 @@ export default function Crosstab({ df, fteCol, flcCol, formulas = [], datasetId 
             id="enableOthers"
             checked={enableOthersGrouping}
             onChange={(e) => setEnableOthersGrouping(e.target.checked)}
-            className="w-5 h-5 text-am-500 border-gray-300 rounded focus:ring-2 focus:ring-am-500"
+            className="w-5 h-5 text-brand-500 border-gray-300 rounded focus:ring-2 focus:ring-brand-500"
           />
           <label htmlFor="enableOthers" className="text-lg font-semibold text-gray-800 flex items-center gap-2 cursor-pointer">
-            <svg className="w-5 h-5 text-am-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-5 h-5 text-brand-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
             </svg>
             Enable "Others" Grouping
@@ -378,7 +378,7 @@ export default function Crosstab({ df, fteCol, flcCol, formulas = [], datasetId 
               <select
                 value={thresholdMetric}
                 onChange={(e) => setThresholdMetric(e.target.value)}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-am-500 focus:border-am-500 outline-none transition-all bg-white hover:border-gray-400"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition-all bg-white hover:border-gray-400"
               >
                 {thresholdMetrics.map((metric) => (
                   <option key={metric} value={metric}>{metric}</option>
@@ -402,7 +402,7 @@ export default function Crosstab({ df, fteCol, flcCol, formulas = [], datasetId 
                   value={colXThreshold}
                   onChange={(e) => setColXThreshold(parseFloat(e.target.value) || 0)}
                   disabled={!colX}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-am-500 focus:border-am-500 outline-none transition-all disabled:bg-gray-100 disabled:cursor-not-allowed"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition-all disabled:bg-gray-100 disabled:cursor-not-allowed"
                 />
                 <p className="text-xs text-gray-500 mt-1">Group categories with less than this % as "Others"</p>
               </div>
@@ -421,7 +421,7 @@ export default function Crosstab({ df, fteCol, flcCol, formulas = [], datasetId 
                   value={colYThreshold}
                   onChange={(e) => setColYThreshold(parseFloat(e.target.value) || 0)}
                   disabled={!colY}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-am-500 focus:border-am-500 outline-none transition-all disabled:bg-gray-100 disabled:cursor-not-allowed"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition-all disabled:bg-gray-100 disabled:cursor-not-allowed"
                 />
                 <p className="text-xs text-gray-500 mt-1">Group categories with less than this % as "Others"</p>
               </div>
@@ -431,7 +431,7 @@ export default function Crosstab({ df, fteCol, flcCol, formulas = [], datasetId 
             <button
               onClick={fetchPreview}
               disabled={loading || (!colX && !colY)}
-              className="w-full px-4 py-3 bg-am-100 hover:bg-am-200 text-am-700 rounded-lg font-medium transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              className="w-full px-4 py-3 bg-brand-100 hover:bg-brand-200 text-brand-700 rounded-lg font-medium transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
@@ -442,7 +442,7 @@ export default function Crosstab({ df, fteCol, flcCol, formulas = [], datasetId 
 
             {/* Preview Results */}
             {showPreview && previewData && (
-              <div className="mt-4 p-4 bg-am-50 border border-am-200 rounded-lg">
+              <div className="mt-4 p-4 bg-brand-50 border border-brand-200 rounded-lg">
                 <h5 className="font-semibold text-gray-800 mb-3">Categories to be grouped as "Others":</h5>
                 
                 {previewData.colX_categories && previewData.colX_categories.length > 0 && (
@@ -457,7 +457,7 @@ export default function Crosstab({ df, fteCol, flcCol, formulas = [], datasetId 
                               type="checkbox"
                               checked={!excludedCategories.includes(`colX:${cat.name}`)}
                               onChange={() => toggleExcludeCategory(cat.name, 'colX')}
-                              className="w-4 h-4 text-am-500 border-gray-300 rounded focus:ring-2 focus:ring-am-500"
+                              className="w-4 h-4 text-brand-500 border-gray-300 rounded focus:ring-2 focus:ring-brand-500"
                             />
                             <span className="text-gray-700">
                               {cat.name} ({cat.percentage.toFixed(1)}% - {thresholdMetric}: {cat.metric_value.toLocaleString()})
@@ -483,7 +483,7 @@ export default function Crosstab({ df, fteCol, flcCol, formulas = [], datasetId 
                               type="checkbox"
                               checked={!excludedCategories.includes(`colY:${cat.name}`)}
                               onChange={() => toggleExcludeCategory(cat.name, 'colY')}
-                              className="w-4 h-4 text-am-500 border-gray-300 rounded focus:ring-2 focus:ring-am-500"
+                              className="w-4 h-4 text-brand-500 border-gray-300 rounded focus:ring-2 focus:ring-brand-500"
                             />
                             <span className="text-gray-700">
                               {cat.name} ({cat.percentage.toFixed(1)}% - {thresholdMetric}: {cat.metric_value.toLocaleString()})
@@ -511,7 +511,7 @@ export default function Crosstab({ df, fteCol, flcCol, formulas = [], datasetId 
         <button
           onClick={generate}
           disabled={!canRun || loading}
-          className="flex-1 px-6 py-4 bg-am-500 hover:bg-am-600 text-white rounded-lg font-semibold shadow-lg hover:shadow-xl transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3"
+          className="flex-1 px-6 py-4 bg-brand-500 hover:bg-brand-600 text-white rounded-lg font-semibold shadow-lg hover:shadow-xl transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3"
         >
           {loading ? (
             <>
@@ -607,8 +607,8 @@ export default function Crosstab({ df, fteCol, flcCol, formulas = [], datasetId 
         <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
           <div className="bg-gray-50 px-6 py-4 border-b border-gray-200">
             <h4 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
-              <svg
-                className="w-5 h-5 text-am-500"
+                <svg
+                className="w-5 h-5 text-brand-500"
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"

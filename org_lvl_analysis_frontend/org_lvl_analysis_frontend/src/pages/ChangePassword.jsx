@@ -41,10 +41,10 @@ export default function ChangePassword() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center p-6">
+    <div className="min-h-screen bg-surface-soft flex items-center justify-center p-6">
       <div className="w-full max-w-md">
         <div className="flex items-center gap-3 mb-6 justify-center">
-          <span className="text-am-500 font-bold text-xl tracking-tight">A&amp;M</span>
+          <span className="text-brand-500 font-bold text-xl tracking-tight">A&amp;M</span>
           <span className="h-5 w-px bg-gray-300" />
           <span className="text-gray-800 font-semibold">OrgSight</span>
         </div>
@@ -67,7 +67,7 @@ export default function ChangePassword() {
               <input
                 type="password" value={currentPass}
                 onChange={(e) => setCurrentPass(e.target.value)}
-                className="w-full border border-gray-300 rounded-md px-4 py-2.5 text-sm focus:ring-2 focus:ring-am-500 focus:border-am-500 outline-none transition"
+                className="w-full border border-gray-300 rounded-md px-4 py-2.5 text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition"
                 required
                 autoComplete="current-password"
               />
@@ -77,7 +77,7 @@ export default function ChangePassword() {
               <input
                 type="password" value={newPass}
                 onChange={(e) => setNewPass(e.target.value)}
-                className="w-full border border-gray-300 rounded-md px-4 py-2.5 text-sm focus:ring-2 focus:ring-am-500 focus:border-am-500 outline-none transition"
+                className="w-full border border-gray-300 rounded-md px-4 py-2.5 text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition"
                 required minLength={8}
                 autoComplete="new-password"
               />
@@ -87,7 +87,7 @@ export default function ChangePassword() {
               <input
                 type="password" value={confirmPass}
                 onChange={(e) => setConfirmPass(e.target.value)}
-                className="w-full border border-gray-300 rounded-md px-4 py-2.5 text-sm focus:ring-2 focus:ring-am-500 focus:border-am-500 outline-none transition"
+                className="w-full border border-gray-300 rounded-md px-4 py-2.5 text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition"
                 required minLength={8}
                 autoComplete="new-password"
               />
@@ -95,7 +95,7 @@ export default function ChangePassword() {
             <div className="flex gap-3 pt-2">
               <button
                 type="submit" disabled={loading}
-                className="flex-1 py-2.5 bg-am-500 hover:bg-am-600 text-white rounded-md font-medium transition disabled:opacity-50 text-sm"
+                className="flex-1 py-2.5 bg-brand-500 hover:bg-brand-600 text-white rounded-md font-medium transition disabled:opacity-50 text-sm"
               >
                 {loading ? "Changing..." : "Change Password"}
               </button>

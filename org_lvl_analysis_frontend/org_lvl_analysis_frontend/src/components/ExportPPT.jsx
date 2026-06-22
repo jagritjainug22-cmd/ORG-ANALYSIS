@@ -103,7 +103,7 @@ export default function ExportPPT({ df = null }) {
       onClick={() => {
         console.log("Export functionality for general use");
       }}
-      className="w-full px-4 py-2 bg-am-500 hover:bg-am-600 text-white rounded-lg shadow-md hover:shadow-lg transition-all duration-200 font-medium"
+      className="w-full px-4 py-2 bg-brand-500 hover:bg-brand-600 text-white rounded-lg shadow-md hover:shadow-lg transition-all duration-200 font-medium"
     >
       Export to Excel
     </button>

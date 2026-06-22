@@ -73,7 +73,7 @@ export default function ConfirmDialog({
             className={`px-4 py-2 rounded-md text-sm font-medium text-white transition disabled:opacity-40 disabled:cursor-not-allowed ${
               destructive
                 ? "bg-red-600 hover:bg-red-700"
-                : "bg-am-500 hover:bg-am-600"
+                : "bg-brand-500 hover:bg-brand-600"
             }`}
           >
             {confirmLabel}

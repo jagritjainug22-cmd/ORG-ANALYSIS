@@ -3,7 +3,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import { useConfirmLogout } from "../hooks/useConfirmLogout";
 import { useWorkGuard } from "../contexts/WorkGuardContext";
-import { setCurrentProjectId, fetchProjectDetail, orgchart, acquireLock, lockHeartbeat, releaseLock, dbPromoteScenario, dbResetScenario, releaseDatasetLock, dbListDatasets, dbGetDatasetRecords, dbListFormulas, smartUpload, autoMapColumns } from "../api/backend";
+import { setCurrentProjectId, fetchProjectDetail, orgchart, acquireLock, lockHeartbeat, releaseLock, dbPromoteScenario, dbResetScenario, releaseDatasetLock, dbListDatasets, dbGetDatasetRecords, dbListFormulas, smartUpload, autoMapColumns, dbUpdateColumnConfig } from "../api/backend";
 import ActiveDatasetDropdown from "../components/ActiveDatasetDropdown";
 import FormulaEditor from "../components/FormulaEditor";
 
@@ -302,7 +302,7 @@ export default function ProjectWorkspace() {
     }
   };
 
-  // --- Smart pipeline handler ---
+  // --- Smart upload handler ---
   const hydrateColumnSelections = useCallback((mappings) => {
     if (!mappings) return;
     const get = (key) => (mappings[key] || {}).source_column || "";
@@ -322,6 +322,92 @@ export default function ProjectWorkspace() {
     setContractTypeCol(get("contract_type"));
     setStatusCol(get("status"));
   }, []);
+
+  const hydrateColumnsFromDataset = useCallback((dataset) => {
+    if (!dataset) return;
+    setEmpCol(dataset.emp_col || "");
+    setMgrCol(dataset.mgr_col || "");
+    setFteCol(dataset.fte_col || "");
+    setFlcCol(dataset.flc_col || "");
+    setCountryCol(dataset.country_col || "");
+    setJobTitleCol(dataset.job_title_col || "");
+    setFuncCol(dataset.func_col || "");
+    setSubfuncCol(dataset.subfunc_col || "");
+    setGradeCol(dataset.grade_col || "");
+    setDivisionCol(dataset.division_col || "");
+    setEntityCol(dataset.entity_col || "");
+    setStartDateCol(dataset.start_date_col || "");
+    setBasicPayCol(dataset.basic_pay_col || "");
+    setContractTypeCol(dataset.contract_type_col || "");
+    setStatusCol(dataset.status_col || "");
+  }, []);
+
+  const fillMissingColumnsFromAutoMap = useCallback(async (dataset, cols, records) => {
+    const optionalDbFields = [
+      "func_col", "subfunc_col", "grade_col", "division_col", "entity_col",
+      "start_date_col", "basic_pay_col", "contract_type_col", "status_col",
+    ];
+    const needsAutoMap = optionalDbFields.some((f) => !dataset[f]);
+    if (!needsAutoMap || !cols?.length || !records?.length) return;
+    try {
+      const mapRes = await autoMapColumns(cols, records.slice(0, 10));
+      setColumnMappings(mapRes);
+      const get = (key) => (mapRes[key] || {}).source_column || "";
+      if (!dataset.func_col && get("function")) setFuncCol(get("function"));
+      if (!dataset.subfunc_col && get("subfunction")) setSubfuncCol(get("subfunction"));
+      if (!dataset.grade_col && get("grade")) setGradeCol(get("grade"));
+      if (!dataset.division_col && get("division")) setDivisionCol(get("division"));
+      if (!dataset.entity_col && get("entity")) setEntityCol(get("entity"));
+      if (!dataset.start_date_col && get("start_date")) setStartDateCol(get("start_date"));
+      if (!dataset.basic_pay_col && get("basic_pay")) setBasicPayCol(get("basic_pay"));
+      if (!dataset.contract_type_col && get("contract_type")) setContractTypeCol(get("contract_type"));
+      if (!dataset.status_col && get("status")) setStatusCol(get("status"));
+      if (dataset.id) {
+        await dbUpdateColumnConfig(dataset.id, {
+          func_col: dataset.func_col || get("function") || null,
+          subfunc_col: dataset.subfunc_col || get("subfunction") || null,
+          grade_col: dataset.grade_col || get("grade") || null,
+          division_col: dataset.division_col || get("division") || null,
+          entity_col: dataset.entity_col || get("entity") || null,
+          start_date_col: dataset.start_date_col || get("start_date") || null,
+          basic_pay_col: dataset.basic_pay_col || get("basic_pay") || null,
+          contract_type_col: dataset.contract_type_col || get("contract_type") || null,
+          status_col: dataset.status_col || get("status") || null,
+        });
+      }
+    } catch (err) {
+      console.warn("Auto-map fallback for saved dataset failed:", err);
+    }
+  }, []);
+
+  // Persist column config when user edits dropdowns on a saved dataset
+  useEffect(() => {
+    if (!datasetId) return;
+    const timer = setTimeout(() => {
+      dbUpdateColumnConfig(datasetId, {
+        emp_col: empCol || null,
+        mgr_col: mgrCol || null,
+        fte_col: fteCol || null,
+        flc_col: flcCol || null,
+        job_title_col: jobTitleCol || null,
+        country_col: countryCol || null,
+        func_col: funcCol || null,
+        subfunc_col: subfuncCol || null,
+        grade_col: gradeCol || null,
+        division_col: divisionCol || null,
+        entity_col: entityCol || null,
+        start_date_col: startDateCol || null,
+        basic_pay_col: basicPayCol || null,
+        contract_type_col: contractTypeCol || null,
+        status_col: statusCol || null,
+      }).catch(() => {});
+    }, 800);
+    return () => clearTimeout(timer);
+  }, [
+    datasetId, empCol, mgrCol, fteCol, flcCol, jobTitleCol, countryCol,
+    funcCol, subfuncCol, gradeCol, divisionCol, entityCol,
+    startDateCol, basicPayCol, contractTypeCol, statusCol,
+  ]);
 
   const handleSmartUpload = useCallback(async (file) => {
     setUploading(true);
@@ -384,7 +470,7 @@ export default function ProjectWorkspace() {
           <p className="text-gray-500 mb-6">{projectError.message}</p>
           <button
             onClick={() => navigate("/projects")}
-            className="px-6 py-2.5 bg-am-500 hover:bg-am-600 text-white rounded-md font-medium transition shadow-sm"
+            className="px-6 py-2.5 bg-brand-500 hover:bg-brand-600 text-white rounded-md font-medium transition shadow-sm"
           >
             Back to Projects
           </button>
@@ -398,7 +484,7 @@ export default function ProjectWorkspace() {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="flex flex-col items-center gap-3">
-          <div className="w-10 h-10 border-4 border-am-100 border-t-am-500 rounded-full animate-spin"></div>
+          <div className="w-10 h-10 border-4 border-brand-100 border-t-brand-500 rounded-full animate-spin"></div>
           <p className="text-gray-500 text-sm">Loading project...</p>
         </div>
       </div>
@@ -424,12 +510,9 @@ export default function ProjectWorkspace() {
       setDatasetId(dataset.id);
       setScenarios(scenarios);
       setActiveScenarioId(scenarioId);
-      setEmpCol(dataset.emp_col || "");
-      setMgrCol(dataset.mgr_col || "");
-      if (dataset.fte_col) setFteCol(dataset.fte_col);
-      if (dataset.flc_col) setFlcCol(dataset.flc_col);
-      if (dataset.job_title_col) setJobTitleCol(dataset.job_title_col);
-      if (dataset.country_col) setCountryCol(dataset.country_col);
+      hydrateColumnsFromDataset(dataset);
+      setColConfigCollapsed(false);
+      await fillMissingColumnsFromAutoMap(dataset, cols, records);
       setFilteredRowCount(null);
       const scenarioName = scenarios.find((s) => s.id === scenarioId)?.name || "Baseline";
       setActiveDatasetLabel(dataset.name + " — " + scenarioName);
@@ -487,16 +570,16 @@ export default function ProjectWorkspace() {
             uploadedFileName={uploadedFileName}
             setUploadedFileName={setUploadedFileName}
             columnMappings={columnMappings}
-            onDatasetPicked={({ dataset, scenarios: scs, activeScenarioId: sid }) => {
+            datasetId={datasetId}
+            onDatasetPicked={async ({ dataset, scenarios: scs, activeScenarioId: sid, records, columns: cols }) => {
               setDatasetId(dataset.id);
               setScenarios(scs);
               setActiveScenarioId(sid);
-              if (dataset.emp_col) setEmpCol(dataset.emp_col);
-              if (dataset.mgr_col) setMgrCol(dataset.mgr_col);
-              if (dataset.fte_col) setFteCol(dataset.fte_col);
-              if (dataset.flc_col) setFlcCol(dataset.flc_col);
-              if (dataset.job_title_col) setJobTitleCol(dataset.job_title_col);
-              if (dataset.country_col) setCountryCol(dataset.country_col);
+              hydrateColumnsFromDataset(dataset);
+              setColConfigCollapsed(false);
+              if (cols?.length && records?.length) {
+                await fillMissingColumnsFromAutoMap(dataset, cols, records);
+              }
               const scenarioName = scs.find((s) => s.id === sid)?.name || "Baseline";
               setActiveDatasetLabel(dataset.name + " — " + scenarioName);
               setActiveDatasetName(dataset.name);
@@ -596,25 +679,25 @@ export default function ProjectWorkspace() {
   return (
     <div className="h-screen flex flex-col bg-gray-50">
       {/* HEADER */}
-      <header className="px-8 py-3 bg-white border-b border-gray-200">
+      <header className="px-8 py-3 bg-brand-600 text-white border-b border-brand-700 shadow-sm">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3 min-w-0">
-            <span className="text-am-500 font-bold text-xl tracking-tight">A&amp;M</span>
-            <span className="h-5 w-px bg-gray-300" />
+            <span className="text-white font-bold text-xl tracking-tight">A&amp;M</span>
+            <span className="h-5 w-px bg-white/30" />
             <button
               onClick={() => navigate("/projects")}
-              className="text-gray-500 hover:text-am-600 text-sm font-medium transition"
+              className="text-white/90 hover:text-white text-sm font-medium transition"
             >
               OrgSight
             </button>
             <svg className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
             </svg>
-            <span className="text-gray-900 font-semibold text-sm truncate" title={project.name}>
+            <span className="text-white font-semibold text-sm truncate" title={project.name}>
               {project.name}
             </span>
             {project.deadline && (
-              <span className="hidden md:inline-flex items-center gap-1.5 ml-3 px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-600">
+              <span className="hidden md:inline-flex items-center gap-1.5 ml-3 px-2 py-0.5 rounded text-xs font-medium bg-white/10 text-white/90 border border-white/20">
                 <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                 </svg>
@@ -635,7 +718,7 @@ export default function ProjectWorkspace() {
             {user?.role === "admin" && (
               <button
                 onClick={() => navigate("/admin")}
-                className="inline-flex items-center gap-2 px-3 py-1.5 border border-am-500 text-am-600 hover:bg-am-50 rounded-md text-sm font-medium transition"
+                className="inline-flex items-center gap-2 px-3 py-1.5 bg-white text-brand-700 hover:bg-white/90 rounded-md text-sm font-semibold transition transform hover:-translate-y-0.5 shadow-md border border-white/20 focus:outline-none focus:ring-2 focus:ring-brand-300"
                 title="Open Admin Panel"
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -647,20 +730,20 @@ export default function ProjectWorkspace() {
             )}
             <button
               onClick={() => navigate("/projects")}
-              className="inline-flex items-center gap-2 px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-md text-sm font-medium transition"
+              className="inline-flex items-center gap-2 px-3 py-1.5 bg-white/10 hover:bg-white/20 text-white/90 rounded-md text-sm font-medium transition"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
               </svg>
               Switch Project
             </button>
-            <div className="flex items-center gap-2 px-3 py-1.5 bg-gray-100 rounded-full text-sm font-medium text-gray-700">
-              <div className="w-2 h-2 bg-emerald-500 rounded-full"></div>
+            <div className="flex items-center gap-2 px-3 py-1.5 bg-white/10 rounded-full text-sm font-medium text-white/90 border border-white/10">
+              <div className="w-2 h-2 bg-brand-500 rounded-full"></div>
               <span>{user?.username}{user?.role === "admin" ? " (Admin)" : ""}</span>
             </div>
             <button
               onClick={doLogout}
-              className="inline-flex items-center gap-2 px-3 py-1.5 text-gray-600 hover:text-red-600 hover:bg-red-50 rounded-md text-sm font-medium transition"
+              className="inline-flex items-center gap-2 px-3 py-1.5 text-white/90 hover:text-white hover:bg-white/10 rounded-md text-sm font-medium transition"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
@@ -710,7 +793,7 @@ export default function ProjectWorkspace() {
           onClick={() => setColConfigCollapsed((v) => !v)}
           className="w-full px-8 py-3 flex items-center gap-2 hover:bg-gray-50 transition-colors group"
         >
-          <svg className="w-4 h-4 text-am-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-4 h-4 text-brand-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
           </svg>
           <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">Column Configuration</h2>
@@ -718,7 +801,7 @@ export default function ProjectWorkspace() {
           {colConfigCollapsed && columns && (
             <div className="flex items-center gap-1.5 ml-3 flex-wrap">
               {[empCol, mgrCol, fteCol, flcCol, countryCol, jobTitleCol, funcCol, subfuncCol, gradeCol].filter(Boolean).map(c => (
-                <span key={c} className="px-2 py-0.5 bg-am-50 text-am-700 rounded text-xs font-medium border border-am-200">{c}</span>
+                <span key={c} className="px-2 py-0.5 bg-brand-50 text-brand-700 rounded text-xs font-medium border border-brand-200">{c}</span>
               ))}
             </div>
           )}
@@ -748,7 +831,7 @@ export default function ProjectWorkspace() {
                 if (m.method === "llm") return "bg-amber-400";
                 return "bg-gray-400";
               };
-              const sel = "w-full border border-gray-300 rounded-lg px-2.5 py-2 text-sm focus:ring-2 focus:ring-am-500 focus:border-am-500 outline-none transition-all bg-white hover:border-gray-400";
+              const sel = "w-full border border-gray-300 rounded-lg px-2.5 py-2 text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition-all bg-white hover:border-gray-400";
               const ColSel = ({ label, targetKey, value, onChange, opt }) => (
                 <div>
                   <label className="flex items-center gap-1 text-[11px] font-medium text-gray-600 mb-1">
@@ -805,7 +888,7 @@ export default function ProjectWorkspace() {
                 onClick={() => setActiveModule(m.id)}
                 className={`group flex items-center gap-3 w-full text-left px-4 py-2.5 rounded-md font-medium text-sm transition ${
                   activeModule === m.id
-                    ? "bg-am-500 text-white shadow-sm"
+                    ? "bg-brand-500 text-white shadow-sm"
                     : "text-gray-700 hover:bg-gray-100 hover:text-gray-900"
                 }`}
               >
@@ -857,14 +940,14 @@ export default function ProjectWorkspace() {
               <ExportExcel df={workingDf} />
             </div>
             {filteredRowCount !== null && (
-              <div className="mt-6 p-4 bg-am-50 border border-am-200 rounded-md">
+              <div className="mt-6 p-4 bg-brand-50 border border-brand-200 rounded-md">
                 <div className="flex items-center gap-2 mb-1">
-                  <svg className="w-4 h-4 text-am-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-4 h-4 text-brand-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
                   </svg>
                   <span className="text-xs font-semibold text-gray-600 uppercase">Row Count</span>
                 </div>
-                <p className="text-2xl font-bold text-am-600">{filteredRowCount.toLocaleString()}</p>
+                <p className="text-2xl font-bold text-brand-600">{filteredRowCount.toLocaleString()}</p>
                 <p className="text-xs text-gray-500 mt-1">rows after filtering</p>
               </div>
             )}

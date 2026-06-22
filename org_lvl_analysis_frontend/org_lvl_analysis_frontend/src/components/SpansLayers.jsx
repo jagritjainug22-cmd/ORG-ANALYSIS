@@ -12,7 +12,7 @@ function OpenInOrgChartButton({ empId, onJump }) {
     <button
       type="button"
       onClick={() => onJump(empId)}
-      className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-am-600 hover:text-white hover:bg-am-500 rounded-lg border border-am-200 hover:border-am-500 transition-all duration-150"
+      className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-brand-600 hover:text-white hover:bg-brand-500 rounded-lg border border-brand-200 hover:border-brand-500 transition-all duration-150"
     >
       <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
@@ -24,7 +24,7 @@ function OpenInOrgChartButton({ empId, onJump }) {
 
 function StatCard({ label, value, sub, severity = "neutral", icon }) {
   const valueColor = severity === "danger" ? "text-red-600" : severity === "warning" ? "text-amber-600" : "text-gray-900";
-  const iconBg = severity === "danger" ? "bg-red-50 text-red-600" : severity === "warning" ? "bg-amber-50 text-amber-600" : "bg-am-50 text-am-600";
+  const iconBg = severity === "danger" ? "bg-red-50 text-red-600" : severity === "warning" ? "bg-amber-50 text-amber-600" : "bg-brand-50 text-brand-600";
   return (
     <div className="bg-white border border-gray-200 rounded-lg p-3 shadow-sm hover:shadow-md transition-shadow">
       <div className="flex items-center gap-2">
@@ -301,7 +301,7 @@ export default function SpansLayers({
     <div className="p-6 space-y-4 overflow-auto h-full">
       {/* Header - compact */}
       <div className="flex items-center gap-3">
-        <div className="w-8 h-8 bg-am-500 rounded-lg flex items-center justify-center flex-shrink-0">
+        <div className="w-8 h-8 bg-brand-500 rounded-lg flex items-center justify-center flex-shrink-0">
           <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z" />
           </svg>
@@ -314,9 +314,9 @@ export default function SpansLayers({
 
       {/* Auto-enrichment banner */}
       {enriching && (
-        <div className="bg-am-50 border border-am-200 rounded-lg px-3 py-2 flex items-center gap-2">
-          <div className="w-4 h-4 border-2 border-am-500 border-t-transparent rounded-full animate-spin shrink-0" />
-          <p className="text-xs text-am-700 font-medium">Computing hierarchy levels and spans…</p>
+        <div className="bg-brand-50 border border-brand-200 rounded-lg px-3 py-2 flex items-center gap-2">
+          <div className="w-4 h-4 border-2 border-brand-500 border-t-transparent rounded-full animate-spin shrink-0" />
+          <p className="text-xs text-brand-700 font-medium">Computing hierarchy levels and spans…</p>
         </div>
       )}
 
@@ -324,7 +324,7 @@ export default function SpansLayers({
       <div className="bg-white border border-gray-200 rounded-lg p-3">
         <div className="flex items-center justify-between mb-2">
           <h4 className="text-sm font-semibold text-gray-700 flex items-center gap-1.5">
-            <svg className="w-4 h-4 text-am-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-4 h-4 text-brand-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
             </svg>
             Filters
@@ -343,13 +343,13 @@ export default function SpansLayers({
         <div className="flex flex-wrap gap-2">
           {filters.map((filter, index) => (
             <div key={filter.id} className="flex items-center gap-2 border border-gray-200 rounded-lg px-2.5 py-1.5 bg-gray-50">
-              <span className="flex items-center justify-center w-6 h-6 bg-am-500 text-white rounded text-xs font-bold flex-shrink-0">
+              <span className="flex items-center justify-center w-6 h-6 bg-brand-500 text-white rounded text-xs font-bold flex-shrink-0">
                 {getFilterLabel(index)}
               </span>
               <select
                 value={filter.column}
                 onChange={(e) => updateFilterColumn(filter.id, e.target.value)}
-                className="border border-gray-300 rounded px-2 py-1 text-xs focus:ring-1 focus:ring-am-500 outline-none bg-white min-w-[120px]"
+                className="border border-gray-300 rounded px-2 py-1 text-xs focus:ring-1 focus:ring-brand-500 outline-none bg-white min-w-[120px]"
               >
                 <option value="">Column...</option>
                 {availableColumns.map((col) => (
@@ -365,7 +365,7 @@ export default function SpansLayers({
                         onClick={() => updateFilterMode(filter.id, mode)}
                         className={`px-2 py-1 text-[10px] font-medium transition ${
                           filter.mode === mode
-                            ? "bg-am-500 text-white"
+                            ? "bg-brand-500 text-white"
                             : "bg-white text-gray-600 hover:bg-gray-100"
                         }`}
                       >
@@ -381,7 +381,7 @@ export default function SpansLayers({
                         const selected = Array.from(e.target.selectedOptions, option => option.value);
                         updateFilterValues(filter.id, selected);
                       }}
-                      className="border border-gray-300 rounded px-2 py-1 text-xs focus:ring-1 focus:ring-am-500 outline-none bg-white min-w-[100px] max-h-[60px]"
+                      className="border border-gray-300 rounded px-2 py-1 text-xs focus:ring-1 focus:ring-brand-500 outline-none bg-white min-w-[100px] max-h-[60px]"
                     >
                       {getUniqueValues(filter.column).map((val) => (
                         <option key={val} value={val}>{val}</option>
@@ -418,7 +418,7 @@ export default function SpansLayers({
               step="0.1"
               value={threshold}
               onChange={(e) => setThreshold(Number(e.target.value))}
-              className="w-20 border border-gray-300 rounded px-2 py-1.5 text-sm focus:ring-1 focus:ring-am-500 outline-none"
+              className="w-20 border border-gray-300 rounded px-2 py-1.5 text-sm focus:ring-1 focus:ring-brand-500 outline-none"
             />
           </div>
 
@@ -446,7 +446,7 @@ export default function SpansLayers({
           <button
             onClick={() => runSpansLayers(false)}
             disabled={!canRun || loading}
-            className="px-4 py-1.5 bg-am-500 hover:bg-am-600 text-white rounded-md text-sm font-semibold shadow-sm transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+            className="px-4 py-1.5 bg-brand-500 hover:bg-brand-600 text-white rounded-md text-sm font-semibold shadow-sm transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
           >
             {loading ? (
               <>
@@ -470,7 +470,7 @@ export default function SpansLayers({
             <button
               onClick={downloadSummary}
               disabled={loading}
-              className="px-3 py-1.5 bg-white border border-am-500 text-am-600 hover:bg-am-50 rounded-md text-sm font-medium transition disabled:opacity-50 flex items-center gap-1.5"
+              className="px-3 py-1.5 bg-white border border-brand-500 text-brand-600 hover:bg-brand-50 rounded-md text-sm font-medium transition disabled:opacity-50 flex items-center gap-1.5"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
@@ -571,7 +571,7 @@ export default function SpansLayers({
         <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
           <div className="bg-gray-50 px-4 py-2.5 border-b border-gray-200">
             <h4 className="text-sm font-semibold text-gray-800 flex items-center gap-2">
-              <svg className="w-4 h-4 text-am-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-4 h-4 text-brand-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
               </svg>
               Analysis Results
@@ -793,7 +793,7 @@ export default function SpansLayers({
                     onClick={() => setAnalysisTab(tab.id)}
                     className={`px-5 py-3 text-sm font-medium transition-colors ${
                       analysisTab === tab.id
-                        ? "border-b-2 border-am-500 text-am-600 font-semibold bg-white"
+                        ? "border-b-2 border-brand-500 text-brand-600 font-semibold bg-white"
                         : "text-gray-500 hover:text-gray-700"
                     }`}
                   >

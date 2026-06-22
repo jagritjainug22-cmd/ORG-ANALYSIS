@@ -46,14 +46,14 @@ export default function ExportExcel({ df }) {
         disabled={!hasData || loading}
         className={`w-full text-left p-4 rounded-lg border-2 transition-all duration-200 ${
           hasData && !loading
-            ? "bg-gradient-to-br from-green-50 to-emerald-50 border-green-200 hover:border-green-300 hover:shadow-md cursor-pointer"
+            ? "bg-gradient-to-br from-brand-50 to-brand-100 border-brand-200 hover:border-brand-300 hover:shadow-md cursor-pointer"
             : "bg-gray-50 border-gray-200 cursor-not-allowed opacity-60"
-        }`}
-      >
+        }`}>
+      
         <div className="flex items-center gap-3">
-          <div className={`w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${
+            <div className={`w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${
             hasData && !loading
-              ? "bg-gradient-to-br from-green-600 to-emerald-600"
+              ? "bg-gradient-to-br from-brand-700 to-brand-500"
               : "bg-gray-400"
           }`}>
             {loading ? (
@@ -111,7 +111,7 @@ export default function ExportExcel({ df }) {
 
           {hasData && !loading && (
             <svg
-              className="w-5 h-5 text-green-600 flex-shrink-0"
+              className="w-5 h-5 text-brand-600 flex-shrink-0"
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"

@@ -9,7 +9,15 @@
     "Supply": "Procurement",
     "ERA": "Compliance and Legal",
     "Lubricants": "Procurement",
-    "Retail": "Sales & Marketing"
+    "Retail": "Sales & Marketing",
+    "Commercial UK": "Sales & Marketing",
+    "Executive Office": "Compliance and Legal",
+    "Financial Control": "Finance",
+    "Quality Assurance": "Customer Support",
+    "Sales EU": "Sales & Marketing",
+    "Sales UK": "Sales & Marketing",
+    "Software Engineering": "R&D",
+    "Technology": "IT"
   },
   "subfunction_aliases": {},
   "title_aliases": {
@@ -48,7 +56,8 @@
       "Acquittals Controller": "Specialist",
       "Income Tax Specialist": "Specialist",
       "Administration Controller": "Administrator",
-      "Money Market Trader": "Finance Executive"
+      "Money Market Trader": "Finance Executive",
+      "VP Finance & G&A": "Finance Manager"
     },
     "Retail": {
       "Governance & Compliance Mana": "Compliance Manager",
@@ -67,10 +76,44 @@
       "Assets Verification Officer": "Research Assistant"
     },
     "Human Resources": {
-      "Learning & SD Coordinator": "L&D Coordinator"
+      "Learning & SD Coordinator": "L&D Coordinator",
+      "HR Director": "Organizational Development Manager"
     },
     "ERA": {
       "Senior Auditor": "Compliance Analyst"
+    },
+    "Executive Office": {
+      "Chief Executive Officer": "Specialist"
+    },
+    "Commercial UK": {
+      "UK CVP Commercial": "Senior Sales Executive"
+    },
+    "Technology": {
+      "Global VP Technology": "Software Developer"
+    },
+    "Sales UK": {
+      "Head of Sales UK": "Senior Sales Executive",
+      "Sales Manager - London": "Sales Executive"
+    },
+    "Sales EU": {
+      "Head of Sales Europe": "Senior Sales Executive",
+      "Sales Manager - Berlin": "Sales Executive"
+    },
+    "Software Engineering": {
+      "Director of Engineering": "Innovation Manager",
+      "Engineering Manager - Platform": "Product Development Engineer",
+      "Senior Software Engineer": "R&D Engineer",
+      "Software Engineer": "R&D Engineer"
+    },
+    "Business Analytics": {
+      "Director Data & Analytics": "Data Analyst",
+      "Data Science Lead": "Data Analyst",
+      "Junior Data Analyst": "Data Analyst"
+    },
+    "Quality Assurance": {
+      "Engineering Manager - QA": "CS Manager",
+      "QA Engineer": "CS Analyst",
+      "QA Analyst": "CS Analyst"
     }
   }
 }

@@ -5,8 +5,8 @@ import { useConfirmLogout } from "../hooks/useConfirmLogout";
 import { fetchProjects, fetchProjectDetail } from "../api/backend";
 
 const AVATAR_COLORS = [
-  "bg-am-500", "bg-indigo-500", "bg-rose-500", "bg-amber-500",
-  "bg-emerald-500", "bg-sky-500", "bg-violet-500", "bg-fuchsia-500",
+  "bg-brand-500", "bg-indigo-500", "bg-rose-500", "bg-accent-500",
+  "bg-teal-500", "bg-sky-500", "bg-violet-500", "bg-fuchsia-500",
 ];
 
 function initialsOf(displayName, username) {
@@ -212,13 +212,13 @@ export default function ProjectSelector() {
     return (
       <th
         scope="col"
-        className={`px-6 py-3 text-${align} text-xs font-semibold text-gray-600 uppercase tracking-wider select-none cursor-pointer hover:text-am-600 transition-colors`}
+        className={`px-6 py-3 text-${align} text-xs font-semibold text-white uppercase tracking-wider select-none cursor-pointer hover:text-white/90 transition-colors`}
         onClick={() => toggleSort(col)}
       >
         <span className="inline-flex items-center gap-1">
           {children}
-          <span className={`text-[10px] ${active ? "text-am-600" : "text-gray-300"}`}>
-            {active ? (sortDir === "asc" ? "â–²" : "â–¼") : "â–²â–¼"}
+          <span className={`text-[10px] ${active ? "text-white/90" : "text-white/60"}`}>
+            {active ? (sortDir === "asc" ? "▴" : "▾") : "▴▾"}
           </span>
         </span>
       </th>
@@ -226,19 +226,19 @@ export default function ProjectSelector() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-100 flex flex-col">
-      <header className="px-8 py-4 bg-white border-b border-gray-200 shadow-sm">
+    <div className="min-h-screen bg-page-gradient flex flex-col">
+      <header className="px-8 py-4 bg-brand-600 text-white border-b border-brand-700 shadow-sm">
         <div className="flex items-center justify-between max-w-7xl mx-auto w-full">
           <div className="flex items-center gap-3">
-            <span className="text-am-500 font-bold text-xl tracking-tight">A&amp;M</span>
-            <span className="h-5 w-px bg-gray-300" />
-            <span className="text-gray-800 font-semibold">OrgSight</span>
-          </div>
+              <span className="text-white font-bold text-xl tracking-tight">A&amp;M</span>
+              <span className="h-5 w-px bg-white/30" />
+              <span className="text-white/90 font-semibold">OrgSight</span>
+            </div>
           <div className="flex items-center gap-3">
             {user?.role === "admin" && (
               <button
                 onClick={() => navigate("/admin")}
-                className="inline-flex items-center gap-2 px-4 py-2 bg-am-500 hover:bg-am-600 text-white rounded-md text-sm font-medium transition shadow-sm"
+                className="inline-flex items-center gap-2 px-4 py-2 bg-white text-brand-700 hover:bg-white/90 rounded-md text-sm font-semibold transition transform hover:-translate-y-0.5 shadow-md border border-white/20 focus:outline-none focus:ring-2 focus:ring-brand-300"
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
@@ -247,17 +247,17 @@ export default function ProjectSelector() {
                 Admin Panel
               </button>
             )}
-            <div className="flex items-center gap-2 px-3 py-1.5 bg-gray-100 rounded-full">
+            <div className="flex items-center gap-2 px-3 py-1.5 bg-white/10 rounded-full border border-white/10">
               <div className={`w-6 h-6 rounded-full ${colorFor(user?.username || "")} flex items-center justify-center text-white text-[10px] font-semibold`}>
                 {initialsOf(user?.display_name, user?.username)}
               </div>
-              <span className="text-sm text-gray-700 font-medium">
+              <span className="text-sm text-white font-medium">
                 {user?.username}{user?.role === "admin" ? " (Admin)" : ""}
               </span>
             </div>
             <button
               onClick={(e) => confirmLogout(e)}
-              className="inline-flex items-center gap-2 px-3 py-2 text-gray-600 hover:text-red-600 hover:bg-red-50 rounded-md text-sm font-medium transition"
+              className="inline-flex items-center gap-2 px-3 py-2 text-white/90 hover:text-white hover:bg-white/10 rounded-md text-sm font-medium transition border border-white/10"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
@@ -298,7 +298,7 @@ export default function ProjectSelector() {
             <StatCard
               label="Active"
               value={stats.active}
-              tone="emerald"
+              tone="brand"
               icon={
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -340,7 +340,7 @@ export default function ProjectSelector() {
             {statusFilter !== "all" && (
               <button
                 onClick={() => setStatusFilter("all")}
-                className="ml-2 inline-flex items-center gap-1 text-am-600 hover:text-am-700 font-medium"
+                className="ml-2 inline-flex items-center gap-1 text-brand-600 hover:text-brand-700 font-medium"
               >
                 Clear filter
                 <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -360,7 +360,7 @@ export default function ProjectSelector() {
               placeholder="Search projects..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-am-500 focus:border-am-500 outline-none transition text-sm bg-white shadow-sm"
+              className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition text-sm bg-white shadow-sm"
             />
           </div>
         </div>
@@ -368,7 +368,7 @@ export default function ProjectSelector() {
         {loading ? (
           <div className="flex items-center justify-center h-64">
             <div className="flex flex-col items-center gap-3">
-              <div className="w-10 h-10 border-4 border-am-100 border-t-am-500 rounded-full animate-spin"></div>
+              <div className="w-10 h-10 border-4 border-brand-100 border-t-brand-500 rounded-full animate-spin"></div>
               <p className="text-gray-500 text-sm">Loading projects...</p>
             </div>
           </div>
@@ -396,20 +396,20 @@ export default function ProjectSelector() {
           <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-md">
             <div className="overflow-x-auto">
               <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gradient-to-b from-gray-50 to-gray-100/60">
+                <thead className="bg-gradient-to-r from-brand-600 to-brand-500 text-white">
                   <tr>
                     <th scope="col" className="w-1 px-0 py-3"></th>
                     <th scope="col" className="w-8 px-3 py-3"></th>
                     <SortHeader col="name">Project</SortHeader>
                     <SortHeader col="status">Status</SortHeader>
                     <SortHeader col="deadline">Deadline</SortHeader>
-                    <th scope="col" className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                    <th scope="col" className="px-6 py-3 text-left text-xs font-semibold text-white uppercase tracking-wider">
                       Team
                     </th>
-                    <th scope="col" className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                    <th scope="col" className="px-6 py-3 text-left text-xs font-semibold text-white uppercase tracking-wider">
                       Datasets
                     </th>
-                    <th scope="col" className="px-6 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                    <th scope="col" className="px-6 py-3 text-right text-xs font-semibold text-white uppercase tracking-wider">
                       Action
                     </th>
                   </tr>
@@ -422,12 +422,12 @@ export default function ProjectSelector() {
                     const daysLeft = daysUntilDeadline(project.deadline);
                     const isOpen = !!expanded[project.id];
                     const expState = expanded[project.id];
-                    const accentTone = archived ? "gray" : expired ? "red" : daysLeft !== null && daysLeft <= 7 ? "amber" : "emerald";
+                    const accentTone = archived ? "gray" : expired ? "red" : daysLeft !== null && daysLeft <= 7 ? "amber" : "brand";
                     const accentClass = {
                       gray: "bg-gray-300",
                       red: "bg-red-500",
                       amber: "bg-amber-500",
-                      emerald: "bg-emerald-500",
+                      brand: "bg-brand-500",
                     }[accentTone];
 
                     return (
@@ -439,7 +439,7 @@ export default function ProjectSelector() {
                           <td className="px-3 py-4 align-middle">
                             <button
                               onClick={() => toggleExpand(project)}
-                              className="w-6 h-6 rounded-md text-gray-400 hover:text-am-600 hover:bg-am-50 flex items-center justify-center transition"
+                              className="w-6 h-6 rounded-md text-gray-400 hover:text-brand-600 hover:bg-brand-50 flex items-center justify-center transition"
                               aria-label={isOpen ? "Collapse" : "Expand"}
                               title={isOpen ? "Hide team" : "Show full team"}
                             >
@@ -495,7 +495,7 @@ export default function ProjectSelector() {
                                   members={project.members_preview || []}
                                   count={project.member_count}
                                 />
-                                <span className="inline-flex items-center gap-0.5 text-[11px] font-medium text-gray-500 group-hover/team:text-am-600 transition-colors">
+                                <span className="inline-flex items-center gap-0.5 text-[11px] font-medium text-gray-500 group-hover/team:text-brand-600 transition-colors">
                                   {isOpen ? "Hide" : "View all"}
                                   <svg
                                     className={`w-3.5 h-3.5 transform transition-transform ${isOpen ? "rotate-180" : ""}`}
@@ -524,7 +524,7 @@ export default function ProjectSelector() {
                               className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-md text-sm font-semibold transition-all ${
                                 blocked
                                   ? "bg-gray-100 text-gray-400 cursor-not-allowed"
-                                  : "bg-am-500 hover:bg-am-600 text-white shadow-sm hover:shadow-md hover:gap-2.5"
+                                  : "bg-brand-500 hover:bg-brand-600 text-white shadow-sm hover:shadow-md hover:gap-2.5"
                               }`}
                               title={
                                 blocked
@@ -534,7 +534,7 @@ export default function ProjectSelector() {
                                   : "Open project"
                               }
                             >
-                              Open
+                                Open
                               <svg className={`w-3.5 h-3.5 transition-transform ${blocked ? "" : "group-hover:translate-x-0.5"}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" />
                               </svg>
@@ -571,10 +571,10 @@ function StatCard({ label, value, tone = "indigo", icon, active, onClick }) {
       iconBg: "bg-indigo-50 text-indigo-600",
       gradient: "from-indigo-500/10 to-indigo-500/0",
     },
-    emerald: {
-      ring: active ? "ring-2 ring-emerald-400" : "",
-      iconBg: "bg-emerald-50 text-emerald-600",
-      gradient: "from-emerald-500/10 to-emerald-500/0",
+    brand: {
+      ring: active ? "ring-2 ring-brand-400" : "",
+      iconBg: "bg-brand-50 text-brand-600",
+      gradient: "from-brand-500/10 to-brand-500/0",
     },
     amber: {
       ring: active ? "ring-2 ring-amber-400" : "",
@@ -638,12 +638,12 @@ function DeadlinePill({ deadline, daysLeft, expired, formatDeadline }) {
 
 function StatusBadge({ status }) {
   const styles = {
-    active: "bg-emerald-50 text-emerald-700 border-emerald-200",
+    active: "bg-brand-50 text-brand-700 border-brand-200",
     archived: "bg-gray-100 text-gray-600 border-gray-200",
     expired: "bg-red-50 text-red-700 border-red-200",
   };
   const dots = {
-    active: "bg-emerald-500",
+    active: "bg-brand-500",
     archived: "bg-gray-400",
     expired: "bg-red-500",
   };
@@ -665,7 +665,7 @@ function ExpandedTeam({ state }) {
   if (state.loading) {
     return (
       <div className="flex items-center gap-2 text-sm text-gray-500">
-        <div className="w-4 h-4 border-2 border-am-100 border-t-am-500 rounded-full animate-spin"></div>
+        <div className="w-4 h-4 border-2 border-brand-100 border-t-brand-500 rounded-full animate-spin"></div>
         Loading team...
       </div>
     );
@@ -682,11 +682,11 @@ function ExpandedTeam({ state }) {
       <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">
         Team Members ({state.members.length})
       </p>
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
         {state.members.map((m) => (
           <div
             key={m.user_id}
-            className="flex items-center gap-3 bg-white border border-gray-200 rounded-lg px-3 py-2 hover:border-am-300 hover:shadow-sm transition-all"
+            className="flex items-center gap-3 bg-white border border-gray-200 rounded-lg px-3 py-2 hover:border-brand-300 hover:shadow-sm transition-all"
           >
             <Avatar displayName={m.display_name} username={m.username} size="md" />
             <div className="min-w-0 flex-1">
@@ -696,7 +696,7 @@ function ExpandedTeam({ state }) {
               <p className="text-xs text-gray-500 truncate">
                 @{m.username}
                 {m.role && m.role !== "member" && (
-                  <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-am-50 text-am-700 border border-am-200">
+                  <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-accent-50 text-accent-700 border border-accent-200">
                     {m.role}
                   </span>
                 )}

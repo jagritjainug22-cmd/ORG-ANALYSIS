@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useLayoutEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useLayoutEffect, useRef, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import { useConfirmLogout } from "../hooks/useConfirmLogout";
@@ -15,6 +15,7 @@ import Crosstab from "../components/Crosstab";
 import OrgChart from "../components/OrgChart";
 import ActivityAnalysis from "../components/ActivityAnalysis";
 import ExportExcel from "../components/ExportExcel";
+import AskOrgSight from "../components/AskOrgSight";
 
 const MODULES = [
   {
@@ -48,6 +49,10 @@ const MODULES = [
   {
     id: "Formulas", label: "Formula Columns",
     icon: (<svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 7H7a2 2 0 00-2 2v8a2 2 0 002 2h10a2 2 0 002-2V9a2 2 0 00-2-2h-2M9 7V5a2 2 0 012-2h2a2 2 0 012 2v2M9 7h6M9 12h.01M12 12h.01M15 12h.01M9 16h.01M12 16h.01M15 16h.01" /></svg>)
+  },
+  {
+    id: "Ask OrgSight", label: "Ask OrgSight",
+    icon: (<svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" /></svg>)
   }
 ];
 
@@ -559,7 +564,7 @@ export default function ProjectWorkspace() {
 
   // --- CENTER PANE RENDER (same as old App.jsx) ---
   const renderActiveModule = () => {
-    if (!dfRecords && activeModule !== "Upload" && activeModule !== "Org Chart" && activeModule !== "Activity Analysis") {
+    if (!dfRecords && activeModule !== "Upload" && activeModule !== "Org Chart" && activeModule !== "Activity Analysis" && activeModule !== "Ask OrgSight") {
       return (
         <div className="flex flex-col items-center justify-center h-64 text-gray-400">
           <svg className="w-16 h-16 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -686,6 +691,27 @@ export default function ProjectWorkspace() {
         );
       case "Activity Analysis":
         return <ActivityAnalysis datasetId={datasetId} />;
+      case "Ask OrgSight":
+        return (
+          <AskOrgSight
+            projectId={pid}
+            datasetId={datasetId}
+            scenarioId={activeScenarioId}
+            onNavigate={(target) => {
+              const tabMap = {
+                hierarchy: "Hierarchy",
+                spans_layers: "Spans & Layers",
+                crosstab: "Crosstab",
+                org_chart: "Org Chart",
+                scenarios: "Org Chart",
+                activity: "Activity Analysis",
+                upload: "Upload",
+              };
+              const tab = tabMap[target];
+              if (tab) setActiveModule(tab);
+            }}
+          />
+        );
       default:
         return null;
     }
@@ -801,7 +827,7 @@ export default function ProjectWorkspace() {
       {/* TOP PANE (GLOBAL CONTROLS) */}
       <div
         className="bg-white border-b border-gray-200"
-        style={{ display: (activeModule === "Org Chart" || activeModule === "Activity Analysis") ? "none" : "block" }}
+        style={{ display: (activeModule === "Org Chart" || activeModule === "Activity Analysis" || activeModule === "Ask OrgSight") ? "none" : "block" }}
       >
         {/* Header row — always visible, acts as toggle */}
         <button
@@ -931,7 +957,7 @@ export default function ProjectWorkspace() {
 
         {/* CENTER PANE */}
         <main className="flex-1 overflow-auto bg-gray-50">
-          {(activeModule === "Org Chart" || activeModule === "Activity Analysis" || activeModule === "Spans & Layers") ? (
+          {(activeModule === "Org Chart" || activeModule === "Activity Analysis" || activeModule === "Spans & Layers" || activeModule === "Ask OrgSight") ? (
             <div className="h-full">{renderActiveModule()}</div>
           ) : (
             <div className="p-8">
@@ -945,7 +971,7 @@ export default function ProjectWorkspace() {
         {/* RIGHT PANE */}
         <aside
           className="w-72 bg-white border-l border-gray-200 shadow-sm"
-          style={{ display: (activeModule === "Org Chart" || activeModule === "Activity Analysis" || activeModule === "Spans & Layers" || activeModule === "Rationalise") ? "none" : "block" }}
+          style={{ display: (activeModule === "Org Chart" || activeModule === "Activity Analysis" || activeModule === "Spans & Layers" || activeModule === "Rationalise" || activeModule === "Ask OrgSight") ? "none" : "block" }}
         >
           <div className="p-4 border-b border-gray-200">
             <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Export & Stats</h3>

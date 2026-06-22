@@ -19,6 +19,7 @@
     "react-dom": "^18.3.0",
     "react-plotly.js": "^2.6.0",
     "react-router-dom": "^7.15.1",
+    "recharts": "^3.8.1",
     "xlsx": "^0.18.5"
   },
   "devDependencies": {

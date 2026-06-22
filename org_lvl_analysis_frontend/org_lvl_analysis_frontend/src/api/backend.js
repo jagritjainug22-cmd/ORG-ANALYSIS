@@ -909,7 +909,7 @@ export const getLearnedTaxonomy = () =>
 export const patchLearnedMapping = (payload) =>
   axios.patch(`${getProjectUrl()}/learned-taxonomy`, payload, { headers: jsonHeaders() }).then(r => r.data);
 
-// Ask OrgSight chat layer (DuckDB) — UI to be added later
+// Ask OrgSight chat layer (DuckDB)
 export const chatEnsure = (datasetId, scenarioId) =>
   axios.post(`${getProjectUrl()}/chat/ensure`, { dataset_id: datasetId, scenario_id: scenarioId }, { headers: jsonHeaders() })
     .then(r => r.data);
@@ -919,6 +919,14 @@ export const chatStatus = () =>
 
 export const chatCloseSession = () =>
   axios.delete(`${getProjectUrl()}/chat/session`, { headers: getHeaders() }).then(r => r.data);
+
+export const chatMessage = (message, datasetId, scenarioId, history = []) =>
+  axios.post(`${getProjectUrl()}/chat/message`, {
+    message,
+    dataset_id: datasetId,
+    scenario_id: scenarioId,
+    history,
+  }, { headers: jsonHeaders(), timeout: 60000 }).then(r => r.data);
 
 // ---------------------------------------------------------------------------
 

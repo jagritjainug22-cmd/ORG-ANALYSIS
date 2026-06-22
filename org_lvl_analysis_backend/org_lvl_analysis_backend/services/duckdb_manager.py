@@ -174,6 +174,15 @@ def ensure_fresh(
     if not records:
         raise ValueError(f"No records found for scenario {scenario_id}")
 
+    # Apply user-defined formula columns so they are queryable via chat
+    try:
+        from services import formula_service
+        formulas = db_service.list_formulas(dataset_id)
+        if formulas:
+            records = formula_service.apply_formulas_to_records(records, formulas)
+    except Exception as e:
+        logger.warning("Failed to apply formulas to DuckDB records: %s", e)
+
     meta = load(
         user_id=user_id,
         project_id=project_id,

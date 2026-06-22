@@ -3,15 +3,12 @@ import { useParams, useNavigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import { useConfirmLogout } from "../hooks/useConfirmLogout";
 import { useWorkGuard } from "../contexts/WorkGuardContext";
-import { setCurrentProjectId, fetchProjectDetail, cleanup, crosstab, orgchart, acquireLock, lockHeartbeat, releaseLock, dbPromoteScenario, dbResetScenario, releaseDatasetLock, dbListDatasets, dbGetDatasetRecords, dbListFormulas } from "../api/backend";
+import { setCurrentProjectId, fetchProjectDetail, orgchart, acquireLock, lockHeartbeat, releaseLock, dbPromoteScenario, dbResetScenario, releaseDatasetLock, dbListDatasets, dbGetDatasetRecords, dbListFormulas, smartUpload, autoMapColumns } from "../api/backend";
 import ActiveDatasetDropdown from "../components/ActiveDatasetDropdown";
 import FormulaEditor from "../components/FormulaEditor";
 
-import Upload from "../components/Upload";
-import DataSourceSelector from "../components/DataSourceSelector";
-import Cleanup from "../components/Cleanup";
-import Validate from "../components/Validate";
-import FilterErrors from "../components/FilterErrors";
+import UploadAndPrepare from "../components/UploadAndPrepare";
+import Rationalise from "../components/Rationalise";
 import Hierarchy from "../components/Hierarchy";
 import SpansLayers from "../components/SpansLayers";
 import Crosstab from "../components/Crosstab";
@@ -21,20 +18,12 @@ import ExportExcel from "../components/ExportExcel";
 
 const MODULES = [
   {
-    id: "Upload", label: "Upload Data",
+    id: "Upload", label: "Upload & Prepare",
     icon: (<svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" /></svg>)
   },
   {
-    id: "Cleanup", label: "Cleanup",
-    icon: (<svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>)
-  },
-  {
-    id: "Validate", label: "Validate",
-    icon: (<svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>)
-  },
-  {
-    id: "Filter Errors", label: "Filter Errors",
-    icon: (<svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" /></svg>)
+    id: "Rationalise", label: "Rationalise",
+    icon: (<svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" /></svg>)
   },
   {
     id: "Hierarchy", label: "Hierarchy",
@@ -85,6 +74,23 @@ export default function ProjectWorkspace() {
   const [flcCol, setFlcCol] = useState("");
   const [countryCol, setCountryCol] = useState("");
   const [jobTitleCol, setJobTitleCol] = useState("");
+
+  // --- Extended column mappings ---
+  const [funcCol, setFuncCol] = useState("");
+  const [subfuncCol, setSubfuncCol] = useState("");
+  const [gradeCol, setGradeCol] = useState("");
+  const [divisionCol, setDivisionCol] = useState("");
+  const [entityCol, setEntityCol] = useState("");
+  const [startDateCol, setStartDateCol] = useState("");
+  const [basicPayCol, setBasicPayCol] = useState("");
+  const [contractTypeCol, setContractTypeCol] = useState("");
+  const [statusCol, setStatusCol] = useState("");
+
+  // --- Smart upload state (Phase 1: read + auto-map) ---
+  const [columnMappings, setColumnMappings] = useState(null);
+  const [preprocessingSummary, setPreprocessingSummary] = useState(null);
+  const [uploading, setUploading] = useState(false);
+  const [uploadStep, setUploadStep] = useState("");
 
   // --- UI STATE ---
   const [activeModule, setActiveModule] = useState("Upload");
@@ -287,7 +293,7 @@ export default function ProjectWorkspace() {
       return;
     }
     try {
-      const res = await orgchart(validatedDf, empCol, mgrCol);
+      const res = await orgchart(validatedDf || dfRecords, empCol, mgrCol);
       setTreeData(res);
       setErrorMsg(null);
     } catch (err) {
@@ -295,6 +301,58 @@ export default function ProjectWorkspace() {
       setErrorMsg("Failed to generate org chart.");
     }
   };
+
+  // --- Smart pipeline handler ---
+  const hydrateColumnSelections = useCallback((mappings) => {
+    if (!mappings) return;
+    const get = (key) => (mappings[key] || {}).source_column || "";
+    setEmpCol(get("employee_id"));
+    setMgrCol(get("manager_id"));
+    setFteCol(get("fte"));
+    setFlcCol(get("flc"));
+    setCountryCol(get("country"));
+    setJobTitleCol(get("job_title"));
+    setFuncCol(get("function"));
+    setSubfuncCol(get("subfunction"));
+    setGradeCol(get("grade"));
+    setDivisionCol(get("division"));
+    setEntityCol(get("entity"));
+    setStartDateCol(get("start_date"));
+    setBasicPayCol(get("basic_pay"));
+    setContractTypeCol(get("contract_type"));
+    setStatusCol(get("status"));
+  }, []);
+
+  const handleSmartUpload = useCallback(async (file) => {
+    setUploading(true);
+    setUploadStep("read");
+    setPreprocessingSummary(null);
+    setColumnMappings(null);
+    setValidatedDf(null);
+    setFilteredRowCount(null);
+    try {
+      const readRes = await smartUpload(file);
+      setColumns(readRes.columns);
+      setDfRecords(readRes.records);
+      setPreprocessingSummary(readRes.preprocessing);
+
+      setUploadStep("map");
+      const mapRes = await autoMapColumns(readRes.columns, readRes.records.slice(0, 10));
+      setColumnMappings(mapRes);
+      hydrateColumnSelections(mapRes);
+      setColConfigCollapsed(false);
+
+      setUploadedFileName(file.name);
+      setActiveDatasetLabel(file.name);
+      setActiveDatasetName(file.name);
+    } catch (err) {
+      console.error("Smart upload error:", err);
+      alert(err.response?.data?.detail || "Failed to upload file. Please try again.");
+    } finally {
+      setUploading(false);
+      setUploadStep("");
+    }
+  }, [hydrateColumnSelections]);
 
   const doLogout = (e) => {
     confirmLogout(e);
@@ -391,6 +449,10 @@ export default function ProjectWorkspace() {
     setActiveModule("Upload");
   };
 
+  // Canonical working dataset for all downstream analysis modules.
+  // validatedDf is set after cleanup/validate; dfRecords is always kept current (incl. rationalisation).
+  const workingDf = validatedDf || dfRecords;
+
   // --- CENTER PANE RENDER (same as old App.jsx) ---
   const renderActiveModule = () => {
     if (!dfRecords && activeModule !== "Upload" && activeModule !== "Org Chart" && activeModule !== "Activity Analysis") {
@@ -408,68 +470,59 @@ export default function ProjectWorkspace() {
     switch (activeModule) {
       case "Upload":
         return (
-          <DataSourceSelector
-            setDfRecords={(df) => {
-              setDfRecords(df);
-              setValidatedDf(null);
-              setFilteredRowCount(null);
-              setDatasetId(null);
-              setScenarios([]);
-              setActiveScenarioId(null);
-              setActiveDatasetLabel(null);
-              setActiveDatasetName(null);
-              // Re-fetch dataset list so any new baselines appear in the header dropdown
-              dbListDatasets(false, true).then((d) => setSavedDatasets(d?.datasets || [])).catch(() => {});
-            }}
-            setValidatedDf={setValidatedDf}
-            setColumns={setColumns}
-            setUploadedFileName={(name) => {
-              setUploadedFileName(name);
-              setActiveDatasetLabel(name || null);
-              setActiveDatasetName(name || null);
-            }}
-            onDatasetPicked={({ dataset, scenarios: scs, activeScenarioId: sid }) => {
-              // activateDataset handles all state hydration including dfRecords, columns, column mappings
-              activateDataset(dataset, scs, sid);
-              // Refresh the cached dataset list
-              dbListDatasets(false, true).then((d) => setSavedDatasets(d?.datasets || [])).catch(() => {});
-            }}
-          />
-        );
-      case "Cleanup":
-        return (
-          <Cleanup
-            df={dfRecords}
-            setDf={(df) => { setValidatedDf(df); setFilteredRowCount(null); }}
-            countryCol={countryCol}
-            backendCall={cleanup}
-          />
-        );
-      case "Validate":
-        return (
-          <Validate
-            dfRecords={validatedDf || dfRecords}
-            columns={columns}
-            empCol={empCol} setEmpCol={setEmpCol}
-            mgrCol={mgrCol} setMgrCol={setMgrCol}
-            jobTitleCol={jobTitleCol}
-            setValidatedDf={setValidatedDf}
-          />
-        );
-      case "Filter Errors":
-        return (
-          <FilterErrors
+          <UploadAndPrepare
+            onSmartUpload={handleSmartUpload}
+            uploading={uploading}
+            uploadStep={uploadStep}
+            preprocessingSummary={preprocessingSummary}
+            dfRecords={dfRecords}
             validatedDf={validatedDf}
             setValidatedDf={setValidatedDf}
+            setDfRecords={setDfRecords}
+            setColumns={setColumns}
             empCol={empCol}
             mgrCol={mgrCol}
+            countryCol={countryCol}
+            columns={columns}
+            uploadedFileName={uploadedFileName}
+            setUploadedFileName={setUploadedFileName}
+            columnMappings={columnMappings}
+            onDatasetPicked={({ dataset, scenarios: scs, activeScenarioId: sid }) => {
+              setDatasetId(dataset.id);
+              setScenarios(scs);
+              setActiveScenarioId(sid);
+              if (dataset.emp_col) setEmpCol(dataset.emp_col);
+              if (dataset.mgr_col) setMgrCol(dataset.mgr_col);
+              if (dataset.fte_col) setFteCol(dataset.fte_col);
+              if (dataset.flc_col) setFlcCol(dataset.flc_col);
+              if (dataset.job_title_col) setJobTitleCol(dataset.job_title_col);
+              if (dataset.country_col) setCountryCol(dataset.country_col);
+              const scenarioName = scs.find((s) => s.id === sid)?.name || "Baseline";
+              setActiveDatasetLabel(dataset.name + " — " + scenarioName);
+              setActiveDatasetName(dataset.name);
+              setFilteredRowCount(null);
+            }}
+          />
+        );
+      case "Rationalise":
+        return (
+          <Rationalise
+            dfRecords={dfRecords}
+            setDfRecords={setDfRecords}
+            setValidatedDf={setValidatedDf}
+            funcCol={funcCol}
+            subfuncCol={subfuncCol}
+            jobTitleCol={jobTitleCol}
+            columns={columns}
+            setColumns={setColumns}
           />
         );
       case "Hierarchy":
         return (
           <Hierarchy
-            validatedDf={validatedDf}
+            validatedDf={workingDf}
             setValidatedDf={setValidatedDf}
+            setDfRecords={setDfRecords}
             empCol={empCol} mgrCol={mgrCol}
             fteCol={fteCol} flcCol={flcCol}
             jobTitleCol={jobTitleCol} countryCol={countryCol}
@@ -488,7 +541,7 @@ export default function ProjectWorkspace() {
       case "Spans & Layers":
         return (
           <SpansLayers
-            validatedDf={validatedDf}
+            validatedDf={workingDf}
             setValidatedDf={setValidatedDf}
             empCol={empCol}
             mgrCol={mgrCol}
@@ -500,13 +553,13 @@ export default function ProjectWorkspace() {
           />
         );
       case "Crosstab":
-        return <Crosstab df={validatedDf} fteCol={fteCol} flcCol={flcCol} formulas={formulas} datasetId={datasetId} />;
+        return <Crosstab df={workingDf} fteCol={fteCol} flcCol={flcCol} formulas={formulas} datasetId={datasetId} />;
       case "Formulas":
         return (
           <FormulaEditor
             datasetId={datasetId}
-            columns={columns || (validatedDf?.length ? Object.keys(validatedDf[0]) : [])}
-            validatedDf={validatedDf}
+            columns={columns || (workingDf?.length ? Object.keys(workingDf[0]) : [])}
+            validatedDf={workingDf}
             formulas={formulas}
             onFormulasChange={setFormulas}
           />
@@ -514,7 +567,7 @@ export default function ProjectWorkspace() {
       case "Org Chart":
         return (
           <OrgChart
-            df={validatedDf}
+            df={workingDf}
             empCol={empCol} mgrCol={mgrCol}
             fteCol={fteCol} flcCol={flcCol}
             jobTitleCol={jobTitleCol} countryCol={countryCol}
@@ -664,12 +717,9 @@ export default function ProjectWorkspace() {
           {/* Collapsed summary pills */}
           {colConfigCollapsed && columns && (
             <div className="flex items-center gap-1.5 ml-3 flex-wrap">
-              {empCol && <span className="px-2 py-0.5 bg-am-50 text-am-700 rounded text-xs font-medium border border-am-200">{empCol}</span>}
-              {mgrCol && <span className="px-2 py-0.5 bg-am-50 text-am-700 rounded text-xs font-medium border border-am-200">{mgrCol}</span>}
-              {fteCol && <span className="px-2 py-0.5 bg-gray-100 text-gray-600 rounded text-xs font-medium">{fteCol}</span>}
-              {flcCol && <span className="px-2 py-0.5 bg-gray-100 text-gray-600 rounded text-xs font-medium">{flcCol}</span>}
-              {countryCol && <span className="px-2 py-0.5 bg-gray-100 text-gray-600 rounded text-xs font-medium">{countryCol}</span>}
-              {jobTitleCol && <span className="px-2 py-0.5 bg-gray-100 text-gray-600 rounded text-xs font-medium">{jobTitleCol}</span>}
+              {[empCol, mgrCol, fteCol, flcCol, countryCol, jobTitleCol, funcCol, subfuncCol, gradeCol].filter(Boolean).map(c => (
+                <span key={c} className="px-2 py-0.5 bg-am-50 text-am-700 rounded text-xs font-medium border border-am-200">{c}</span>
+              ))}
             </div>
           )}
           <svg
@@ -684,57 +734,57 @@ export default function ProjectWorkspace() {
         <div
           style={{
             overflow: "hidden",
-            maxHeight: colConfigCollapsed ? "0px" : "200px",
+            maxHeight: colConfigCollapsed ? "0px" : "300px",
             transition: "max-height 0.25s ease",
           }}
         >
           <div className="px-8 pb-4">
-            {columns ? (
-              <div className="grid grid-cols-6 gap-4">
+            {columns ? (() => {
+              const confDot = (targetKey) => {
+                const m = columnMappings?.[targetKey];
+                if (!m?.source_column) return null;
+                if (m.method === "alias_match" || m.method === "exact_match") return "bg-green-500";
+                if (m.method === "llm" && m.confidence === "high") return "bg-green-500";
+                if (m.method === "llm") return "bg-amber-400";
+                return "bg-gray-400";
+              };
+              const sel = "w-full border border-gray-300 rounded-lg px-2.5 py-2 text-sm focus:ring-2 focus:ring-am-500 focus:border-am-500 outline-none transition-all bg-white hover:border-gray-400";
+              const ColSel = ({ label, targetKey, value, onChange, opt }) => (
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1.5">Employee Column</label>
-                  <select className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-am-500 focus:border-am-500 outline-none transition-all bg-white hover:border-gray-400" value={empCol} onChange={(e) => setEmpCol(e.target.value)}>
-                    <option value="">Select column...</option>
+                  <label className="flex items-center gap-1 text-[11px] font-medium text-gray-600 mb-1">
+                    {confDot(targetKey) && <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${confDot(targetKey)}`} />}
+                    {label} {opt && <span className="text-gray-400">(Opt)</span>}
+                  </label>
+                  <select className={sel} value={value} onChange={onChange}>
+                    <option value="">Select...</option>
                     {columns.map((c) => <option key={c}>{c}</option>)}
                   </select>
                 </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1.5">Manager Column</label>
-                  <select className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-am-500 focus:border-am-500 outline-none transition-all bg-white hover:border-gray-400" value={mgrCol} onChange={(e) => setMgrCol(e.target.value)}>
-                    <option value="">Select column...</option>
-                    {columns.map((c) => <option key={c}>{c}</option>)}
-                  </select>
+              );
+              return (
+                <div className="space-y-3">
+                  <div className="grid grid-cols-6 gap-3">
+                    <ColSel label="Employee" targetKey="employee_id" value={empCol} onChange={e => setEmpCol(e.target.value)} />
+                    <ColSel label="Manager" targetKey="manager_id" value={mgrCol} onChange={e => setMgrCol(e.target.value)} />
+                    <ColSel label="FTE" targetKey="fte" value={fteCol} onChange={e => setFteCol(e.target.value)} />
+                    <ColSel label="FLC" targetKey="flc" value={flcCol} onChange={e => setFlcCol(e.target.value)} />
+                    <ColSel label="Country" targetKey="country" value={countryCol} onChange={e => setCountryCol(e.target.value)} opt />
+                    <ColSel label="Job Title" targetKey="job_title" value={jobTitleCol} onChange={e => setJobTitleCol(e.target.value)} opt />
+                  </div>
+                  <div className="grid grid-cols-9 gap-3">
+                    <ColSel label="Function" targetKey="function" value={funcCol} onChange={e => setFuncCol(e.target.value)} opt />
+                    <ColSel label="Sub-Function" targetKey="subfunction" value={subfuncCol} onChange={e => setSubfuncCol(e.target.value)} opt />
+                    <ColSel label="Grade" targetKey="grade" value={gradeCol} onChange={e => setGradeCol(e.target.value)} opt />
+                    <ColSel label="Division" targetKey="division" value={divisionCol} onChange={e => setDivisionCol(e.target.value)} opt />
+                    <ColSel label="Entity" targetKey="entity" value={entityCol} onChange={e => setEntityCol(e.target.value)} opt />
+                    <ColSel label="Start Date" targetKey="start_date" value={startDateCol} onChange={e => setStartDateCol(e.target.value)} opt />
+                    <ColSel label="Basic Pay" targetKey="basic_pay" value={basicPayCol} onChange={e => setBasicPayCol(e.target.value)} opt />
+                    <ColSel label="Contract" targetKey="contract_type" value={contractTypeCol} onChange={e => setContractTypeCol(e.target.value)} opt />
+                    <ColSel label="Status" targetKey="status" value={statusCol} onChange={e => setStatusCol(e.target.value)} opt />
+                  </div>
                 </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1.5">FTE Column</label>
-                  <select className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-am-500 focus:border-am-500 outline-none transition-all bg-white hover:border-gray-400" value={fteCol} onChange={(e) => setFteCol(e.target.value)}>
-                    <option value="">Select column...</option>
-                    {columns.map((c) => <option key={c}>{c}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1.5">FLC Column</label>
-                  <select className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-am-500 focus:border-am-500 outline-none transition-all bg-white hover:border-gray-400" value={flcCol} onChange={(e) => setFlcCol(e.target.value)}>
-                    <option value="">Select column...</option>
-                    {columns.map((c) => <option key={c}>{c}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1.5">Country Column <span className="text-gray-400">(Optional)</span></label>
-                  <select className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-am-500 focus:border-am-500 outline-none transition-all bg-white hover:border-gray-400" value={countryCol} onChange={(e) => setCountryCol(e.target.value)}>
-                    <option value="">Select column...</option>
-                    {columns.map((c) => <option key={c}>{c}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1.5">Job Title Column <span className="text-gray-400">(Optional)</span></label>
-                  <select className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-am-500 focus:border-am-500 outline-none transition-all bg-white hover:border-gray-400" value={jobTitleCol} onChange={(e) => setJobTitleCol(e.target.value)}>
-                    <option value="">Select column...</option>
-                    {columns.map((c) => <option key={c}>{c}</option>)}
-                  </select>
-                </div>
-              </div>
-            ) : (
+              );
+            })() : (
               <p className="text-sm text-gray-400 italic">Upload data to configure columns</p>
             )}
           </div>
@@ -761,6 +811,16 @@ export default function ProjectWorkspace() {
               >
                 {m.icon}
                 <span>{m.label}</span>
+                {activeModule !== m.id && m.id === "Upload" && dfRecords && preprocessingSummary && (
+                  <span className="ml-auto w-5 h-5 bg-green-500 rounded-full flex items-center justify-center flex-shrink-0">
+                    <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>
+                  </span>
+                )}
+                {activeModule !== m.id && m.id === "Rationalise" && dfRecords?.some(r => r["Rationalised Function"] || r["Rationalised Title"]) && (
+                  <span className="ml-auto w-5 h-5 bg-green-500 rounded-full flex items-center justify-center flex-shrink-0">
+                    <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>
+                  </span>
+                )}
                 {activeModule === m.id && (
                   <svg className="w-4 h-4 ml-auto" fill="currentColor" viewBox="0 0 20 20">
                     <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
@@ -794,7 +854,7 @@ export default function ProjectWorkspace() {
           </div>
           <div className="p-4 space-y-4">
             <div className="space-y-3">
-              <ExportExcel df={validatedDf} />
+              <ExportExcel df={workingDf} />
             </div>
             {filteredRowCount !== null && (
               <div className="mt-6 p-4 bg-am-50 border border-am-200 rounded-md">

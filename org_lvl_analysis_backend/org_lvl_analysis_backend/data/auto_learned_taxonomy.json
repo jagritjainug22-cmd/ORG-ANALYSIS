@@ -14,8 +14,8 @@
   "subfunction_aliases": {},
   "title_aliases": {
     "Marketing, Comms & Transformation": {
-      "Event Coordinator": "Campaign Manager",
-      "Stakeholder Synergies Specia": "Specialist",
+      "Event Coordinator": "Marketing Specialist",
+      "Stakeholder Synergies Specia": "Marketing Specialist",
       "Graphic Designer": "Marketing Specialist",
       "Educator": "Marketing Specialist"
     },
@@ -33,10 +33,10 @@
       "Distribution Scheduler": "Sales Executive",
       "Supply Planner": "Sales Executive",
       "Technical Planner": "Sales Executive",
-      "Infrastructure & Network Opt": "Sales Executive",
+      "Infrastructure & Network Opt": "Compliance Officer",
       "Inventory Analyst": "Business Development Executive",
       "Linear Programming Planner": "Sales Executive",
-      "Contract Management Speciali": "Specialist"
+      "Contract Management Speciali": "Sales Executive"
     },
     "Finance": {
       "Credit Controller": "Specialist",
@@ -55,7 +55,7 @@
       "Network Developer": "Sales Executive",
       "Area Manager": "Account Manager",
       "Financial Business Analyst": "Business Development Executive",
-      "Administrative Assistant": "Sales Executive",
+      "Administrative Assistant": "Sales Representative",
       "Business Technology & Data C": "Business Development Executive",
       "Senior New Site Developer": "Senior Sales Executive"
     },
@@ -70,7 +70,7 @@
       "Learning & SD Coordinator": "L&D Coordinator"
     },
     "ERA": {
-      "Senior Auditor": "Analyst"
+      "Senior Auditor": "Compliance Analyst"
     }
   }
 }

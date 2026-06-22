@@ -4,6 +4,7 @@ import { hierarchy as hierarchyBackend, dbSaveBaseline } from "../api/backend";
 export default function Hierarchy({
   validatedDf,
   setValidatedDf,
+  setDfRecords,
   empCol,
   mgrCol,
   flcCol,
@@ -47,7 +48,10 @@ export default function Hierarchy({
         datasetId || null
       );
 
-      if (res.df) setValidatedDf(res.df);
+      if (res.df) {
+        setValidatedDf(res.df);
+        setDfRecords?.(res.df);
+      }
       setPreview(res.preview || []);
       setResult({
         rowsProcessed: res.rows_processed || res.df?.length || 0,
@@ -146,7 +150,7 @@ export default function Hierarchy({
         <button
           onClick={runPreview}
           disabled={!canRun || loading}
-          className="flex-1 px-6 py-4 bg-am-500 hover:bg-am-600 text-white rounded-lg font-semibold shadow-lg hover:shadow-xl transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3"
+          className="flex-1 px-6 py-4 bg-am-500 hover:bg-am-600 text-white rounded-lg font-semibold shadow-lg hover:shadow-xl transition-all duration-200 disabled:bg-gray-200 disabled:text-gray-500 disabled:cursor-not-allowed flex items-center justify-center gap-3"
         >
           {loading ? (
             <>

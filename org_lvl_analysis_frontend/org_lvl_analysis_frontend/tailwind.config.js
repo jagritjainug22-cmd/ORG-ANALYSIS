@@ -22,8 +22,19 @@ export default {
           700: "#084037",
           800: "#062c26",
           900: "#031815",
-          deep: "#0A3D4F", // dark accent for branding panel
-          teal: "#1a8a7d", // lighter accent
+          deep: "#0A3D4F",
+          teal: "#1a8a7d",
+        },
+        brand: {
+          50:  "#eaf3ff",
+          100: "#dbeafe",
+          200: "#74a9e7",
+          300: "#5a93d5",
+          400: "#315f9b",
+          500: "#155bb2",
+          600: "#0a3f86",
+          700: "#0f2e5c",
+          800: "#0f172a",
         },
       },
     },

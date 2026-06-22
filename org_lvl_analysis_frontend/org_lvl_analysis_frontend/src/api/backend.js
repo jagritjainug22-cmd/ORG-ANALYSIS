@@ -847,6 +847,31 @@ export const dbGetCompletenessHeatmap = (records, fields, groupCol) =>
     { headers: jsonHeaders() }
   ).then(r => r.data);
 
+// ---------------------------------------------------------------------------
+// Smart Upload & Rationalisation API (Feature: Data Quality Agent)
+// ---------------------------------------------------------------------------
+
+export const smartUpload = (file) => {
+  const fd = new FormData();
+  fd.append("file", file);
+  return axios.post(`${getProjectUrl()}/smart-upload`, fd, {
+    headers: getHeaders({ "Content-Type": "multipart/form-data" }),
+    timeout: 120000,
+  }).then(r => r.data);
+};
+
+export const autoMapColumns = (columns, sampleRows) =>
+  axios.post(`${getProjectUrl()}/auto-map-columns`, { columns, sample_rows: sampleRows }, { headers: jsonHeaders() })
+    .then(r => r.data?.mappings ?? r.data);
+
+export const rationalisePropose = (records, funcCol, subfuncCol, titleCol) =>
+  axios.post(`${getProjectUrl()}/rationalise`, { records, func_col: funcCol || null, subfunc_col: subfuncCol || null, title_col: titleCol || null }, { headers: jsonHeaders(), timeout: 300000 }).then(r => r.data);
+
+export const rationaliseApply = (body) =>
+  axios.post(`${getProjectUrl()}/rationalise/apply`, body, { headers: jsonHeaders() }).then(r => r.data);
+
+// ---------------------------------------------------------------------------
+
 export const activityExportImpact = async (configId, configName = "activity") => {
   const res = await axios.get(`${getProjectUrl()}/activity/configs/${configId}/impact/export`, {
     headers: getHeaders(), responseType: "blob",

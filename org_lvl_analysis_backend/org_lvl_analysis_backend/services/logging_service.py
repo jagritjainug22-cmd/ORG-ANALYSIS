@@ -134,3 +134,117 @@ def get_user_stats(username: str):
             None
         )
     }
+
+def log_chat_query(
+    user_id: int,
+    project_id: int,
+    message: str,
+    intent: dict,
+    tool_result: dict,
+    response_text: str,
+):
+    """
+    Log detailed chatbot query execution steps to a dedicated chatbot log file.
+    """
+    import json
+    from datetime import datetime
+    
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    
+    # 1. Log to standard python logging
+    import logging
+    logger = logging.getLogger("chatbot")
+    logger.info(
+        "Chatbot Query [User %s, Project %s] at %s: Message='%s' -> Route='%s', Tool='%s'",
+        user_id, project_id, timestamp, message, intent.get("route"), intent.get("tool_name")
+    )
+    if tool_result.get("sql"):
+        logger.debug("Executed SQL: %s", tool_result.get("sql"))
+        
+    # 2. Write a detailed human-readable entry to logs/chatbot_queries.log
+    log_dir = Path("logs")
+    log_dir.mkdir(exist_ok=True)
+    log_file = log_dir / "chatbot_queries.log"
+    
+    divider = "=" * 80
+    sub_divider = "-" * 80
+    
+    entry_parts = [
+        divider,
+        f"TIMESTAMP: {timestamp}",
+        f"USER ID: {user_id} | PROJECT ID: {project_id}",
+        f"USER MESSAGE: \"{message}\"",
+        sub_divider,
+        "INTENT CLASSIFICATION:",
+        f"  Route:      {intent.get('route')}",
+        f"  Tool:       {intent.get('tool_name')}",
+        f"  Complexity: {intent.get('complexity')}",
+        f"  Intent Cat: {intent.get('intent')}",
+    ]
+    
+    if intent.get("missing_columns_needed"):
+        entry_parts.append(f"  Missing Columns Needed: {intent.get('missing_columns_needed')}")
+    if intent.get("cannot_answer_reason"):
+        entry_parts.append(f"  Cannot Answer Reason:   {intent.get('cannot_answer_reason')}")
+        
+    entry_parts.append(sub_divider)
+    
+    # If SQL was executed, log it
+    sql = tool_result.get("sql")
+    if sql:
+        entry_parts.extend([
+            "SQL QUERY EXECUTED:",
+            sql,
+            sub_divider
+        ])
+        
+    # Log database / tool result summary
+    source = tool_result.get("source", "unknown")
+    entry_parts.extend([
+        "TOOL RESULT INFO:",
+        f"  Source:       {source}",
+    ])
+    
+    if "row_count" in tool_result or "row_count" in tool_result.get("data", {}):
+        row_count = tool_result.get("row_count", 0)
+        truncated = tool_result.get("truncated", False)
+        entry_parts.extend([
+            f"  Row Count:    {row_count}",
+            f"  Truncated:    {truncated}",
+        ])
+        
+    # Log sample data
+    data = tool_result.get("data")
+    if isinstance(data, list) and data:
+        sample_size = min(len(data), 3)
+        sample_data = data[:sample_size]
+        entry_parts.extend([
+            f"  Data Sample (up to {sample_size} rows):",
+            f"    {json.dumps(sample_data, default=str)}"
+        ])
+    elif source == "insight_service" and "insights" in tool_result:
+        entry_parts.extend([
+            "  Insights Output:",
+            f"    {json.dumps(tool_result['insights'], default=str)}"
+        ])
+    elif "sql_error" in tool_result:
+        entry_parts.extend([
+            "  SQL Error:",
+            f"    {tool_result['sql_error']}"
+        ])
+        
+    entry_parts.extend([
+        sub_divider,
+        "FINAL NARRATIVE RESPONSE:",
+        response_text,
+        divider,
+        "\n"
+    ])
+    
+    log_entry = "\n".join(entry_parts)
+    
+    try:
+        with open(log_file, "a", encoding="utf-8") as f:
+            f.write(log_entry)
+    except Exception as e:
+        logger.error("Failed to write to chatbot_queries.log: %s", e)

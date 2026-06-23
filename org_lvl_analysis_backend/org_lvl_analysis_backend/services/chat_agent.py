@@ -21,9 +21,10 @@ Tools available:
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, AsyncGenerator, Dict, List, Optional
 
 from services import duckdb_manager
 from services.llm_service import call_llm, call_llm_json
@@ -729,6 +730,19 @@ def run_agent_turn(
     # Step 5: determine chart hint
     chart_hint = _suggest_chart(intent, tool_result)
 
+    try:
+        from services.logging_service import log_chat_query
+        log_chat_query(
+            user_id=user_id,
+            project_id=project_id,
+            message=message,
+            intent=intent,
+            tool_result=tool_result,
+            response_text=response_text,
+        )
+    except Exception as log_err:
+        log.error("Failed to log chat query details: %s", log_err, exc_info=True)
+
     return {
         "response": response_text,
         "data": tool_result.get("data", []),
@@ -770,3 +784,151 @@ def _suggest_chart(intent: Dict[str, Any], tool_result: Dict[str, Any]) -> Optio
     if rows <= 15:
         return "bar"
     return "table"
+
+
+# ---------------------------------------------------------------------------
+# Streaming agent turn entry point
+# ---------------------------------------------------------------------------
+
+async def run_agent_turn_stream(
+    message: str,
+    user_id: int,
+    project_id: int,
+    dataset_meta: Dict[str, Any],
+    schema: Dict[str, Any],
+    history: List[Dict[str, Any]] | None = None,
+) -> AsyncGenerator[Dict[str, Any], None]:
+    """Async generator version of run_agent_turn.
+
+    Yields typed SSE event dicts:
+      {"type": "status", "data": {"phase": str, "message": str}}
+      {"type": "token",  "data": {"text": str}}
+      {"type": "done",   "data": { ...full structured payload... }}
+      {"type": "error",  "data": {"message": str}}
+
+    The full agent pipeline runs in three phases:
+      1. classify_intent()  — fast LLM call (offloaded to thread)
+      2. execute_tool()     — SQL / insight execution (offloaded to thread)
+      3. LLM narration      — streamed token-by-token via call_llm_stream()
+    """
+    from services.llm_service import call_llm_stream
+
+    history = history or []
+
+    try:
+        # ── Phase 1: Intent classification ──────────────────────────────────
+        yield {"type": "status", "data": {"phase": "intent", "message": "Classifying your question..."}}
+
+        system_prompt = build_system_prompt(schema, dataset_meta)
+
+        intent = await asyncio.to_thread(
+            classify_intent, message, schema, dataset_meta
+        )
+        log.info("Stream intent: %s", json.dumps(intent, default=str))
+
+        # ── Phase 2: Tool / SQL execution ────────────────────────────────────
+        yield {"type": "status", "data": {"phase": "query", "message": "Running analysis query..."}}
+
+        tool_result = await asyncio.to_thread(
+            execute_tool, intent, user_id, dataset_meta, message, system_prompt
+        )
+
+        # ── Phase 3: Stream LLM narration ────────────────────────────────────
+        yield {"type": "status", "data": {"phase": "formatting", "message": "Writing response..."}}
+
+        source = tool_result.get("source", "unknown")
+        sql_error = tool_result.get("sql_error")
+
+        # Handle non-LLM paths inline (cannot_answer, simulation, sql_error)
+        if source == "cannot_answer":
+            reason = tool_result.get("reason", "")
+            static_text = (
+                f"I'm unable to answer this question with the current dataset. "
+                f"{reason} "
+                f"To enable this analysis, please re-upload the data with the relevant column mapped."
+            )
+            yield {"type": "token", "data": {"text": static_text}}
+
+        elif source == "simulation":
+            note = tool_result.get("simulation_note", "")
+            static_text = (
+                f"This question requires a full org redesign simulation which is not yet available. {note} "
+                f"Would you like me to show you the current state instead — "
+                f"for example, which managers have spans furthest from the target?"
+            )
+            yield {"type": "token", "data": {"text": static_text}}
+
+        elif sql_error:
+            static_text = (
+                f"I encountered an error retrieving that data: {sql_error}. "
+                f"Could you rephrase the question or specify which column you're referring to?"
+            )
+            yield {"type": "token", "data": {"text": static_text}}
+
+        else:
+            # Build the LLM prompt (same logic as format_response())
+            data = tool_result.get("data", [])
+            row_count = tool_result.get("row_count", 0)
+            data_preview = json.dumps(data[:30], default=str, indent=None)
+            total_note = (
+                f" ({tool_result.get('total_rows', row_count)} total rows, showing {min(row_count, 30)})"
+                if row_count > 30 else ""
+            )
+            if source == "insight_service":
+                data_preview = json.dumps(tool_result.get("insights", {}), default=str, indent=None)
+
+            format_prompt = f"""User asked: "{message}"
+
+Query returned {row_count} rows{total_note}:
+{data_preview}
+
+Answer this question in clear business language based on the data above."""
+
+            # Stream tokens
+            full_text = ""
+            async for token in call_llm_stream(
+                format_prompt,
+                system_message=_FORMAT_SYSTEM,
+                max_tokens=600,
+                temperature=0.3,
+            ):
+                full_text += token
+                yield {"type": "token", "data": {"text": token}}
+
+        # ── Logging ──────────────────────────────────────────────────────────
+        # Reconstruct full response text for logging (best-effort)
+        response_text_for_log = tool_result.get("_streamed_text", "")
+        try:
+            from services.logging_service import log_chat_query
+            log_chat_query(
+                user_id=user_id,
+                project_id=project_id,
+                message=message,
+                intent=intent,
+                tool_result=tool_result,
+                response_text=response_text_for_log,
+            )
+        except Exception as log_err:
+            log.error("Failed to log chat query (stream): %s", log_err)
+
+        # ── Done event: structured metadata ──────────────────────────────────
+        chart_hint = _suggest_chart(intent, tool_result)
+        yield {
+            "type": "done",
+            "data": {
+                "data": tool_result.get("data", []),
+                "columns": tool_result.get("columns", []),
+                "row_count": tool_result.get("row_count", 0),
+                "total_rows": tool_result.get("total_rows", tool_result.get("row_count", 0)),
+                "truncated": tool_result.get("truncated", False),
+                "source": tool_result.get("source", "unknown"),
+                "sql": tool_result.get("sql"),
+                "chart_hint": chart_hint,
+                "follow_ups": _get_followups(intent),
+                "intent": intent,
+            },
+        }
+
+    except Exception as exc:
+        log.error("run_agent_turn_stream error: %s", exc, exc_info=True)
+        yield {"type": "error", "data": {"message": str(exc)}}

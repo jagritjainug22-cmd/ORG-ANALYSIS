@@ -2,12 +2,17 @@
  * Ask OrgSight — Conversational AI chat panel for org data analysis.
  *
  * Renders inside ProjectWorkspace as the "Ask OrgSight" tab.
- * - Auto-inits DuckDB session on mount
- * - Sends natural language questions to POST /chat/message
- * - Renders text, tables, charts based on backend response
- * - Maintains conversation history (last 6 turns)
  *
- * Dependencies: recharts
+ * Features:
+ *   - Auto-inits DuckDB session on mount
+ *   - Streams responses word-by-word via SSE (POST /chat/stream)
+ *   - Live phase indicators during agent processing
+ *   - Abort / cancel in-flight stream
+ *   - Conversation history persisted to localStorage (via useChatHistory)
+ *   - Renders text, sortable tables, recharts-based charts
+ *   - Follow-up suggestion chips
+ *
+ * Dependencies: recharts, useChatHistory (local hook)
  */
 
 import React, { useState, useRef, useEffect, useCallback, useMemo } from "react";
@@ -16,23 +21,93 @@ import {
   ScatterChart, Scatter, AreaChart, Area,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
 } from "recharts";
-import { chatEnsure, chatMessage } from "../api/backend";
+import { chatEnsure, chatMessageStream } from "../api/backend";
+import { useChatHistory } from "../hooks/useChatHistory";
 
 const CHART_COLORS = ["#1e3a5f", "#2563eb", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6", "#ec4899", "#06b6d4", "#84cc16"];
+
+// Phase display config — polished SVG icons themed to the OrgSight brand
+const PhaseIconIntent = () => (
+  // Neural-network / scope: magnifying glass with connected data nodes inside
+  <svg className="w-4 h-4 flex-shrink-0" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    {/* Magnifying glass circle */}
+    <circle cx="8.5" cy="8.5" r="5.25" />
+    {/* Handle */}
+    <line x1="12.5" y1="12.5" x2="16.5" y2="16.5" />
+    {/* Inner network nodes */}
+    <circle cx="7"  cy="8"   r="0.9" fill="currentColor" stroke="none" />
+    <circle cx="10" cy="7.2" r="0.9" fill="currentColor" stroke="none" />
+    <circle cx="8.5" cy="10.2" r="0.9" fill="currentColor" stroke="none" />
+    {/* Connecting lines between nodes */}
+    <line x1="7"   y1="8"   x2="10"  y2="7.2" strokeWidth="1" />
+    <line x1="10"  y1="7.2" x2="8.5" y2="10.2" strokeWidth="1" />
+    <line x1="7"   y1="8"   x2="8.5" y2="10.2" strokeWidth="1" />
+  </svg>
+);
+
+const PhaseIconQuery = () => (
+  // Stacked database cylinders with a bolt — represents DuckDB/SQL execution
+  <svg className="w-4 h-4 flex-shrink-0" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    {/* Bottom cylinder */}
+    <ellipse cx="8" cy="14.5" rx="4.5" ry="1.5" />
+    <line x1="3.5" y1="14.5" x2="3.5" y2="11" />
+    <line x1="12.5" y1="14.5" x2="12.5" y2="11" />
+    {/* Top cylinder cap */}
+    <ellipse cx="8" cy="11" rx="4.5" ry="1.5" />
+    {/* Mid cap */}
+    <ellipse cx="8" cy="8.5" rx="4.5" ry="1.5" />
+    <line x1="3.5" y1="11" x2="3.5" y2="8.5" />
+    <line x1="12.5" y1="11" x2="12.5" y2="8.5" />
+    {/* Lightning bolt (top-right) */}
+    <polyline points="14.5,4 12.5,7.5 14.5,7.5 13,11" strokeWidth="1.6" stroke="currentColor" fill="none" />
+  </svg>
+);
+
+const PhaseIconFormatting = () => (
+  // Magic wand + sparkles — represents AI generating the narrative response
+  <svg className="w-4 h-4 flex-shrink-0" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    {/* Wand shaft */}
+    <line x1="4" y1="16" x2="11" y2="9" strokeWidth="1.8" />
+    {/* Wand tip star */}
+    <circle cx="11.8" cy="8.2" r="1" fill="currentColor" stroke="none" />
+    {/* Sparkle top-right: 4-pointed star */}
+    <line x1="15" y1="3"   x2="15" y2="5.5" strokeWidth="1.2" />
+    <line x1="13.75" y1="4.25" x2="16.25" y2="4.25" strokeWidth="1.2" />
+    {/* Sparkle small left */}
+    <line x1="7"  y1="4"   x2="7"  y2="5.5" strokeWidth="1.1" />
+    <line x1="6.25" y1="4.75" x2="7.75" y2="4.75" strokeWidth="1.1" />
+    {/* Sparkle tiny top-middle */}
+    <line x1="11.5" y1="3.5" x2="11.5" y2="4.7" strokeWidth="1" />
+    <line x1="10.9" y1="4.1" x2="12.1" y2="4.1" strokeWidth="1" />
+  </svg>
+);
+
+const PHASE_CONFIG = {
+  intent:     { icon: <PhaseIconIntent />,     label: "Classifying your question..." },
+  query:      { icon: <PhaseIconQuery />,      label: "Running analysis query..."    },
+  formatting: { icon: <PhaseIconFormatting />, label: "Writing response..."          },
+};
 
 // =============================================================================
 // MAIN COMPONENT
 // =============================================================================
 
 export default function AskOrgSight({ projectId, datasetId, scenarioId, onNavigate }) {
-  const [messages, setMessages] = useState([]);
+  const { messages, setMessages, clearHistory, sessionRestored } = useChatHistory(
+    projectId, datasetId, scenarioId
+  );
+
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [streamPhase, setStreamPhase] = useState(null); // current phase label
   const [initStatus, setInitStatus] = useState("idle"); // idle | loading | ready | error
   const [initError, setInitError] = useState(null);
-  const messagesEndRef = useRef(null);
 
-  // Auto-scroll on new messages
+  const messagesEndRef = useRef(null);
+  const abortRef = useRef(null); // holds the stream cleanup / abort function
+  const textareaRef = useRef(null);
+
+  // Auto-scroll on new messages / loading state change
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, isLoading]);
@@ -57,84 +132,151 @@ export default function AskOrgSight({ projectId, datasetId, scenarioId, onNaviga
     return () => { cancelled = true; };
   }, [datasetId, scenarioId]);
 
-  // Keep only last 6 messages for conversation history (3 turns)
+  // Keep last 6 messages for conversation history context
   const conversationHistory = useMemo(() => {
     return messages
       .slice(-6)
       .map(({ role, content }) => ({ role, content }));
   }, [messages]);
 
-  const sendMessage = useCallback(async (text) => {
+  // Auto-resize textarea
+  useEffect(() => {
+    const ta = textareaRef.current;
+    if (!ta) return;
+    ta.style.height = "auto";
+    ta.style.height = Math.min(ta.scrollHeight, 120) + "px";
+  }, [input]);
+
+  const abortStream = useCallback(() => {
+    if (abortRef.current) {
+      abortRef.current();
+      abortRef.current = null;
+    }
+    setIsLoading(false);
+    setStreamPhase(null);
+  }, []);
+
+  const sendMessage = useCallback((text) => {
     const msg = (text || input).trim();
     if (!msg || isLoading) return;
 
-    const userMsg = { role: "user", content: msg };
+    // Add user message
+    const userMsg = { role: "user", content: msg, timestamp: new Date().toISOString() };
     setMessages((prev) => [...prev, userMsg]);
     setInput("");
     setIsLoading(true);
+    setStreamPhase(null);
 
-    try {
-      const data = await chatMessage(msg, datasetId, scenarioId, conversationHistory);
+    // Add a streaming placeholder for the assistant bubble
+    const streamingMsgId = Date.now();
+    const placeholderMsg = {
+      role: "assistant",
+      content: "",
+      display: "text",
+      _streaming: true,
+      _id: streamingMsgId,
+      timestamp: new Date().toISOString(),
+    };
+    setMessages((prev) => [...prev, placeholderMsg]);
 
-      // Backend returns: { response, data, columns, row_count, total_rows, source, sql, chart_hint, follow_ups, intent }
-      // Transform the data array (list of dicts) into the shape our component expects
-      const dataPayload = data.data && data.data.length > 0
-        ? { columns: data.columns || Object.keys(data.data[0]), rows: data.data }
-        : null;
+    let accText = "";
 
-      // Build chart spec from chart_hint if available
-      let chartSpec = null;
-      if (data.chart_hint && data.chart_hint !== "table" && data.chart_hint !== "kpi_cards" && dataPayload) {
-        const cols = dataPayload.columns;
-        const numericCol = cols.find((c) => {
-          const sample = dataPayload.rows[0]?.[c];
-          return typeof sample === "number";
-        });
-        const labelCol = cols.find((c) => {
-          const sample = dataPayload.rows[0]?.[c];
-          return typeof sample !== "number";
-        });
-        if (numericCol && labelCol) {
-          chartSpec = {
-            chart_type: data.chart_hint === "horizontal_bar" ? "horizontal_bar" : data.chart_hint,
-            title: "",
-            x: labelCol,
-            y: numericCol,
-          };
-        }
+    const abort = chatMessageStream(
+      msg,
+      datasetId,
+      scenarioId,
+      conversationHistory,
+      {
+        onStatus: ({ phase, message: phaseMsg }) => {
+          setStreamPhase(PHASE_CONFIG[phase] || { icon: "⏳", label: phaseMsg });
+        },
+
+        onToken: (token) => {
+          accText += token;
+          setMessages((prev) =>
+            prev.map((m) =>
+              m._id === streamingMsgId
+                ? { ...m, content: accText }
+                : m
+            )
+          );
+        },
+
+        onDone: (payload) => {
+          // Build the final message with all structured data
+          const dataPayload =
+            payload.data && payload.data.length > 0
+              ? { columns: payload.columns || Object.keys(payload.data[0]), rows: payload.data }
+              : null;
+
+          let chartSpec = null;
+          if (
+            payload.chart_hint &&
+            payload.chart_hint !== "table" &&
+            payload.chart_hint !== "kpi_cards" &&
+            dataPayload
+          ) {
+            const cols = dataPayload.columns;
+            const numericCol = cols.find((c) => typeof dataPayload.rows[0]?.[c] === "number");
+            const labelCol = cols.find((c) => typeof dataPayload.rows[0]?.[c] !== "number");
+            if (numericCol && labelCol) {
+              chartSpec = {
+                chart_type: payload.chart_hint === "horizontal_bar" ? "horizontal_bar" : payload.chart_hint,
+                title: "",
+                x: labelCol,
+                y: numericCol,
+              };
+            }
+          }
+
+          let display = "text";
+          if (dataPayload && chartSpec) display = "table+chart";
+          else if (dataPayload) display = "table";
+
+          setMessages((prev) =>
+            prev.map((m) =>
+              m._id === streamingMsgId
+                ? {
+                    role: "assistant",
+                    content: accText,
+                    display,
+                    data: dataPayload,
+                    chart: chartSpec,
+                    followUps: payload.follow_ups || [],
+                    source: payload.source,
+                    timestamp: new Date().toISOString(),
+                  }
+                : m
+            )
+          );
+
+          abortRef.current = null;
+          setIsLoading(false);
+          setStreamPhase(null);
+        },
+
+        onError: (errMsg) => {
+          setMessages((prev) =>
+            prev.map((m) =>
+              m._id === streamingMsgId
+                ? {
+                    role: "assistant",
+                    content: accText || `Something went wrong: ${errMsg}`,
+                    display: "text",
+                    timestamp: new Date().toISOString(),
+                  }
+                : m
+            )
+          );
+          abortRef.current = null;
+          setIsLoading(false);
+          setStreamPhase(null);
+        },
       }
+    );
 
-      // Determine display mode
-      let display = "text";
-      if (dataPayload && chartSpec) display = "table+chart";
-      else if (dataPayload) display = "table";
-      else if (chartSpec) display = "chart";
-
-      const assistantMsg = {
-        role: "assistant",
-        content: data.response,
-        display,
-        data: dataPayload,
-        chart: chartSpec,
-        followUps: data.follow_ups || [],
-        source: data.source,
-      };
-
-      setMessages((prev) => [...prev, assistantMsg]);
-
-    } catch (err) {
-      console.error("Ask OrgSight error:", err);
-      const detail = err?.response?.data?.detail;
-      const errorMsg = typeof detail === "string" ? detail
-        : detail?.detail || detail?.error || err.message || "Something went wrong";
-      setMessages((prev) => [
-        ...prev,
-        { role: "assistant", content: `Something went wrong: ${errorMsg}`, display: "text" },
-      ]);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [input, isLoading, datasetId, scenarioId, conversationHistory]);
+    abortRef.current = abort;
+  }, [input, isLoading, datasetId, scenarioId, conversationHistory, setMessages]);
 
   const handleKeyDown = (e) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -143,7 +285,7 @@ export default function AskOrgSight({ projectId, datasetId, scenarioId, onNaviga
     }
   };
 
-  // No dataset selected
+  // ── No dataset ──────────────────────────────────────────────────────────────
   if (!datasetId || !scenarioId) {
     return (
       <div className="flex flex-col items-center justify-center h-full text-gray-400 p-12">
@@ -156,7 +298,7 @@ export default function AskOrgSight({ projectId, datasetId, scenarioId, onNaviga
     );
   }
 
-  // Initialising
+  // ── Initialising ────────────────────────────────────────────────────────────
   if (initStatus === "loading") {
     return (
       <div className="flex flex-col items-center justify-center h-full text-gray-400 p-12">
@@ -166,7 +308,7 @@ export default function AskOrgSight({ projectId, datasetId, scenarioId, onNaviga
     );
   }
 
-  // Init error
+  // ── Init error ──────────────────────────────────────────────────────────────
   if (initStatus === "error") {
     return (
       <div className="flex flex-col items-center justify-center h-full p-12">
@@ -187,6 +329,7 @@ export default function AskOrgSight({ projectId, datasetId, scenarioId, onNaviga
     );
   }
 
+  // ── Main chat UI ────────────────────────────────────────────────────────────
   return (
     <div className="flex flex-col h-full bg-gray-50">
       {/* Header */}
@@ -200,9 +343,24 @@ export default function AskOrgSight({ projectId, datasetId, scenarioId, onNaviga
           <h2 className="text-sm font-semibold text-gray-800">Ask OrgSight</h2>
           <p className="text-xs text-gray-500">Ask questions about your org data in plain English</p>
         </div>
-        {messages.length > 0 && (
+
+        {/* Session restored badge */}
+        {sessionRestored && (
+          <div
+            className="ml-auto flex items-center gap-1.5 px-3 py-1 rounded-full bg-brand-50 border border-brand-200 text-xs text-brand-700 animate-pulse"
+            title="Previous session chat restored from storage"
+          >
+            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+            Session restored
+          </div>
+        )}
+
+        {messages.length > 0 && !sessionRestored && (
           <button
-            onClick={() => setMessages([])}
+            id="ask-orgsight-clear"
+            onClick={clearHistory}
             className="ml-auto text-xs text-gray-400 hover:text-gray-600 transition px-2 py-1 rounded hover:bg-gray-100"
           >
             Clear chat
@@ -215,17 +373,33 @@ export default function AskOrgSight({ projectId, datasetId, scenarioId, onNaviga
         {messages.length === 0 && <EmptyState onSelect={sendMessage} />}
 
         {messages.map((msg, i) => (
-          <MessageBubble key={i} message={msg} onFollowUp={sendMessage} />
+          <MessageBubble key={msg._id || i} message={msg} onFollowUp={sendMessage} />
         ))}
 
+        {/* Live loading indicator with phase */}
         {isLoading && (
-          <div className="flex items-center gap-2 px-4 py-3 max-w-md">
+          <div className="flex items-center gap-3 px-4 py-3 max-w-md">
             <div className="flex gap-1">
               <span className="w-2 h-2 bg-brand-400 rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
               <span className="w-2 h-2 bg-brand-400 rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
               <span className="w-2 h-2 bg-brand-400 rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
             </div>
-            <span className="text-sm text-gray-500 italic">Analysing your data...</span>
+            <span className="text-sm text-gray-500 italic">
+              {streamPhase
+                ? <>{streamPhase.icon} {streamPhase.label}</>
+                : "Analysing your data..."}
+            </span>
+            {/* Abort button */}
+            <button
+              id="ask-orgsight-abort"
+              onClick={abortStream}
+              title="Stop generating"
+              className="ml-auto p-1 rounded hover:bg-gray-200 text-gray-400 hover:text-gray-600 transition cursor-pointer"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
           </div>
         )}
 
@@ -237,6 +411,7 @@ export default function AskOrgSight({ projectId, datasetId, scenarioId, onNaviga
         <div className="flex items-end gap-3 max-w-4xl mx-auto">
           <textarea
             id="ask-orgsight-input"
+            ref={textareaRef}
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
@@ -260,6 +435,9 @@ export default function AskOrgSight({ projectId, datasetId, scenarioId, onNaviga
             </svg>
           </button>
         </div>
+        <p className="text-[10px] text-gray-400 text-center mt-1.5">
+          Press <kbd className="px-1 py-0.5 bg-gray-100 rounded text-gray-500 font-mono">Enter</kbd> to send · <kbd className="px-1 py-0.5 bg-gray-100 rounded text-gray-500 font-mono">Shift+Enter</kbd> for new line
+        </p>
       </div>
     </div>
   );
@@ -273,6 +451,7 @@ export default function AskOrgSight({ projectId, datasetId, scenarioId, onNaviga
 function MessageBubble({ message, onFollowUp }) {
   const isUser = message.role === "user";
   const display = message.display || "text";
+  const isStreaming = !!message._streaming;
   const [showTable, setShowTable] = useState(display === "table");
 
   return (
@@ -283,7 +462,11 @@ function MessageBubble({ message, onFollowUp }) {
           ? "bg-brand-500 text-white rounded-br-md"
           : "bg-white text-gray-800 border border-gray-200 shadow-sm rounded-bl-md"
       }`}>
-        {message.content}
+        {message.content || (isStreaming ? "" : "—")}
+        {/* Blinking cursor while streaming */}
+        {isStreaming && (
+          <span className="inline-block w-0.5 h-4 bg-brand-400 ml-0.5 align-middle animate-[blink_1s_step-end_infinite]" />
+        )}
       </div>
 
       {/* Chart (above table when both present) */}
@@ -311,7 +494,7 @@ function MessageBubble({ message, onFollowUp }) {
       )}
 
       {/* Follow-up suggestions */}
-      {!isUser && message.followUps && message.followUps.length > 0 && (
+      {!isUser && !isStreaming && message.followUps && message.followUps.length > 0 && (
         <div className="flex flex-wrap gap-1.5 mt-2">
           {message.followUps.slice(0, 3).map((q, i) => (
             <button
@@ -326,9 +509,14 @@ function MessageBubble({ message, onFollowUp }) {
       )}
 
       {/* Source badge */}
-      {!isUser && message.source && (
+      {!isUser && !isStreaming && message.source && (
         <div className="mt-1 text-[10px] text-gray-400">
-          via {message.source === "named_tool" ? "pre-built query" : message.source === "sql_agent" ? "SQL agent" : message.source === "insight_service" ? "insights engine" : message.source}
+          via {
+            message.source === "named_tool" ? "pre-built query"
+            : message.source === "sql_agent" ? "SQL agent"
+            : message.source === "insight_service" ? "insights engine"
+            : message.source
+          }
         </div>
       )}
     </div>

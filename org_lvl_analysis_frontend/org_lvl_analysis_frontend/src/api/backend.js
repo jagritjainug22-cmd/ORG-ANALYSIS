@@ -928,6 +928,140 @@ export const chatMessage = (message, datasetId, scenarioId, history = []) =>
     history,
   }, { headers: jsonHeaders(), timeout: 60000 }).then(r => r.data);
 
+/**
+ * Stream a chat agent turn using Server-Sent Events.
+ *
+ * Uses native fetch + ReadableStream (not axios, which buffers the full body).
+ *
+ * @param {string}   message       - User's natural-language question
+ * @param {number}   datasetId
+ * @param {number}   scenarioId
+ * @param {Array}    history       - Prior conversation turns
+ * @param {Object}   callbacks
+ * @param {Function} callbacks.onStatus  - ({phase, message}) => void
+ * @param {Function} callbacks.onToken   - (text: string) => void
+ * @param {Function} callbacks.onDone    - (payload: object) => void
+ * @param {Function} callbacks.onError   - (message: string) => void
+ *
+ * @returns {Function} cleanup — call to abort the stream
+ */
+export const chatMessageStream = (
+  message,
+  datasetId,
+  scenarioId,
+  history = [],
+  { onStatus, onToken, onDone, onError } = {}
+) => {
+  const controller = new AbortController();
+
+  const run = async () => {
+    let response;
+    try {
+      response = await fetch(`${getProjectUrl()}/chat/stream`, {
+        method: "POST",
+        headers: {
+          ...getHeaders(),
+          "Content-Type": "application/json",
+          "Accept": "text/event-stream",
+        },
+        body: JSON.stringify({
+          message,
+          dataset_id: datasetId,
+          scenario_id: scenarioId,
+          history,
+        }),
+        signal: controller.signal,
+      });
+    } catch (err) {
+      if (err.name !== "AbortError") {
+        onError?.(`Network error: ${err.message}`);
+      }
+      return;
+    }
+
+    if (!response.ok) {
+      let detail = `HTTP ${response.status}`;
+      try {
+        const body = await response.json();
+        detail = body?.detail?.detail || body?.detail || detail;
+      } catch (_) { /* ignore */ }
+      onError?.(detail);
+      return;
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder("utf-8");
+    let buffer = "";
+
+    const processEvents = (chunk) => {
+      buffer += chunk;
+      // SSE events are separated by double newlines
+      const events = buffer.split(/\n\n/);
+      // The last element may be an incomplete event — keep it in the buffer
+      buffer = events.pop() ?? "";
+
+      for (const rawEvent of events) {
+        if (!rawEvent.trim()) continue;
+        // Parse named event blocks: lines starting with "event:" and "data:"
+        let eventType = "message";
+        let dataStr = "";
+        for (const line of rawEvent.split("\n")) {
+          if (line.startsWith("event:")) {
+            eventType = line.slice(6).trim();
+          } else if (line.startsWith("data:")) {
+            dataStr = line.slice(5).trim();
+          }
+        }
+        if (!dataStr) continue;
+
+        let payload;
+        try {
+          payload = JSON.parse(dataStr);
+        } catch (_) {
+          payload = { text: dataStr };
+        }
+
+        switch (eventType) {
+          case "status":
+            onStatus?.(payload);
+            break;
+          case "token":
+            onToken?.(payload.text ?? "");
+            break;
+          case "done":
+            onDone?.(payload);
+            break;
+          case "error":
+            onError?.(payload.message ?? "Unknown error");
+            break;
+          default:
+            break;
+        }
+      }
+    };
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        processEvents(decoder.decode(value, { stream: true }));
+      }
+      // Flush any remaining buffered data
+      if (buffer.trim()) processEvents("\n\n");
+    } catch (err) {
+      if (err.name !== "AbortError") {
+        onError?.(`Stream read error: ${err.message}`);
+      }
+    }
+  };
+
+  run();
+
+  // Return a cleanup / abort function
+  return () => controller.abort();
+};
+
+
 // ---------------------------------------------------------------------------
 
 export const activityExportImpact = async (configId, configName = "activity") => {

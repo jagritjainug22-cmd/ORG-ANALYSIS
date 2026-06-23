@@ -9,6 +9,7 @@ Provides:
 - Token usage + latency metrics (thread-safe)
 """
 
+import asyncio
 import json
 import logging
 import os
@@ -16,7 +17,7 @@ import re
 import threading
 import time
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, AsyncGenerator
 
 from openai import AzureOpenAI
 
@@ -204,6 +205,81 @@ def call_llm(
 
     log.error("LLM call failed after %d retries: %s", _MAX_RETRIES, last_error)
     raise last_error  # type: ignore[misc]
+
+
+async def call_llm_stream(
+    prompt: str,
+    *,
+    max_tokens: int = 600,
+    temperature: float = 0.3,
+    system_message: str | None = None,
+) -> AsyncGenerator[str, None]:
+    """Async generator that streams LLM response text chunk-by-chunk.
+
+    Yields individual text delta strings as they arrive from the API.
+    The blocking SDK call is offloaded to a thread-pool executor so the
+    async event loop remains unblocked throughout streaming.
+    """
+    client = _get_client()
+    messages = []
+    if system_message:
+        messages.append({"role": "system", "content": system_message})
+    messages.append({"role": "user", "content": prompt})
+
+    kwargs: dict[str, Any] = {
+        "model": _DEPLOYMENT,
+        "messages": messages,
+        "temperature": temperature,
+        "max_tokens": max_tokens,
+        "stream": True,
+    }
+
+    # Run the blocking create() call in a thread so we get the stream object
+    loop = asyncio.get_event_loop()
+    stream = await loop.run_in_executor(
+        None,
+        lambda: client.chat.completions.create(**kwargs),
+    )
+
+    # Iterate the stream in a thread — the SDK chunk iteration is also blocking
+    import queue as _queue
+
+    q: _queue.Queue = _queue.Queue()
+    _SENTINEL = object()
+
+    def _drain():
+        try:
+            for chunk in stream:
+                if chunk.choices:
+                    delta = chunk.choices[0].delta
+                    text = getattr(delta, "content", None)
+                    if text:
+                        q.put(text)
+        except Exception as exc:
+            q.put(exc)
+        finally:
+            q.put(_SENTINEL)
+
+    # Start the drain thread
+    import threading as _threading
+    t = _threading.Thread(target=_drain, daemon=True)
+    t.start()
+
+    # Yield chunks as they appear in the queue
+    while True:
+        # Poll the queue without blocking the event loop
+        try:
+            item = await loop.run_in_executor(None, q.get)
+        except Exception as exc:
+            log.error("LLM stream drain error: %s", exc)
+            break
+
+        if item is _SENTINEL:
+            break
+        if isinstance(item, Exception):
+            log.error("LLM stream chunk error: %s", item)
+            break
+        yield item
 
 
 # ---------------------------------------------------------------------------

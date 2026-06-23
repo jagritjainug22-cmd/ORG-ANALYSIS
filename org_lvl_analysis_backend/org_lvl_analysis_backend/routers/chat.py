@@ -7,9 +7,11 @@ All endpoints are project-scoped and require JWT authentication.
 
 from __future__ import annotations
 
+import json
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from dependencies.auth import require_project_access
@@ -216,3 +218,74 @@ def chat_message(
     except Exception as e:
         logger.error("chat_message agent error user_id=%s: %s", user["id"], e, exc_info=True)
         raise HTTPException(status_code=500, detail={"error": "Agent error", "detail": str(e)}) from e
+
+
+# ---------------------------------------------------------------------------
+# Streaming agent endpoint — SSE (Server-Sent Events)
+# ---------------------------------------------------------------------------
+
+@router.post("/chat/stream")
+async def chat_stream(
+    body: ChatMessageBody,
+    project_id: int,
+    user: dict = Depends(require_project_access()),
+):
+    """Stream a chat agent turn as Server-Sent Events.
+
+    Emits named SSE events:
+      event: status  — phase progress (intent / query / formatting)
+      event: token   — individual LLM text chunks
+      event: done    — final structured metadata (data, columns, chart_hint…)
+      event: error   — agent-level error message
+
+    The existing POST /chat/message endpoint remains untouched for
+    non-streaming clients and backward compatibility.
+    """
+    _require_scenario_in_dataset(body.dataset_id, body.scenario_id)
+
+    try:
+        duckdb_manager.ensure_fresh(
+            user_id=user["id"],
+            project_id=project_id,
+            dataset_id=body.dataset_id,
+            scenario_id=body.scenario_id,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+
+    dataset = db_service.get_dataset(body.dataset_id)
+    if not dataset:
+        raise HTTPException(status_code=404, detail="Dataset not found")
+
+    schema = duckdb_manager.get_schema(user["id"])
+    if schema is None:
+        raise HTTPException(status_code=500, detail="DuckDB schema unavailable after init")
+
+    async def event_generator():
+        from services.chat_agent import run_agent_turn_stream
+        try:
+            async for event in run_agent_turn_stream(
+                message=body.message,
+                user_id=user["id"],
+                project_id=project_id,
+                dataset_meta=dataset,
+                schema=schema,
+                history=body.history,
+            ):
+                event_type = event.get("type", "message")
+                event_data = json.dumps(event.get("data", {}), default=str)
+                yield f"event: {event_type}\ndata: {event_data}\n\n"
+        except Exception as e:
+            logger.error("chat_stream generator error user_id=%s: %s", user["id"], e, exc_info=True)
+            err_data = json.dumps({"message": str(e)})
+            yield f"event: error\ndata: {err_data}\n\n"
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive",
+        },
+    )

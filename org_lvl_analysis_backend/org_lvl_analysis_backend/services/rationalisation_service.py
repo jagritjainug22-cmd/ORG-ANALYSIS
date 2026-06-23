@@ -212,7 +212,7 @@ def _normalise(value: str) -> str:
 # Fuzzy matching thresholds
 # ---------------------------------------------------------------------------
 
-_FUNC_FUZZY_THRESHOLD = 92
+_FUNC_FUZZY_THRESHOLD = 85
 _SUBFUNC_FUZZY_THRESHOLD = 78
 
 _PLACEHOLDER_SUBFUNCS = frozenset({
@@ -512,7 +512,14 @@ def rationalise(
         unique_funcs = sorted(
             set(str(v).strip() for v in df[func_col].dropna().unique())
         )
-        func_map = _resolve_functions(unique_funcs)
+        func_counts: dict[str, int] = (
+            df[func_col].dropna()
+            .apply(lambda v: str(v).strip())
+            .value_counts()
+            .to_dict()
+        )
+        total_rows = len(df)
+        func_map = _resolve_functions(unique_funcs, func_counts, total_rows)
         result["function_mappings"] = [
             {"input": f, **func_map[f]} for f in unique_funcs
         ]
@@ -687,10 +694,14 @@ def apply_rationalisation(
 # Function resolution (4 layers)
 # ---------------------------------------------------------------------------
 
-def _resolve_functions(unique_funcs: list[str]) -> dict[str, dict]:
+def _resolve_functions(
+    unique_funcs: list[str],
+    func_counts: dict[str, int] | None = None,
+    total_rows: int = 0,
+) -> dict[str, dict]:
     result: dict[str, dict] = {}
     need_cache: list[str] = []
-    master_display_names = list(_NORM_FUNC_KEYS.values())
+    master_display_names = list(MASTER_TAXONOMY.keys())
 
     for f in unique_funcs:
         key = _normalise(f)
@@ -706,7 +717,7 @@ def _resolve_functions(unique_funcs: list[str]) -> dict[str, dict]:
             result[f] = {"resolved": _NORM_FUNC_KEYS[expanded_key], "method": "exact", "confidence": "high"}
             continue
 
-        # Layer 2: Fuzzy match (high threshold — preserve client names when uncertain)
+        # Layer 2: Fuzzy match against master taxonomy names
         if master_display_names:
             match = rfprocess.extractOne(f, master_display_names, scorer=fuzz.token_sort_ratio, score_cutoff=_FUNC_FUZZY_THRESHOLD)
             if match and match[1] >= _FUNC_FUZZY_THRESHOLD:
@@ -728,15 +739,20 @@ def _resolve_functions(unique_funcs: list[str]) -> dict[str, dict]:
     else:
         unresolved = []
 
-    # Layer 3: Batch LLM
+    # Layer 3: Batch LLM — always assigns method "ai" (LLM decides whether to map or keep)
     if unresolved:
-        llm_results = _llm_resolve_functions(unresolved, master_display_names)
+        llm_results = _llm_resolve_functions(
+            unresolved, master_display_names,
+            func_counts=func_counts or {},
+            total_rows=total_rows,
+        )
         for f in unresolved:
             resolved = llm_results.get(f, f)
-            if resolved and resolved != f:
-                result[f] = {"resolved": resolved, "method": "ai", "confidence": "medium"}
-            else:
-                result[f] = {"resolved": f, "method": "original", "confidence": "high"}
+            result[f] = {
+                "resolved": resolved if resolved else f,
+                "method": "ai",
+                "confidence": "medium",
+            }
 
     return result
 
@@ -872,8 +888,8 @@ def _preresolve_titles(
 # ---------------------------------------------------------------------------
 
 _SYS_MSG = (
-    "Corporate HR census standardisation expert. Preserve client-specific business unit "
-    "names unless clearly equivalent to a reference term. Return JSON only."
+    "Corporate HR census standardisation expert. Map all organisational data to a standardised "
+    "taxonomy suitable for org chart hierarchy analysis. Return JSON only."
 )
 
 
@@ -903,20 +919,39 @@ def _run_llm_batches_parallel(
     return merged
 
 
-def _llm_resolve_functions(unresolved: list[str], master_list: list[str]) -> dict[str, str]:
-    input_str = ", ".join(f'"{f}"' for f in sorted(unresolved))
-    master_str = ", ".join(f'"{f}"' for f in sorted(master_list))
+def _llm_resolve_functions(
+    unresolved: list[str],
+    master_list: list[str],
+    func_counts: dict[str, int] | None = None,
+    total_rows: int = 0,
+) -> dict[str, str]:
+    fc = func_counts or {}
+    lines = []
+    for f in sorted(unresolved):
+        count = fc.get(f, 0)
+        pct = round(100.0 * count / total_rows, 1) if total_rows > 0 else 0.0
+        lines.append(f'  "{f}" ({count} employees, {pct}% of workforce)')
+    input_block = "\n".join(lines)
+    master_str = ", ".join(f'"{m}"' for m in master_list)
 
-    prompt = f"""Standardise function names ONLY when clearly equivalent to a master reference.
-Preserve industry-specific or client-specific names (Lubricants, HSSE, Corporate, Retail, etc.) — return input unchanged if no strong match.
-Do NOT map unrelated units into Legal, Compliance, Procurement, or IT unless explicitly correct.
-Abbreviations: HR=Human Resources, S&D=Sales & Distribution, R&D=Research & Development, IT=Information Technology.
+    prompt = f"""You are standardising department/function names from a corporate HR census for org chart analysis.
 
-Inputs: [{input_str}]
-Master reference (optional — use only when clearly equivalent): [{master_str}]
+MASTER FUNCTIONS (map to one of these):
+{master_str}
 
-Return JSON object: {{"Input Name": "Resolved Name", ...}}
-If uncertain, map each input to itself unchanged."""
+INPUT FUNCTIONS TO MAP (with employee counts):
+{input_block}
+
+RULES:
+1. Map each input to the CLOSEST master function based on what WORK that department performs — not its name.
+2. A department named after a product, commodity, or business unit should map to the master function describing the work done (e.g. a product sales division → Sales & Marketing; a sourcing/procurement unit → Procurement; an R&D lab → R&D).
+3. Expand common abbreviations in context: e.g. S&D can mean Sales & Distribution (→ Sales & Marketing) or Supply & Demand (→ Procurement); interpret from context of other functions present.
+4. If a function represents >15% of the workforce AND genuinely has no semantic overlap with any master function, you may keep it unchanged.
+5. Always choose a master function over keeping the input when there is a reasonable mapping.
+6. Do NOT invent new functions — only output from the master list or the original input unchanged.
+
+Return JSON object mapping each input exactly as given to its resolved master function:
+{{"Input Name": "Master Function", ...}}"""
 
     try:
         result = call_llm_json(

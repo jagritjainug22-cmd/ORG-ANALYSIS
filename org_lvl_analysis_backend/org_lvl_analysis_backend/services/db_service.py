@@ -1034,6 +1034,140 @@ def get_dataset_meta(dataset_id: int) -> Dict[str, Any]:
         }
 
 
+def get_datasets_previews(
+    dataset_ids: List[int],
+    datasets_by_id: Dict[int, Dict[str, Any]]
+) -> Dict[int, Dict[str, Any]]:
+    """Batch fetch preview hierarchies for multiple datasets using a window function CTE.
+    Returns a dict mapping dataset_id -> preview dict.
+    """
+    if not dataset_ids:
+        return {}
+
+    placeholders = ",".join("?" for _ in dataset_ids)
+    
+    query = f"""
+    WITH RankedRecords AS (
+      SELECT 
+        dataset_id, 
+        level, 
+        emp_id, 
+        data_json,
+        ROW_NUMBER() OVER(PARTITION BY dataset_id, level ORDER BY id) as rn
+      FROM baseline_records
+      WHERE dataset_id IN ({placeholders}) 
+        AND level IN (1, 2)
+    ),
+    Level2Counts AS (
+      SELECT 
+        dataset_id, 
+        COUNT(*) as total_children
+      FROM baseline_records
+      WHERE dataset_id IN ({placeholders}) AND level = 2
+      GROUP BY dataset_id
+    )
+    SELECT 
+      r.dataset_id,
+      r.level,
+      r.emp_id,
+      r.data_json,
+      COALESCE(c.total_children, 0) as total_children
+    FROM RankedRecords r
+    LEFT JOIN Level2Counts c ON r.dataset_id = c.dataset_id
+    WHERE (r.level = 1 AND r.rn = 1)
+       OR (r.level = 2 AND r.rn <= 4)
+    ORDER BY r.dataset_id, r.level, r.rn;
+    """
+
+    params = dataset_ids + dataset_ids
+
+    previews = {
+        pid: {"root": None, "children": [], "total_children": 0}
+        for pid in dataset_ids
+    }
+
+    with _connect_ro() as conn:
+        rows = conn.execute(query, params).fetchall()
+
+    for r in rows:
+        pid = r["dataset_id"]
+        level = r["level"]
+        emp_id = r["emp_id"]
+        total_children = r["total_children"]
+
+        ds = datasets_by_id.get(pid, {})
+        job_title_col = ds.get("job_title_col")
+        emp_col = ds.get("emp_col")
+
+        try:
+            data = json.loads(r["data_json"])
+        except Exception:
+            data = {}
+
+        def _label(record_data: Dict[str, Any], eid: str) -> str:
+            if job_title_col and record_data.get(job_title_col):
+                return str(record_data[job_title_col])
+            if record_data.get("Job Title"):
+                return str(record_data["Job Title"])
+            if emp_col and record_data.get(emp_col):
+                return str(record_data[emp_col])
+            return str(eid)
+
+        label = _label(data, emp_id)
+        
+        previews[pid]["total_children"] = total_children
+
+        if level == 1:
+            previews[pid]["root"] = {"emp_id": emp_id, "label": label}
+        elif level == 2:
+            previews[pid]["children"].append({"emp_id": emp_id, "label": label})
+
+    return previews
+
+
+def get_datasets_meta(dataset_ids: List[int]) -> Dict[int, Dict[str, Any]]:
+    """Batch fetch scenario metadata for multiple datasets.
+    Returns a dict mapping dataset_id -> metadata dict.
+    """
+    if not dataset_ids:
+        return {}
+
+    placeholders = ",".join("?" for _ in dataset_ids)
+    query = f"""
+    SELECT dataset_id, name, is_promoted, updated_at
+    FROM scenarios
+    WHERE dataset_id IN ({placeholders})
+    """
+    
+    meta = {
+        pid: {
+            "scenario_count": 0,
+            "last_modified_at": None,
+            "promoted_scenario_name": None,
+        }
+        for pid in dataset_ids
+    }
+
+    with _connect_ro() as conn:
+        rows = conn.execute(query, dataset_ids).fetchall()
+
+    for r in rows:
+        pid = r["dataset_id"]
+        ts = r["updated_at"]
+        
+        meta[pid]["scenario_count"] += 1
+        
+        last_mod = meta[pid]["last_modified_at"]
+        if ts and (last_mod is None or ts > last_mod):
+            meta[pid]["last_modified_at"] = ts
+            
+        if r["is_promoted"]:
+            meta[pid]["promoted_scenario_name"] = r["name"]
+
+    return meta
+
+
+
 def get_baseline_records(dataset_id: int) -> List[Dict[str, Any]]:
     with _connect_ro() as conn:
         cur = conn.execute(

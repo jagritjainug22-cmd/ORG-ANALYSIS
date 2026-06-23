@@ -1997,6 +1997,11 @@ def db_list_datasets(
         project_id=project_id,
     )
     locks = dataset_lock_service.get_locks_for_project(project_id)
+    if include_preview and datasets:
+        dataset_ids = [ds["id"] for ds in datasets]
+        datasets_by_id = {ds["id"]: ds for ds in datasets}
+        previews = db_service.get_datasets_previews(dataset_ids, datasets_by_id)
+        metas = db_service.get_datasets_meta(dataset_ids)
     for ds in datasets:
         lock = locks.get(ds["id"])
         if lock:
@@ -2006,12 +2011,18 @@ def db_list_datasets(
             ds["locked_by"] = None
             ds["locked_by_id"] = None
         if include_preview:
-            ds["preview"] = db_service.get_dataset_preview(
+            ds["preview"] = previews.get(
                 ds["id"],
-                job_title_col=ds.get("job_title_col"),
-                emp_col=ds.get("emp_col"),
+                {"root": None, "children": [], "total_children": 0}
             )
-            ds.update(db_service.get_dataset_meta(ds["id"]))
+            ds.update(metas.get(
+                ds["id"],
+                {
+                    "scenario_count": 0,
+                    "last_modified_at": None,
+                    "promoted_scenario_name": None,
+                }
+            ))
     return {"datasets": datasets}
 
 

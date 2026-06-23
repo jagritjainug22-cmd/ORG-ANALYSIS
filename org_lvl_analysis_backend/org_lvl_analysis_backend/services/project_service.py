@@ -5,7 +5,7 @@ Project service -- CRUD for projects and project assignments.
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from services.db_service import _connect
+from services.db_service import _connect, _connect_ro
 
 
 # ---------------------------------------------------------------------------
@@ -39,13 +39,13 @@ def get_project(project_id: int) -> Optional[Dict[str, Any]]:
 
 
 def list_all_projects() -> List[Dict[str, Any]]:
-    with _connect() as conn:
+    with _connect_ro() as conn:
         rows = conn.execute("SELECT * FROM projects ORDER BY created_at DESC").fetchall()
         return [dict(r) for r in rows]
 
 
 def list_user_projects(user_id: int) -> List[Dict[str, Any]]:
-    with _connect() as conn:
+    with _connect_ro() as conn:
         rows = conn.execute(
             """
             SELECT p.*, pa.role AS assignment_role, pa.assigned_at
@@ -57,6 +57,93 @@ def list_user_projects(user_id: int) -> List[Dict[str, Any]]:
             (user_id,),
         ).fetchall()
         return [dict(r) for r in rows]
+
+
+def list_projects_with_metadata(user_id: int, is_admin: bool = False) -> List[Dict[str, Any]]:
+    """Fetch the list of projects (either all projects for admins, or assigned projects for a user)
+    including locks, dataset count, member count, and first 5 active members preview in just 2 queries.
+    """
+    if is_admin:
+        project_query = """
+            SELECT 
+              p.*,
+              pl.username as locked_by,
+              pl.user_id as locked_by_id,
+              COALESCE(ds.dataset_count, 0) as dataset_count,
+              COALESCE(mem.member_count, 0) as member_count
+            FROM projects p
+            LEFT JOIN project_locks pl ON p.id = pl.project_id
+            LEFT JOIN (
+              SELECT project_id, COUNT(*) as dataset_count FROM datasets GROUP BY project_id
+            ) ds ON p.id = ds.project_id
+            LEFT JOIN (
+              SELECT project_id, COUNT(*) as member_count FROM project_assignments GROUP BY project_id
+            ) mem ON p.id = mem.project_id
+            ORDER BY p.created_at DESC
+        """
+        params = ()
+    else:
+        project_query = """
+            SELECT 
+              p.*,
+              pa.role AS assignment_role, pa.assigned_at,
+              pl.username as locked_by,
+              pl.user_id as locked_by_id,
+              COALESCE(ds.dataset_count, 0) as dataset_count,
+              COALESCE(mem.member_count, 0) as member_count
+            FROM projects p
+            JOIN project_assignments pa ON p.id = pa.project_id
+            LEFT JOIN project_locks pl ON p.id = pl.project_id
+            LEFT JOIN (
+              SELECT project_id, COUNT(*) as dataset_count FROM datasets GROUP BY project_id
+            ) ds ON p.id = ds.project_id
+            LEFT JOIN (
+              SELECT project_id, COUNT(*) as member_count FROM project_assignments GROUP BY project_id
+            ) mem ON p.id = mem.project_id
+            WHERE pa.user_id = ? AND p.status = 'active'
+            ORDER BY p.updated_at DESC
+        """
+        params = (user_id,)
+
+    with _connect_ro() as conn:
+        projects = [dict(r) for r in conn.execute(project_query, params).fetchall()]
+        if not projects:
+            return []
+
+        project_ids = [p["id"] for p in projects]
+        placeholders = ", ".join("?" for _ in project_ids)
+        
+        # Query 2: Fetch only the first 5 active members for previews in a single batch
+        preview_query = f"""
+            WITH RankedMembers AS (
+                SELECT 
+                  pa.project_id, pa.role, pa.assigned_at,
+                  u.id AS user_id, u.username, u.display_name, u.is_active,
+                  ROW_NUMBER() OVER(PARTITION BY pa.project_id ORDER BY pa.assigned_at) as rn
+                FROM project_assignments pa
+                JOIN users u ON pa.user_id = u.id
+                WHERE pa.project_id IN ({placeholders}) AND u.is_active = 1
+            )
+            SELECT * FROM RankedMembers WHERE rn <= 5
+        """
+        previews = [dict(r) for r in conn.execute(preview_query, project_ids).fetchall()]
+
+    # Group previews by project_id
+    previews_by_project = {}
+    for m in previews:
+        pid = m["project_id"]
+        previews_by_project.setdefault(pid, []).append({
+            "user_id": m["user_id"],
+            "username": m["username"],
+            "display_name": m["display_name"],
+            "role": m["role"],
+        })
+
+    # Merge projects and previews
+    for p in projects:
+        p["members_preview"] = previews_by_project.get(p["id"], [])
+        
+    return projects
 
 
 def update_project(
@@ -165,7 +252,7 @@ def get_projects_overview(project_ids: List[int]) -> Dict[int, Dict[str, Any]]:
         "dataset_count": 0,
     } for pid in project_ids}
 
-    with _connect() as conn:
+    with _connect_ro() as conn:
         member_rows = conn.execute(
             f"""
             SELECT pa.project_id, pa.role, pa.assigned_at,

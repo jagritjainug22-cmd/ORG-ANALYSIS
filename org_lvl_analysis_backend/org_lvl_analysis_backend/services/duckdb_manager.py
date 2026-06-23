@@ -248,6 +248,8 @@ def get_schema(user_id: int) -> Optional[Dict[str, Any]]:
 
 
 def query(user_id: int, sql: str, max_rows: int = 10_000) -> Dict[str, Any]:
+    from services.sql_sanitizer import sanitize_sql
+
     with _lock:
         session = _sessions.get(user_id)
         if session is None:
@@ -256,11 +258,20 @@ def query(user_id: int, sql: str, max_rows: int = 10_000) -> Dict[str, Any]:
         _sessions.move_to_end(user_id)
         conn = session["conn"]
 
-        result = conn.execute(sql)
+        # Sanitize SQL before execution — catches semicolons, DDL, invalid refs
+        known_cols = None
+        if session.get("columns"):
+            known_cols = {name for name, _ in session["columns"]}
+
+        cleaned_sql, error = sanitize_sql(sql, known_columns=known_cols)
+        if error:
+            raise ValueError(f"SQL validation failed: {error}")
+
+        result = conn.execute(cleaned_sql)
         columns = [desc[0] for desc in result.description]
         rows = result.fetchmany(max_rows)
         data = [dict(zip(columns, row)) for row in rows]
-        total = conn.execute(f"SELECT COUNT(*) FROM ({sql}) _q").fetchone()[0]
+        total = conn.execute(f"SELECT COUNT(*) FROM ({cleaned_sql}) _q").fetchone()[0]
 
     return {
         "columns": columns,

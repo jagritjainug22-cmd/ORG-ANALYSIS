@@ -156,13 +156,15 @@ export default function AskOrgSight({ projectId, datasetId, scenarioId, onNaviga
     setStreamPhase(null);
   }, []);
 
-  const sendMessage = useCallback((text) => {
+  const sendMessage = useCallback((text, resolvedColumns = {}) => {
     const msg = (text || input).trim();
     if (!msg || isLoading) return;
 
-    // Add user message
-    const userMsg = { role: "user", content: msg, timestamp: new Date().toISOString() };
-    setMessages((prev) => [...prev, userMsg]);
+    // Add user message (don't show if it's a re-send for clarification)
+    if (!Object.keys(resolvedColumns).length) {
+      const userMsg = { role: "user", content: msg, timestamp: new Date().toISOString() };
+      setMessages((prev) => [...prev, userMsg]);
+    }
     setInput("");
     setIsLoading(true);
     setStreamPhase(null);
@@ -233,21 +235,34 @@ export default function AskOrgSight({ projectId, datasetId, scenarioId, onNaviga
           if (dataPayload && chartSpec) display = "table+chart";
           else if (dataPayload) display = "table";
 
+          const finalMsg = {
+            role: "assistant",
+            content: accText,
+            display,
+            data: dataPayload,
+            chart: chartSpec,
+            followUps: payload.follow_ups || [],
+            source: payload.source,
+            timestamp: new Date().toISOString(),
+          };
+
+          // Handle clarification responses
+          if (payload.source === "clarification_needed") {
+            finalMsg.clarification = {
+              type: payload.clarification_type,
+              options: payload.options || [],
+              originalQuery: payload.original_query,
+            };
+            finalMsg.display = "clarification";
+          }
+
+          // Handle navigation responses
+          if (payload.source === "navigate" && payload.navigation_target) {
+            finalMsg.navigationTarget = payload.navigation_target;
+          }
+
           setMessages((prev) =>
-            prev.map((m) =>
-              m._id === streamingMsgId
-                ? {
-                    role: "assistant",
-                    content: accText,
-                    display,
-                    data: dataPayload,
-                    chart: chartSpec,
-                    followUps: payload.follow_ups || [],
-                    source: payload.source,
-                    timestamp: new Date().toISOString(),
-                  }
-                : m
-            )
+            prev.map((m) => (m._id === streamingMsgId ? finalMsg : m))
           );
 
           abortRef.current = null;
@@ -272,7 +287,8 @@ export default function AskOrgSight({ projectId, datasetId, scenarioId, onNaviga
           setIsLoading(false);
           setStreamPhase(null);
         },
-      }
+      },
+      resolvedColumns
     );
 
     abortRef.current = abort;
@@ -373,7 +389,17 @@ export default function AskOrgSight({ projectId, datasetId, scenarioId, onNaviga
         {messages.length === 0 && <EmptyState onSelect={sendMessage} />}
 
         {messages.map((msg, i) => (
-          <MessageBubble key={msg._id || i} message={msg} onFollowUp={sendMessage} />
+          <MessageBubble
+            key={msg._id || i}
+            message={msg}
+            onFollowUp={sendMessage}
+            onClarify={(query, selectedColumn) => {
+              // Extract the ambiguous term from the clarification message
+              const termMatch = msg.content?.match(/'([^']+)'/);
+              const term = termMatch ? termMatch[1] : "column";
+              sendMessage(query, { [term]: selectedColumn });
+            }}
+          />
         ))}
 
         {/* Live loading indicator with phase */}
@@ -448,11 +474,12 @@ export default function AskOrgSight({ projectId, datasetId, scenarioId, onNaviga
 // MESSAGE BUBBLE — renders text + optional table + optional chart
 // =============================================================================
 
-function MessageBubble({ message, onFollowUp }) {
+function MessageBubble({ message, onFollowUp, onClarify }) {
   const isUser = message.role === "user";
   const display = message.display || "text";
   const isStreaming = !!message._streaming;
   const [showTable, setShowTable] = useState(display === "table");
+  const [selectedOption, setSelectedOption] = useState(null);
 
   return (
     <div className={`flex flex-col ${isUser ? "items-end" : "items-start"} max-w-[85%] ${isUser ? "ml-auto" : ""}`}>
@@ -468,6 +495,56 @@ function MessageBubble({ message, onFollowUp }) {
           <span className="inline-block w-0.5 h-4 bg-brand-400 ml-0.5 align-middle animate-[blink_1s_step-end_infinite]" />
         )}
       </div>
+
+      {/* Clarification card */}
+      {display === "clarification" && message.clarification && (
+        <div className="mt-2 w-full max-w-md bg-white border border-gray-200 rounded-xl shadow-sm p-4">
+          <div className="space-y-2">
+            {message.clarification.options.map((opt, i) => (
+              <label
+                key={i}
+                className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition ${
+                  selectedOption === opt.column
+                    ? "border-brand-500 bg-brand-50"
+                    : "border-gray-200 hover:border-gray-300 hover:bg-gray-50"
+                }`}
+              >
+                <input
+                  type="radio"
+                  name="clarification"
+                  value={opt.column}
+                  checked={selectedOption === opt.column}
+                  onChange={() => setSelectedOption(opt.column)}
+                  className="mt-0.5 accent-brand-500"
+                />
+                <div>
+                  <div className="text-sm font-medium text-gray-800">{opt.column}</div>
+                  {opt.samples && opt.samples.length > 0 && (
+                    <div className="text-xs text-gray-400 mt-0.5">
+                      e.g. {opt.samples.slice(0, 3).join(", ")}
+                    </div>
+                  )}
+                </div>
+              </label>
+            ))}
+          </div>
+          <button
+            disabled={!selectedOption}
+            onClick={() => {
+              if (selectedOption && onClarify) {
+                onClarify(message.clarification.originalQuery, selectedOption);
+              }
+            }}
+            className={`mt-3 w-full py-2 px-4 rounded-lg text-sm font-medium transition ${
+              selectedOption
+                ? "bg-brand-500 text-white hover:bg-brand-600 cursor-pointer"
+                : "bg-gray-100 text-gray-400 cursor-not-allowed"
+            }`}
+          >
+            Use this column
+          </button>
+        </div>
+      )}
 
       {/* Chart (above table when both present) */}
       {(display === "chart" || display === "table+chart") && message.chart && message.data && (

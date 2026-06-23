@@ -13,7 +13,7 @@ from datetime import datetime, timedelta
 from typing import Any, Dict, Optional
 
 from services.pg_adapter import IntegrityError
-from services.db_service import _connect
+from services.db_service import _connect, _connect_ro
 
 LOCK_EXPIRY_SECONDS = 90
 
@@ -24,6 +24,16 @@ def _now_iso() -> str:
 
 def cleanup_expired() -> int:
     cutoff = (datetime.utcnow() - timedelta(seconds=LOCK_EXPIRY_SECONDS)).isoformat()
+    # 1. Quick read check (no write lock)
+    with _connect_ro() as conn:
+        has_expired = conn.execute(
+            "SELECT 1 FROM project_locks WHERE last_heartbeat < ? LIMIT 1", (cutoff,)
+        ).fetchone()
+
+    if not has_expired:
+        return 0  # Skip the write transaction entirely
+
+    # 2. Only write if there is actually something to clean up
     with _connect() as conn:
         result = conn.execute("DELETE FROM project_locks WHERE last_heartbeat < ?", (cutoff,))
         conn.commit()

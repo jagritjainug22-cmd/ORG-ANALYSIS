@@ -2235,7 +2235,6 @@ export default function OrgChart({
             existingEmpIds={existingEmpIds}
             autoStartClone={clonePromptFor === String(idOf(selectedRecord))}
             onAutoCloneConsumed={() => setClonePromptFor(null)}
-            flcCol={flcCol}
             rateCardActive={!!activeScenario?.rate_card_id}
             onApplyRateCard={handleApplyRateCard}
             issues={nodeIssuesMap.get(String(idOf(selectedRecord))) || null}

@@ -168,6 +168,7 @@ class ChatMessageBody(BaseModel):
     dataset_id: int
     scenario_id: int
     history: list = []
+    resolved_columns: dict = {}  # User-confirmed column disambiguations
 
 
 @router.post("/chat/message")
@@ -213,6 +214,7 @@ def chat_message(
             dataset_meta=dataset,
             schema=schema,
             history=body.history,
+            resolved_columns=body.resolved_columns,
         )
         return response
     except Exception as e:
@@ -271,6 +273,7 @@ async def chat_stream(
                 dataset_meta=dataset,
                 schema=schema,
                 history=body.history,
+                resolved_columns=body.resolved_columns,
             ):
                 event_type = event.get("type", "message")
                 event_data = json.dumps(event.get("data", {}), default=str)

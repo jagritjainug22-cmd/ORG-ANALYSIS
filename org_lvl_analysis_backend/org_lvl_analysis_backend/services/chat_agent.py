@@ -225,15 +225,56 @@ ORDER BY total_cost DESC
 # System prompt builder
 # ---------------------------------------------------------------------------
 
+def _build_column_synonym_hints(dataset_meta: Dict[str, Any], available_cols: set) -> str:
+    """
+    Generate dynamic column synonym hints from dataset_meta.
+
+    Maps user VOCABULARY → CATEGORY → dataset_meta key → actual column name.
+    Only includes hints for columns that are actually present in the dataset.
+    """
+    CATEGORY_HINTS = {
+        "flc_col": ("salary", "pay", "compensation", "cost", "ctc", "wage", "package"),
+        "fte_col": ("fte", "headcount"),
+        "func_col": ("department", "function", "team", "business unit"),
+        "grade_col": ("grade", "band", "seniority", "level"),
+        "job_title_col": ("role", "title", "designation", "position", "job"),
+        "country_col": ("country", "location", "region", "geography", "office"),
+        "division_col": ("division", "entity", "business unit", "unit"),
+        "contract_type_col": ("contract type", "employment type", "worker type"),
+        "start_date_col": ("start date", "tenure", "hire date", "joining date"),
+    }
+
+    lines = []
+    for meta_key, user_terms in CATEGORY_HINTS.items():
+        actual_col = dataset_meta.get(meta_key)
+        terms_str = "/".join(f'"{t}"' for t in user_terms[:4])
+        if actual_col and actual_col in available_cols:
+            lines.append(f'- When user says {terms_str} → use column: "{actual_col}"')
+        else:
+            lines.append(f"- When user says {terms_str} → NOT AVAILABLE in this dataset, inform user")
+
+    return "\n".join(lines)
+
+
 def build_system_prompt(schema: Dict[str, Any], dataset_meta: Dict[str, Any]) -> str:
-    """Construct the full system prompt injected into every LLM call."""
+    """
+    Construct the full system prompt injected into every LLM call.
+
+    Design principles:
+      - Entirely dynamic: built from live schema + dataset_meta
+      - Safe metadata boundary: clearly separates "columns usable in SQL" from
+        "availability status for reasoning only"
+      - No hardcoded column names — adapts to any dataset shape
+    """
     col_lines = []
+    available_col_names = set()
     for col in schema.get("columns", []):
         samples = ", ".join(str(v) for v in col.get("sample_values", [])[:4])
         unique = col.get("unique_count", "?")
         col_lines.append(
             f'  "{col["name"]}"  {col["type"]}  ({unique} distinct)  samples: {samples}'
         )
+        available_col_names.add(col["name"])
 
     # Identify which standard columns were mapped
     emp_col = dataset_meta.get("emp_col") or "emp_id"
@@ -247,23 +288,55 @@ def build_system_prompt(schema: Dict[str, Any], dataset_meta: Dict[str, Any]) ->
     contract_type_col = dataset_meta.get("contract_type_col")
     start_date_col = dataset_meta.get("start_date_col")
 
-    # Build missing column warning
-    missing = []
-    if not func_col:
-        missing.append("Function/Business Unit (func_col not mapped)")
-    if not grade_col:
-        missing.append("Grade/Band (grade_col not mapped)")
-    if not contract_type_col:
-        missing.append("Contract Type (contract_type_col not mapped)")
-    if not start_date_col:
-        missing.append("Start Date / Tenure (start_date_col not mapped)")
+    # Build column mapping — only show columns that actually exist
+    mapping_lines = []
+    mapping_lines.append(f'Employee ID column:    "{emp_col}"')
+    mapping_lines.append(f'Manager ID column:     "{mgr_col}"')
+    if fte_col:
+        mapping_lines.append(f'FTE column:            "{fte_col}"')
+    if flc_col:
+        mapping_lines.append(f'Fully Loaded Cost col: "{flc_col}"')
+    if job_title_col:
+        mapping_lines.append(f'Job Title column:      "{job_title_col}"')
+    if country_col:
+        mapping_lines.append(f'Country column:        "{country_col}"')
+    if func_col:
+        mapping_lines.append(f'Function column:       "{func_col}"')
+    if grade_col:
+        mapping_lines.append(f'Grade column:          "{grade_col}"')
+    if contract_type_col:
+        mapping_lines.append(f'Contract Type column:  "{contract_type_col}"')
+    if start_date_col:
+        mapping_lines.append(f'Start Date column:     "{start_date_col}"')
 
-    missing_block = ""
-    if missing:
-        missing_block = (
-            "\n⚠️ MISSING COLUMNS (not uploaded in this dataset — tell the user politely if asked):\n"
-            + "\n".join(f"  - {m}" for m in missing)
+    # Build unavailable dimensions (for reasoning ONLY — never use in SQL)
+    unavailable = []
+    if not func_col:
+        unavailable.append("Function/Department — not uploaded in this dataset")
+    if not grade_col:
+        unavailable.append("Grade/Band — not uploaded in this dataset")
+    if not contract_type_col:
+        unavailable.append("Contract Type — not uploaded in this dataset")
+    if not start_date_col:
+        unavailable.append("Start Date / Tenure — not uploaded in this dataset")
+
+    unavailable_block = ""
+    if unavailable:
+        unavailable_block = (
+            "\n## UNAVAILABLE DIMENSIONS (for reasoning ONLY — NEVER reference these in SQL)\n"
+            "When a user asks about these, explain politely that the column was not included at upload.\n"
+            + "\n".join(f"  - {u}" for u in unavailable)
         )
+
+    # Dynamic column synonym hints
+    synonym_hints = _build_column_synonym_hints(dataset_meta, available_col_names)
+
+    # Self-join example — only if we have cost column
+    join_example = ""
+    if flc_col:
+        join_example = f"""6. Self-join pattern to compare manager vs subordinate:
+   SELECT e.*, m."{flc_col}" AS mgr_cost
+   FROM employees e JOIN employees m ON e."{mgr_col}" = m."{emp_col}" """
 
     return f"""You are OrgSight AI, an expert organisational analyst embedded in the OrgSight platform.
 You answer questions about the organisation's workforce data with precision, insight, and commercial awareness.
@@ -273,19 +346,10 @@ Table name: employees
 Total rows: {schema.get("row_count", "unknown")}
 Dataset: {dataset_meta.get("name", "unknown")}
 
-## COLUMN MAPPING (actual column names in this dataset)
-Employee ID column:    "{emp_col}"
-Manager ID column:     "{mgr_col}"
-FTE column:            "{fte_col or 'NOT MAPPED'}"
-Fully Loaded Cost col: "{flc_col or 'NOT MAPPED'}"
-Job Title column:      "{job_title_col or 'NOT MAPPED'}"
-Country column:        "{country_col or 'NOT MAPPED'}"
-Function column:       "{func_col or 'NOT MAPPED'}"
-Grade column:          "{grade_col or 'NOT MAPPED'}"
-Contract Type column:  "{contract_type_col or 'NOT MAPPED'}"
-Start Date column:     "{start_date_col or 'NOT MAPPED'}"
+## COLUMNS YOU CAN USE IN SQL (ONLY these exist — never reference anything else)
+{chr(10).join(mapping_lines)}
 
-## ALL COLUMNS IN employees TABLE
+## ALL COLUMNS IN employees TABLE (with types and sample values)
 {chr(10).join(col_lines)}
 
 ## COMPUTED HIERARCHY COLUMNS (always present, do NOT put in quotes when they are single-word)
@@ -299,18 +363,20 @@ Start Date column:     "{start_date_col or 'NOT MAPPED'}"
   Chain          TEXT     — full ancestor path as array
   Chain_reversed TEXT     — same path, reversed
 
+## COLUMN SYNONYM AWARENESS
+Users may refer to columns using common business terms. Use these mappings:
+{synonym_hints}
+{unavailable_block}
+
 ## QUERY RULES (CRITICAL — MUST FOLLOW)
-1. Always double-quote column names that contain spaces or special chars: "Fully loaded cost", "Line Manager ID", "Job Title"
+1. Always double-quote column names that contain spaces or special chars: "Fully loaded cost", "Line Manager ID"
 2. Single-word computed columns do NOT need quoting: Level, Span, Total_Reports, L1, L2
-3. Managers  = WHERE Span > 0
-4. Individual contributors (ICs) = WHERE Span = 0
-5. Top of org / CEO = WHERE Level = 1
-6. Self-join pattern to compare manager vs subordinate:
-   SELECT e.*, m."{flc_col}" AS mgr_cost
-   FROM employees e JOIN employees m ON e."{mgr_col}" = m."{emp_col}"
-7. For L2 subtree analysis: GROUP BY L2
+3. NEVER reference a column that does not appear in the table above — if it's listed as UNAVAILABLE, explain to user
+4. Managers  = WHERE Span > 0
+5. Individual contributors (ICs) = WHERE Span = 0
+{join_example}7. For L2 subtree analysis: GROUP BY L2
 8. Never expose internal IDs or raw JSON in responses
-{missing_block}
+9. Do NOT end SQL with a semicolon
 
 {BENCHMARKS}
 
@@ -324,7 +390,115 @@ Start Date column:     "{start_date_col or 'NOT MAPPED'}"
 
 
 # ---------------------------------------------------------------------------
-# Intent classification
+# Pre-classifier intent registry (pattern-based, no LLM call needed)
+# ---------------------------------------------------------------------------
+
+_NAVIGATION_PATTERNS = ["take me to", "go to", "open", "navigate to", "switch to",
+                        "show me the view", "show me the page", "bring up", "jump to", "head to"]
+
+_NAVIGATION_TARGETS = {
+    "hierarchy": ["hierarchy", "hierarchy table", "org table", "levels table"],
+    "spans_layers": ["spans", "layers", "spans and layers", "span analysis", "spans & layers",
+                     "span & layer", "spans layers"],
+    "crosstab": ["crosstab", "pivot", "cross tab", "pivot table"],
+    "org_chart": ["org chart", "org tree", "organization chart", "tree view", "chart view"],
+    "scenarios": ["scenarios", "scenario list", "compare scenarios"],
+    "activity": ["activity", "activity analysis", "fte analysis"],
+    "upload": ["upload", "upload data", "prepare", "data prep"],
+}
+
+_GREETING_PATTERNS = ["hello", "hi", "hey", "good morning", "good afternoon", "good evening",
+                      "howdy", "hola", "namaste"]
+
+_CAPABILITIES_PATTERNS = ["what can you do", "what do you do", "help", "what can i ask",
+                          "what kind of questions", "how can you help", "capabilities",
+                          "what are you", "who are you", "what questions can i ask"]
+
+
+def _build_capabilities_response(dataset_meta: Dict[str, Any]) -> str:
+    """Generate capabilities text based on what's actually available in this dataset."""
+    available = [
+        "**Org overview** — headcount, cost, FTE, management ratios",
+        "**Span analysis** — span of control distribution, benchmarking against industry standards",
+        "**Layer analysis** — cost and headcount at each hierarchy level",
+        "**Manager efficiency** — identify managers with narrow spans, delayering opportunities",
+        "**Employee lookups** — find specific people, filter by any criteria",
+        "**Structural risks** — 1:1 chains, thin layers, below-benchmark spans",
+        "**Benchmarking** — compare your org metrics against A&M industry benchmarks",
+        "**Navigation** — 'take me to org chart', 'open spans & layers'",
+    ]
+    if dataset_meta.get("country_col"):
+        available.append(f"**Geographic breakdown** — cost/headcount by {dataset_meta['country_col']}")
+    if dataset_meta.get("func_col"):
+        available.append(f"**Functional breakdown** — analysis by {dataset_meta['func_col']}")
+    if dataset_meta.get("grade_col"):
+        available.append(f"**Grade/Band analysis** — distribution by {dataset_meta['grade_col']}")
+
+    items = "\n".join(f"- {a}" for a in available)
+    return (
+        f"I can help you explore your org data. Here's what I can do:\n\n"
+        f"{items}\n\n"
+        f"Try asking: 'Give me an org summary' or 'Which managers have fewer than 4 reports?'"
+    )
+
+
+def _pre_classify(message: str, dataset_meta: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """
+    Fast pattern-based pre-classification that bypasses the LLM for known intents.
+
+    Returns an intent dict if matched, or None to fall through to LLM classification.
+    New intents can be added here as data entries without touching execution logic.
+    """
+    msg_lower = message.lower().strip()
+
+    # Navigation — check if message contains a navigation pattern + target
+    if any(pattern in msg_lower for pattern in _NAVIGATION_PATTERNS):
+        for target_key, keywords in _NAVIGATION_TARGETS.items():
+            if any(kw in msg_lower for kw in keywords):
+                return {
+                    "route": "navigate",
+                    "tool_name": "none",
+                    "intent": "navigation",
+                    "complexity": "tier1",
+                    "navigation_target": target_key,
+                    "missing_columns_needed": [],
+                    "cannot_answer_reason": None,
+                }
+
+    # Capabilities / meta questions
+    if any(pattern in msg_lower for pattern in _CAPABILITIES_PATTERNS):
+        return {
+            "route": "capabilities",
+            "tool_name": "none",
+            "intent": "capabilities",
+            "complexity": "tier1",
+            "missing_columns_needed": [],
+            "cannot_answer_reason": None,
+            "_static_response": _build_capabilities_response(dataset_meta),
+        }
+
+    # Greetings
+    # Only match if the ENTIRE message (stripped of punctuation) is a greeting
+    msg_stripped = msg_lower.rstrip("!?.,'\"")
+    if msg_stripped in _GREETING_PATTERNS or msg_stripped in [f"{g} there" for g in _GREETING_PATTERNS]:
+        caps = _build_capabilities_response(dataset_meta)
+        return {
+            "route": "greeting",
+            "tool_name": "none",
+            "intent": "greeting",
+            "complexity": "tier1",
+            "missing_columns_needed": [],
+            "cannot_answer_reason": None,
+            "_static_response": (
+                f"Hello! I'm OrgSight AI — your org analytics assistant.\n\n{caps}"
+            ),
+        }
+
+    return None
+
+
+# ---------------------------------------------------------------------------
+# Intent classification (LLM-based — only reached if pre-classifier doesn't match)
 # ---------------------------------------------------------------------------
 
 _INTENT_SYSTEM = """You are an intent classifier for an org analytics chatbot.
@@ -356,7 +530,16 @@ Route guide:
 
 
 def classify_intent(message: str, schema: Dict[str, Any], dataset_meta: Dict[str, Any]) -> Dict[str, Any]:
-    """LLM call #1 — classify intent and pick the right route + tool."""
+    """LLM call #1 — classify intent and pick the right route + tool.
+
+    First attempts pattern-based pre-classification (no LLM call).
+    Falls through to LLM only if pre-classifier doesn't match.
+    """
+    # Pre-classifier: fast pattern match for navigation, capabilities, greetings
+    pre_result = _pre_classify(message, dataset_meta)
+    if pre_result is not None:
+        return pre_result
+
     col_names = [c["name"] for c in schema.get("columns", [])]
     col_summary = ", ".join(f'"{n}"' for n in col_names[:30])
 
@@ -364,9 +547,9 @@ def classify_intent(message: str, schema: Dict[str, Any], dataset_meta: Dict[str
 
 Available columns in employees table: {col_summary}
 Dataset emp_col="{dataset_meta.get('emp_col')}", mgr_col="{dataset_meta.get('mgr_col')}", fte_col="{dataset_meta.get('fte_col')}", flc_col="{dataset_meta.get('flc_col')}"
-func_col: {dataset_meta.get('func_col') or 'NOT MAPPED'}
-grade_col: {dataset_meta.get('grade_col') or 'NOT MAPPED'}
-contract_type_col: {dataset_meta.get('contract_type_col') or 'NOT MAPPED'}
+func_col: {dataset_meta.get('func_col') or '[UNAVAILABLE in this dataset]'}
+grade_col: {dataset_meta.get('grade_col') or '[UNAVAILABLE in this dataset]'}
+contract_type_col: {dataset_meta.get('contract_type_col') or '[UNAVAILABLE in this dataset]'}
 
 Named tools available:
 - org_summary: top-level KPIs
@@ -390,6 +573,38 @@ Classify this question and respond with ONLY the JSON object."""
     except Exception as e:
         log.warning("Intent classification failed: %s", e)
         return {"route": "sql_agent", "tool_name": "sql_agent", "complexity": "tier2"}
+
+
+def validate_intent(intent: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Enforce inter-stage contracts on classifier output.
+
+    Ensures consistency between fields — prevents contradictions like
+    missing_columns_needed being populated while route is sql_agent.
+    This is purely logic-based, dataset-agnostic, and never calls an LLM.
+    """
+    missing = intent.get("missing_columns_needed", [])
+    route = intent.get("route", "sql_agent")
+
+    # Rule 1: If essential columns are missing AND route would generate SQL, block it
+    if missing and route in ("sql_agent", "llm_reasoning"):
+        intent["route"] = "cannot_answer"
+        intent["cannot_answer_reason"] = intent.get("cannot_answer_reason") or (
+            f"This question requires data that isn't available in this dataset: "
+            f"{', '.join(missing)}. "
+            f"To enable this analysis, please re-upload the data with the relevant column mapped."
+        )
+
+    # Rule 2: If route is cannot_answer, ensure reason is populated
+    if intent.get("route") == "cannot_answer" and not intent.get("cannot_answer_reason"):
+        intent["cannot_answer_reason"] = "This question cannot be answered with the available data."
+
+    # Rule 3: If tool_name references a tool that doesn't exist, fall back to sql_agent
+    if intent.get("route") == "named_tool" and intent.get("tool_name") not in _TOOLS:
+        intent["route"] = "sql_agent"
+        intent["tool_name"] = "sql_agent"
+
+    return intent
 
 
 # ---------------------------------------------------------------------------
@@ -417,7 +632,7 @@ Rules:
         max_tokens=800,
         temperature=0.0,
     )
-    # Strip any accidental markdown fences
+    # Strip markdown fences and trailing semicolons
     sql = content.strip()
     if sql.startswith("```"):
         lines = sql.split("\n")
@@ -425,6 +640,7 @@ Rules:
             line for line in lines
             if not line.strip().startswith("```")
         ).strip()
+    sql = sql.rstrip(";").strip()
     return sql
 
 
@@ -458,20 +674,71 @@ def execute_tool(
     dataset_meta: Dict[str, Any],
     message: str,
     system_prompt: str,
+    resolved_columns: Dict[str, str] | None = None,
 ) -> Dict[str, Any]:
     """Route to the correct tool and return raw results."""
     route = intent.get("route", "sql_agent")
     tool_name = intent.get("tool_name", "sql_agent")
+    resolved_columns = resolved_columns or {}
+
+    # ── Pre-classified intents (no SQL needed) ───────────────────────────────
+    if route in ("navigate", "capabilities", "greeting"):
+        return {
+            "source": route,
+            "data": [],
+            "columns": [],
+            "row_count": 0,
+            "navigation_target": intent.get("navigation_target"),
+            "_static_response": intent.get("_static_response", ""),
+        }
 
     # ── Named SQL tool ──────────────────────────────────────────────────────
     if route == "named_tool" and tool_name in _TOOLS:
+        from services.column_resolver import resolve_column
+
         extra = {}
         if intent.get("benchmark_span"):
             extra["benchmark_span"] = intent["benchmark_span"]
-        if intent.get("dimension_col"):
-            extra["dimension_col"] = intent["dimension_col"]
         if intent.get("max_layer"):
             extra["max_layer"] = intent["max_layer"]
+
+        # Resolve dimension_col through the semantic layer
+        if intent.get("dimension_col"):
+            dim_col = intent["dimension_col"]
+
+            # If user already clarified this column, use their choice directly
+            if dim_col.lower() in {k.lower() for k in resolved_columns}:
+                matched_key = next(k for k in resolved_columns if k.lower() == dim_col.lower())
+                extra["dimension_col"] = resolved_columns[matched_key]
+            else:
+                schema_info = duckdb_manager.get_schema(user_id)
+                known_cols = {c["name"] for c in schema_info["columns"]} if schema_info else set()
+                schema_samples = {
+                    c["name"]: c.get("sample_values", [])
+                    for c in (schema_info or {}).get("columns", [])
+                }
+
+                resolution = resolve_column(
+                    dim_col, known_cols, dataset_meta, schema_samples
+                )
+
+                if resolution["status"] in ("exact", "resolved"):
+                    extra["dimension_col"] = resolution["column"]
+                elif resolution["status"] == "ambiguous":
+                    return {
+                        "source": "clarification_needed",
+                        "clarification_type": "column_disambiguation",
+                        "message": resolution["suggestion"],
+                        "options": resolution["candidates"],
+                        "original_query": message,
+                        "data": [], "columns": [], "row_count": 0,
+                    }
+                else:
+                    return {
+                        "source": "cannot_answer",
+                        "data": [], "columns": [], "row_count": 0,
+                        "reason": resolution["suggestion"],
+                    }
 
         sql = _fill_template(_TOOLS[tool_name]["sql"], dataset_meta, extra)
         try:
@@ -533,9 +800,30 @@ def execute_tool(
 
     # ── SQL agent (custom SQL generation + execute) ─────────────────────────
     try:
+        from services.column_resolver import validate_and_correct_columns
+
         sql = _generate_sql(message, system_prompt)
-        result = duckdb_manager.query(user_id, sql)
-        return {"source": "sql_agent", "sql": sql, **result}
+
+        # Validate and auto-correct column references in generated SQL
+        schema_info = duckdb_manager.get_schema(user_id)
+        known_cols = {c["name"] for c in schema_info["columns"]} if schema_info else set()
+        schema_samples = {
+            c["name"]: c.get("sample_values", [])
+            for c in (schema_info or {}).get("columns", [])
+        }
+
+        corrected_sql, col_error = validate_and_correct_columns(
+            sql, known_cols, dataset_meta, schema_samples
+        )
+        if col_error:
+            return {
+                "source": "cannot_answer",
+                "data": [], "columns": [], "row_count": 0,
+                "reason": col_error,
+            }
+
+        result = duckdb_manager.query(user_id, corrected_sql)
+        return {"source": "sql_agent", "sql": corrected_sql, **result}
     except Exception as e:
         log.error("sql_agent failed: %s", e)
         return {
@@ -572,6 +860,10 @@ def format_response(
 ) -> str:
     """LLM call #2 — narrate the tool results in business language."""
     source = tool_result.get("source", "unknown")
+
+    # Handle pre-classified intents (no LLM needed)
+    if source in ("navigate", "capabilities", "greeting"):
+        return tool_result.get("_static_response", "")
 
     # Handle cannot_answer and simulation upfront
     if source == "cannot_answer":
@@ -690,6 +982,7 @@ def run_agent_turn(
     dataset_meta: Dict[str, Any],
     schema: Dict[str, Any],
     history: List[Dict[str, Any]] | None = None,
+    resolved_columns: Dict[str, str] | None = None,
 ) -> Dict[str, Any]:
     """
     Execute a full chatbot turn:
@@ -717,12 +1010,13 @@ def run_agent_turn(
     # Step 1: build system prompt
     system_prompt = build_system_prompt(schema, dataset_meta)
 
-    # Step 2: classify intent
+    # Step 2: classify intent + validate contracts
     intent = classify_intent(message, schema, dataset_meta)
+    intent = validate_intent(intent)
     log.info("Intent: %s", json.dumps(intent, default=str))
 
     # Step 3: execute tool
-    tool_result = execute_tool(intent, user_id, dataset_meta, message, system_prompt)
+    tool_result = execute_tool(intent, user_id, dataset_meta, message, system_prompt, resolved_columns)
 
     # Step 4: format response
     response_text = format_response(message, tool_result, intent, system_prompt)
@@ -797,6 +1091,7 @@ async def run_agent_turn_stream(
     dataset_meta: Dict[str, Any],
     schema: Dict[str, Any],
     history: List[Dict[str, Any]] | None = None,
+    resolved_columns: Dict[str, str] | None = None,
 ) -> AsyncGenerator[Dict[str, Any], None]:
     """Async generator version of run_agent_turn.
 
@@ -824,13 +1119,14 @@ async def run_agent_turn_stream(
         intent = await asyncio.to_thread(
             classify_intent, message, schema, dataset_meta
         )
+        intent = validate_intent(intent)
         log.info("Stream intent: %s", json.dumps(intent, default=str))
 
         # ── Phase 2: Tool / SQL execution ────────────────────────────────────
         yield {"type": "status", "data": {"phase": "query", "message": "Running analysis query..."}}
 
         tool_result = await asyncio.to_thread(
-            execute_tool, intent, user_id, dataset_meta, message, system_prompt
+            execute_tool, intent, user_id, dataset_meta, message, system_prompt, resolved_columns
         )
 
         # ── Phase 3: Stream LLM narration ────────────────────────────────────
@@ -839,8 +1135,15 @@ async def run_agent_turn_stream(
         source = tool_result.get("source", "unknown")
         sql_error = tool_result.get("sql_error")
 
-        # Handle non-LLM paths inline (cannot_answer, simulation, sql_error)
-        if source == "cannot_answer":
+        # Handle non-LLM paths inline
+        response_text_for_log = ""
+
+        if source in ("navigate", "capabilities", "greeting"):
+            static_text = tool_result.get("_static_response", "")
+            yield {"type": "token", "data": {"text": static_text}}
+            response_text_for_log = static_text
+
+        elif source == "cannot_answer":
             reason = tool_result.get("reason", "")
             static_text = (
                 f"I'm unable to answer this question with the current dataset. "
@@ -848,6 +1151,12 @@ async def run_agent_turn_stream(
                 f"To enable this analysis, please re-upload the data with the relevant column mapped."
             )
             yield {"type": "token", "data": {"text": static_text}}
+            response_text_for_log = static_text
+
+        elif source == "clarification_needed":
+            clarification_msg = tool_result.get("message", "Could you clarify which column you mean?")
+            yield {"type": "token", "data": {"text": clarification_msg}}
+            response_text_for_log = clarification_msg
 
         elif source == "simulation":
             note = tool_result.get("simulation_note", "")
@@ -857,6 +1166,7 @@ async def run_agent_turn_stream(
                 f"for example, which managers have spans furthest from the target?"
             )
             yield {"type": "token", "data": {"text": static_text}}
+            response_text_for_log = static_text
 
         elif sql_error:
             static_text = (
@@ -864,6 +1174,7 @@ async def run_agent_turn_stream(
                 f"Could you rephrase the question or specify which column you're referring to?"
             )
             yield {"type": "token", "data": {"text": static_text}}
+            response_text_for_log = static_text
 
         else:
             # Build the LLM prompt (same logic as format_response())
@@ -884,7 +1195,7 @@ Query returned {row_count} rows{total_note}:
 
 Answer this question in clear business language based on the data above."""
 
-            # Stream tokens
+            # Stream tokens and accumulate for logging
             full_text = ""
             async for token in call_llm_stream(
                 format_prompt,
@@ -894,10 +1205,9 @@ Answer this question in clear business language based on the data above."""
             ):
                 full_text += token
                 yield {"type": "token", "data": {"text": token}}
+            response_text_for_log = full_text
 
         # ── Logging ──────────────────────────────────────────────────────────
-        # Reconstruct full response text for logging (best-effort)
-        response_text_for_log = tool_result.get("_streamed_text", "")
         try:
             from services.logging_service import log_chat_query
             log_chat_query(
@@ -913,20 +1223,30 @@ Answer this question in clear business language based on the data above."""
 
         # ── Done event: structured metadata ──────────────────────────────────
         chart_hint = _suggest_chart(intent, tool_result)
+        done_data = {
+            "data": tool_result.get("data", []),
+            "columns": tool_result.get("columns", []),
+            "row_count": tool_result.get("row_count", 0),
+            "total_rows": tool_result.get("total_rows", tool_result.get("row_count", 0)),
+            "truncated": tool_result.get("truncated", False),
+            "source": tool_result.get("source", "unknown"),
+            "sql": tool_result.get("sql"),
+            "chart_hint": chart_hint,
+            "follow_ups": _get_followups(intent),
+            "intent": intent,
+        }
+        # Include navigation target for frontend routing
+        if source == "navigate":
+            done_data["navigation_target"] = tool_result.get("navigation_target")
+        # Include clarification options for frontend disambiguation UI
+        if source == "clarification_needed":
+            done_data["clarification_type"] = tool_result.get("clarification_type")
+            done_data["options"] = tool_result.get("options", [])
+            done_data["original_query"] = tool_result.get("original_query")
+
         yield {
             "type": "done",
-            "data": {
-                "data": tool_result.get("data", []),
-                "columns": tool_result.get("columns", []),
-                "row_count": tool_result.get("row_count", 0),
-                "total_rows": tool_result.get("total_rows", tool_result.get("row_count", 0)),
-                "truncated": tool_result.get("truncated", False),
-                "source": tool_result.get("source", "unknown"),
-                "sql": tool_result.get("sql"),
-                "chart_hint": chart_hint,
-                "follow_ups": _get_followups(intent),
-                "intent": intent,
-            },
+            "data": done_data,
         }
 
     except Exception as exc:

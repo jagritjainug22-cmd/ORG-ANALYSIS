@@ -44,30 +44,9 @@ async def list_my_projects(user: dict = Depends(get_current_user)):
     member preview, and dataset count -- everything the project picker
     needs to render rich cards/rows in one round-trip.
     """
-    if user["role"] == "admin":
-        projects = project_service.list_all_projects()
-    else:
-        projects = project_service.list_user_projects(user["id"])
-
-    locks = lock_service.get_all_locks()
-    overview = project_service.get_projects_overview([p["id"] for p in projects])
-
-    result = []
-    for p in projects:
-        entry = {**p, **_deadline_info(p)}
-        lock = locks.get(p["id"])
-        if lock:
-            entry["locked_by"] = lock["username"]
-            entry["locked_by_id"] = lock["user_id"]
-        else:
-            entry["locked_by"] = None
-            entry["locked_by_id"] = None
-        ov = overview.get(p["id"], {})
-        entry["member_count"] = ov.get("member_count", 0)
-        entry["members_preview"] = ov.get("members_preview", [])
-        entry["dataset_count"] = ov.get("dataset_count", 0)
-        result.append(entry)
-    return result
+    is_admin = (user["role"] == "admin")
+    projects = project_service.list_projects_with_metadata(user["id"], is_admin=is_admin)
+    return [{**p, **_deadline_info(p)} for p in projects]
 
 
 @router.get("/{project_id}")

@@ -950,7 +950,8 @@ export const chatMessageStream = (
   datasetId,
   scenarioId,
   history = [],
-  { onStatus, onToken, onDone, onError } = {}
+  { onStatus, onToken, onDone, onError } = {},
+  resolvedColumns = {}
 ) => {
   const controller = new AbortController();
 
@@ -969,6 +970,7 @@ export const chatMessageStream = (
           dataset_id: datasetId,
           scenario_id: scenarioId,
           history,
+          resolved_columns: resolvedColumns,
         }),
         signal: controller.signal,
       });

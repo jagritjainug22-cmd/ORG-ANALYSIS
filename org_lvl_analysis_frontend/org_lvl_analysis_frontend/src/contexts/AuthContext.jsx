@@ -1,4 +1,4 @@
-﻿import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from "react";
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from "react";
 import {
   silentRefresh,
   setAccessToken,
@@ -105,7 +105,9 @@ export function AuthProvider({ children }) {
 
   const handleLogout = useCallback(async () => {
     clearRefreshTimer();
-    try { await logoutApi(); } catch {}
+    // Fire and forget logout API to clean up server-side locks/sessions in background
+    logoutApi().catch(() => {});
+    // Clear client auth state instantly for immediate responsive UI transition
     setToken(null);
     setUser(null);
     setAccessToken(null);

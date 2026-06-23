@@ -309,7 +309,8 @@ _DYNAMIC_MAX_BATCH_ITEMS = int(os.getenv("RATIONALISATION_DYNAMIC_MAX_BATCH_ITEM
 _EST_OUTPUT_TOKENS_PER_ITEM: dict[str, int] = {
     "function": 60,
     "subfunction": 45,
-    "title": 35,
+    "title": 85,  # larger prompt (hierarchy + rules) → smaller batches, more parallelism
+    "inferred_subfunction": 45,
 }
 
 _use_cache: bool = True
@@ -539,6 +540,30 @@ def rationalise(
             for f, t in df[[func_col, title_col]].dropna().drop_duplicates().values.tolist()
         ]
 
+    # Build inferred-subfunction pairs: unique (func_raw, title_raw) where sub_raw is a placeholder.
+    # These run in parallel in Phase 2 LLM using the raw title + resolved function as signal.
+    inferred_pairs: list[dict] = []
+    if (subfunc_col and subfunc_col in df.columns
+            and title_col and title_col in df.columns
+            and func_col and func_col in df.columns):
+        seen_inferred: set[tuple[str, str]] = set()
+        for _, row in df[[func_col, subfunc_col, title_col]].dropna().iterrows():
+            raw_f = str(row[func_col]).strip()
+            raw_s = str(row[subfunc_col]).strip()
+            raw_t = str(row[title_col]).strip()
+            if not raw_f or not raw_t:
+                continue
+            if _is_placeholder_subfunction(raw_s) and (raw_f, raw_t) not in seen_inferred:
+                seen_inferred.add((raw_f, raw_t))
+                resolved_func = func_map.get(raw_f, {}).get("resolved", raw_f)
+                master_subs = _NORM_SUBFUNC_LOOKUP.get(_normalise(resolved_func), [])
+                inferred_pairs.append({
+                    "func_raw": raw_f,
+                    "title_raw": raw_t,
+                    "resolved_func": resolved_func,
+                    "master_subs": master_subs,
+                })
+
     # ── Step 2: Deterministic layers (parallel) ─────────────────────
     subfunc_result: dict[tuple[str, str], dict] = {}
     subfunc_unresolved: list[dict] = []
@@ -559,29 +584,32 @@ def rationalise(
         if ti_fut:
             title_result, title_unresolved = ti_fut.result()
 
-    # ── Step 3: LLM batches — dynamic chunk sizes, parallel workers ───
+    # ── Step 3: LLM batches — dynamic chunk sizes, all parallel ──────
     llm_jobs: list[tuple[str, list]] = []
     sub_chunks = _plan_llm_chunks("subfunction", subfunc_unresolved)
     title_chunks = _plan_llm_chunks("title", title_unresolved)
+    inferred_chunks = _plan_llm_chunks("inferred_subfunction", inferred_pairs)
     for chunk in sub_chunks:
         llm_jobs.append(("subfunction", chunk))
     for chunk in title_chunks:
         llm_jobs.append(("title", chunk))
+    for chunk in inferred_chunks:
+        llm_jobs.append(("inferred_subfunction", chunk))
 
     llm_merged = _run_llm_batches_parallel(llm_jobs)
 
     result["batch_plan"] = {
         "subfunction_batches": [len(c) for c in sub_chunks],
         "title_batches": [len(c) for c in title_chunks],
+        "inferred_subfunction_batches": [len(c) for c in inferred_chunks],
         "total_llm_jobs": len(llm_jobs),
         "workers_used": min(len(llm_jobs), _MAX_LLM_WORKERS) if llm_jobs else 0,
     }
 
     for item in subfunc_unresolved:
         key = (item["func_raw"], item["sub_raw"])
-        llm_key = key
-        if llm_key in llm_merged["subfunction"]:
-            mapped, matched = llm_merged["subfunction"][llm_key]
+        if key in llm_merged["subfunction"]:
+            mapped, matched = llm_merged["subfunction"][key]
             subfunc_result[key] = {
                 "resolved": mapped,
                 "method": "ai",
@@ -610,11 +638,35 @@ def rationalise(
                 "confidence": "low",
             }
 
+    # Build inferred subfunction results (keyed by (func_raw, title_raw))
+    inferred_result: dict[tuple[str, str], dict] = {}
+    for item in inferred_pairs:
+        key = (item["func_raw"], item["title_raw"])
+        if key in llm_merged["inferred_subfunction"]:
+            mapped, matched = llm_merged["inferred_subfunction"][key]
+            inferred_result[key] = {
+                "resolved": mapped if mapped else "Unassigned",
+                "method": "inferred",
+                "confidence": "medium" if matched else "low",
+            }
+        else:
+            inferred_result[key] = {
+                "resolved": "Unassigned",
+                "method": "placeholder",
+                "confidence": "low",
+            }
+
     if unique_pairs:
         result["subfunction_mappings"] = [
             {"function": f, "input": s, **subfunc_result[(f, s)]}
             for f, s in unique_pairs
         ]
+        # Append inferred entries (input = raw title, resolved = inferred subfunction)
+        if inferred_pairs:
+            result["subfunction_mappings"].extend([
+                {"function": item["func_raw"], "input": item["title_raw"], **inferred_result[(item["func_raw"], item["title_raw"])]}
+                for item in inferred_pairs
+            ])
     if unique_title_pairs:
         result["title_mappings"] = [
             {"function": f, "input": t, **title_result[(f, t)]}
@@ -670,7 +722,15 @@ def apply_rationalisation(
         if (subfunc_col and subfunc_col in row and row[subfunc_col] is not None
                 and func_col and func_col in row):
             raw_f, raw_s = str(row[func_col]).strip(), str(row[subfunc_col]).strip()
-            resolved, method = subfunc_lookup.get((raw_f, raw_s), (raw_s, "original"))
+            if _is_placeholder_subfunction(raw_s) and title_col and title_col in row and row[title_col] is not None:
+                # For placeholder subfunctions, look up by (func, title) to use inferred subfunction
+                raw_t = str(row[title_col]).strip()
+                resolved, method = subfunc_lookup.get(
+                    (raw_f, raw_t),
+                    subfunc_lookup.get((raw_f, raw_s), ("Unassigned", "placeholder")),
+                )
+            else:
+                resolved, method = subfunc_lookup.get((raw_f, raw_s), (raw_s, "original"))
             row["Rationalised Subfunction"] = resolved
             row["Subfunction Source"] = _method_to_source(method)
         else:
@@ -896,10 +956,11 @@ _SYS_MSG = (
 def _run_llm_batches_parallel(
     jobs: list[tuple[str, list]],
 ) -> dict[str, dict[str, tuple[str, bool]]]:
-    """Run subfunction/title batch jobs on a shared worker pool."""
+    """Run subfunction/title/inferred-subfunction batch jobs on a shared worker pool."""
     merged: dict[str, dict[str, tuple[str, bool]]] = {
         "subfunction": {},
         "title": {},
+        "inferred_subfunction": {},
     }
     if not jobs:
         return merged
@@ -907,6 +968,8 @@ def _run_llm_batches_parallel(
     def _run_one(kind: str, chunk: list) -> tuple[str, dict[str, tuple[str, bool]]]:
         if kind == "subfunction":
             return kind, _llm_subfunc_batch_with_retry(chunk)
+        if kind == "inferred_subfunction":
+            return kind, _llm_infer_subfunc_batch_with_retry(chunk)
         return kind, _llm_title_batch_with_retry(chunk)
 
     workers = min(len(jobs), _MAX_LLM_WORKERS) or 1
@@ -1008,15 +1071,27 @@ def _llm_subfunc_batch(items: list[dict], *, retry: bool = False) -> dict[tuple[
     grouped_str = "\n".join(lines)
     input_keys = {item["sub_raw"] for item in items}
 
-    prompt = f"""Standardise subfunction names within each function group.
-Rules: strip internal prefixes/codes (SA, numeric); use master list only when semantically aligned;
-if input is real but no master fits, create a concise cleaned name (matched=false).
-Do NOT assign unrelated master subfunctions to placeholder or empty inputs.
+    prompt = f"""You are standardising subfunction names from a corporate HR census for org chart analysis.
+
+TASK: Map each input subfunction to a SHORT process label (2-4 words) capturing WHAT work is done.
+
+SHORTENING PRINCIPLE: The master list uses long APQC descriptions. Shorten them by stripping leading verbs ("Manage", "Perform", "Develop and manage", "Process", "Deliver") and keeping the noun phrase.
+Examples: "Manage treasury operations" → "Treasury Operations" | "Process accounts payable and expense reimbursements" → "Accounts Payable" | "Recruit, source, and select employees" → "Talent Acquisition"
+
+RULES:
+1. Strip internal codes/prefixes from inputs (e.g. "SA Finance - Credit - OTC", "DIV01 - Planning") — interpret the semantic meaning, find closest master process area, output its shortened form
+2. Use the master list as your REFERENCE — find the closest match semantically, then shorten it
+3. If no master process fits, create a concise 2-4 word label from the input's semantic meaning
+4. Different inputs describing similar work SHOULD produce the same short label (intentional consolidation)
+5. Inputs already short and descriptive may be kept or lightly standardised
+6. Pure codes or numbers with no semantic meaning → "General"
+7. NEVER output full long APQC descriptions — always output 2-4 words
 
 {grouped_str}
 
 Return JSON — exactly {len(input_keys)} results:
-{{"results": [{{"function": "exact group function", "input": "exact input", "resolved": "...", "matched": true/false}}, ...]}}"""
+{{"results": [{{"function": "exact group function", "input": "exact input", "resolved": "Short Label", "matched": true/false}}, ...]}}
+matched=true if mapped to a master process area; matched=false if you created a new label"""
 
     try:
         raw = call_llm_json(
@@ -1050,6 +1125,73 @@ def _llm_subfunc_batch_with_retry(items: list[dict]) -> dict[tuple[str, str], tu
     return result
 
 
+def _llm_infer_subfunc_batch(items: list[dict], *, retry: bool = False) -> dict[tuple[str, str], tuple[str, bool]]:
+    """Infer subfunction from (func, title) for rows where no subfunction was recorded."""
+    groups: dict[str, dict] = {}
+    for item in items:
+        func = item["func_raw"]
+        groups.setdefault(func, {"titles": [], "master": item["master_subs"]})
+        groups[func]["titles"].append(item["title_raw"])
+
+    lines = []
+    for func, data in groups.items():
+        titles = ", ".join(f'"{t}"' for t in data["titles"])
+        master = ", ".join(f'"{s}"' for s in sorted(set(data["master"]))) if data["master"] else "(none)"
+        lines.append(f'{func}: titles=[{titles}] master=[{master}]')
+
+    grouped_str = "\n".join(lines)
+    input_keys = {item["title_raw"] for item in items}
+
+    prompt = f"""You are inferring the subfunction/process area for employees whose subfunction was not recorded.
+
+TASK: For each (function, job title) pair, determine the most likely process area this person works in.
+Use the job title as your primary signal — what process does this role work in?
+
+RULES:
+1. Use the master subfunction list as your reference — find the closest match and use it (full description is fine)
+2. The job title tells you the process area — infer from the domain keywords in the title
+3. For senior/general titles (e.g. "Manager", "Director", "General Manager") with no domain keywords → use the function's most general/broad process area
+4. Different titles implying different process areas MUST map to different subfunctions
+5. Do NOT output "Unassigned" — always infer something meaningful
+
+{grouped_str}
+
+Return JSON — exactly {len(input_keys)} results:
+{{"results": [{{"function": "exact group function", "input": "exact title", "resolved": "Subfunction Label", "matched": true/false}}, ...]}}
+matched=true if mapped to a master process area; matched=false if you created a new label"""
+
+    try:
+        raw = call_llm_json(
+            prompt,
+            system_message=_SYS_MSG,
+            max_tokens=_BATCH_MAX_TOKENS,
+            call_type="inferred_subfunction_retry" if retry else "inferred_subfunction",
+            inputs_requested=len(input_keys),
+            batch_size=len(items),
+            retry=retry,
+        )
+        keyed = _parse_results_keyed(raw)
+        flat = _parse_results_list(raw)
+        out: dict[tuple[str, str], tuple[str, bool]] = {}
+        for item in items:
+            k = (item["func_raw"], item["title_raw"])
+            out[k] = keyed.get(k) or flat.get(item["title_raw"], (item["title_raw"], False))
+        return out
+    except Exception as e:
+        log.error("Inferred-subfunction LLM failed: %s", e)
+    return {}
+
+
+def _llm_infer_subfunc_batch_with_retry(items: list[dict]) -> dict[tuple[str, str], tuple[str, bool]]:
+    if not items:
+        return {}
+    result = _llm_infer_subfunc_batch(items, retry=False)
+    missing = [item for item in items if (item["func_raw"], item["title_raw"]) not in result]
+    if missing:
+        result.update(_llm_infer_subfunc_batch(missing, retry=True))
+    return result
+
+
 def _llm_title_batch(items: list[dict], *, retry: bool = False) -> dict[tuple[str, str], tuple[str, bool]]:
     groups: dict[str, dict] = {}
     for item in items:
@@ -1066,15 +1208,32 @@ def _llm_title_batch(items: list[dict], *, retry: bool = False) -> dict[tuple[st
     grouped_str = "\n".join(lines)
     input_keys = {item["title_raw"] for item in items}
 
-    prompt = f"""Standardise job titles within each function group.
-Expand abbreviations (Sr=Senior, Mgr=Manager, Engr=Engineer). Preserve seniority (GM, Director, VP, Head).
-Use master list when aligned; otherwise create a concise cleaned title (matched=false).
-Stay within the functional domain of each group.
+    prompt = f"""You are standardising job titles from a corporate HR census for org chart hierarchy analysis.
+
+ROLE HIERARCHY (lowest to highest) — use as a REFERENCE for seniority, not a rigid constraint:
+Intern/Trainee → Assistant → Associate → Coordinator → Analyst → Senior Analyst → Specialist → Executive → Senior Executive → Lead → Supervisor → Manager → Senior Manager → Head → Director → Senior Director → VP → SVP/EVP → GM/General Manager → C-Suite
+
+C-Suite titles (CEO, CFO, CTO, COO, CMO, CHRO, CIO, CPO, etc.) are ABOVE General Manager. Keep them as their full recognised abbreviation or title (e.g. "Chief Executive Officer", "Chief Marketing Officer", "Chief Financial Officer"). Do NOT map C-Suite roles to "General Manager".
+
+TASK: Standardise each input title. Prefer exact matches from the master list for the function group. Use the hierarchy to determine seniority when no master match exists.
+
+RULES:
+1. ALWAYS prefer an exact match from the master list for the function group — use it verbatim if it fits
+2. If no master match, keep any broad functional prefix that is recognisable industry vocabulary (e.g. "Sales Representative", "Tax Executive", "Network Developer", "Learning & Development Coordinator" are valid — do NOT strip to just "Representative", "Executive", "Developer", "Coordinator")
+3. ONLY strip domain context when it is an internal code, org-unit label, or deep process descriptor that duplicates the subfunction column (e.g. "General Manager: Commercial" → strip ": Commercial"; "Head of Sales – APAC" → strip "– APAC")
+4. Preserve seniority distinctions: Junior Analyst ≠ Analyst ≠ Senior Analyst — these MUST remain distinct in output
+5. Expand abbreviations: Sr=Senior, Mgr=Manager, Dir=Director, GM=General Manager, VP=Vice President, Engr=Engineer, Exec=Executive, Coord=Coordinator
+6. Dual-role or combined titles → pick the senior-most level
+7. Non-standard grading (e.g. "Grade 7 Analyst", "Band B Engineer") → ignore the grade, keep the role
+8. Titles with no clear hierarchy slot (e.g. "Operator", "Scheduler", "Technician") → keep as recognisable industry role, do not force into hierarchy
+9. "Officer" ~ Executive level; "Controller" ~ Analyst or Manager depending on context; "Partner" ~ Manager or Director level
+10. When two inputs in the same function genuinely resolve to the same role level AND functional context, map them to the same output title — intentional standardisation
 
 {grouped_str}
 
 Return JSON — exactly {len(input_keys)} results:
-{{"results": [{{"function": "exact group function", "input": "exact input", "resolved": "...", "matched": true/false}}, ...]}}"""
+{{"results": [{{"function": "exact group function", "input": "exact input", "resolved": "Standardised Title", "matched": true/false}}, ...]}}
+matched=true if output matches a title from the master list; matched=false otherwise"""
 
     try:
         raw = call_llm_json(
@@ -1169,15 +1328,15 @@ def _build_summary(func_mappings: list, subfunc_mappings: list, title_mappings: 
     for label, mappings in [("functions", func_mappings), ("subfunctions", subfunc_mappings), ("titles", title_mappings)]:
         total = len(mappings)
         summary[f"{label}_total"] = total
-        for method in ("exact", "fuzzy", "ai", "cached", "placeholder", "original", "unresolved"):
+        for method in ("exact", "fuzzy", "ai", "cached", "placeholder", "inferred", "original", "unresolved"):
             summary[f"{label}_{method}"] = sum(1 for m in mappings if m.get("method") == method)
     return summary
 
 
 def _method_to_source(method: str) -> str:
     return {"exact": "Master File", "fuzzy": "Master File (Fuzzy)", "ai": "Gen AI",
-            "cached": "Cached", "placeholder": "Placeholder", "original": "Original",
-            "unresolved": "Unresolved"}.get(method, "Original")
+            "cached": "Cached", "placeholder": "Placeholder", "inferred": "Gen AI (Inferred)",
+            "original": "Original", "unresolved": "Unresolved"}.get(method, "Original")
 
 
 # ---------------------------------------------------------------------------

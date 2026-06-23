@@ -153,23 +153,28 @@ _BASE_DELAY = 1.0  # seconds
 
 
 def call_llm(
-    prompt: str,
+    prompt: str | None = None,
     *,
     max_tokens: int = 2000,
     temperature: float = 0.0,
     system_message: str | None = None,
     json_mode: bool = False,
-) -> tuple[str, dict[str, int], float]:
+    tools: list[dict] | None = None,
+    tool_choice: str | None = None,
+    messages: list[dict] | None = None,
+) -> tuple[Any, dict[str, int], float]:
     """Make a single chat completion call with retry on transient errors.
 
-    Returns (content, usage_dict, latency_ms).
+    Returns (content_or_message, usage_dict, latency_ms).
     usage_dict keys: prompt_tokens, completion_tokens, total_tokens.
     """
     client = _get_client()
-    messages = []
-    if system_message:
-        messages.append({"role": "system", "content": system_message})
-    messages.append({"role": "user", "content": prompt})
+    if messages is None:
+        messages = []
+        if system_message:
+            messages.append({"role": "system", "content": system_message})
+        if prompt:
+            messages.append({"role": "user", "content": prompt})
 
     kwargs: dict[str, Any] = {
         "model": _DEPLOYMENT,
@@ -179,6 +184,10 @@ def call_llm(
     }
     if json_mode:
         kwargs["response_format"] = {"type": "json_object"}
+    if tools is not None:
+        kwargs["tools"] = tools
+    if tool_choice is not None:
+        kwargs["tool_choice"] = tool_choice
 
     last_error = None
     for attempt in range(_MAX_RETRIES):
@@ -192,7 +201,10 @@ def call_llm(
                 "completion_tokens": usage.completion_tokens if usage else 0,
                 "total_tokens": usage.total_tokens if usage else 0,
             }
-            content = response.choices[0].message.content.strip()
+            msg = response.choices[0].message
+            if getattr(msg, "tool_calls", None):
+                return msg, usage_dict, latency_ms
+            content = msg.content.strip() if msg.content else ""
             return content, usage_dict, latency_ms
         except Exception as e:
             last_error = e
@@ -208,11 +220,12 @@ def call_llm(
 
 
 async def call_llm_stream(
-    prompt: str,
+    prompt: str | None = None,
     *,
     max_tokens: int = 600,
     temperature: float = 0.3,
     system_message: str | None = None,
+    messages: list[dict] | None = None,
 ) -> AsyncGenerator[str, None]:
     """Async generator that streams LLM response text chunk-by-chunk.
 
@@ -221,10 +234,12 @@ async def call_llm_stream(
     async event loop remains unblocked throughout streaming.
     """
     client = _get_client()
-    messages = []
-    if system_message:
-        messages.append({"role": "system", "content": system_message})
-    messages.append({"role": "user", "content": prompt})
+    if messages is None:
+        messages = []
+        if system_message:
+            messages.append({"role": "system", "content": system_message})
+        if prompt:
+            messages.append({"role": "user", "content": prompt})
 
     kwargs: dict[str, Any] = {
         "model": _DEPLOYMENT,

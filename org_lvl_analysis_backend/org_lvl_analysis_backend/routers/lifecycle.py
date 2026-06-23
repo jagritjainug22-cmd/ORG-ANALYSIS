@@ -1989,6 +1989,7 @@ def db_list_datasets(
     project_id: int,
     mine_only: bool = Query(False),
     include_preview: bool = Query(False),
+    include_meta: bool = Query(True),
     user: dict = Depends(require_project_access()),
 ):
     username = user["username"]
@@ -1997,11 +1998,17 @@ def db_list_datasets(
         project_id=project_id,
     )
     locks = dataset_lock_service.get_locks_for_project(project_id)
-    if include_preview and datasets:
-        dataset_ids = [ds["id"] for ds in datasets]
+    dataset_ids = [ds["id"] for ds in datasets] if datasets else []
+
+    previews = {}
+    if include_preview and dataset_ids:
         datasets_by_id = {ds["id"]: ds for ds in datasets}
         previews = db_service.get_datasets_previews(dataset_ids, datasets_by_id)
+
+    metas = {}
+    if (include_meta or include_preview) and dataset_ids:
         metas = db_service.get_datasets_meta(dataset_ids)
+
     for ds in datasets:
         lock = locks.get(ds["id"])
         if lock:
@@ -2015,6 +2022,7 @@ def db_list_datasets(
                 ds["id"],
                 {"root": None, "children": [], "total_children": 0}
             )
+        if include_meta or include_preview:
             ds.update(metas.get(
                 ds["id"],
                 {
@@ -2044,7 +2052,7 @@ def db_update_column_config(
     _user: dict = Depends(require_project_access()),
 ):
     _require_dataset_in_project(dataset_id, project_id)
-    columns = body.model_dump(exclude_unset=True)
+    columns = body.dict(exclude_unset=True)
     db_service.update_dataset_column_config(dataset_id, columns)
     return {"status": "updated", "dataset_id": dataset_id}
 

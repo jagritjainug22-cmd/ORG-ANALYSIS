@@ -143,7 +143,7 @@ export default function ProjectWorkspace() {
   // Fetch saved dataset list once per project (shared cache for header dropdown)
   useEffect(() => {
     setSavedDatasets(null);
-    dbListDatasets(false, true)
+    dbListDatasets(false, false)
       .then((data) => setSavedDatasets(data?.datasets || []))
       .catch(() => setSavedDatasets([]));
   }, [pid]);
@@ -529,7 +529,7 @@ export default function ProjectWorkspace() {
       dbListFormulas(dataset.id)
         .then((data) => setFormulas(data?.formulas || []))
         .catch(() => setFormulas([]));
-      dbListDatasets(false, true).then((d) => setSavedDatasets(d?.datasets || [])).catch(() => {});
+      dbListDatasets(false, false).then((d) => setSavedDatasets(d?.datasets || [])).catch(() => {});
     } finally {
       setDatasetSwitching(false);
     }

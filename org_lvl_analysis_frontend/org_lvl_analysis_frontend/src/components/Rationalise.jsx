@@ -7,6 +7,7 @@ const METHOD_BADGE = {
   exact:      { bg: "bg-green-100",  text: "text-green-700",  label: "Master" },
   fuzzy:      { bg: "bg-blue-100",   text: "text-blue-700",   label: "Fuzzy" },
   ai:         { bg: "bg-purple-100", text: "text-purple-700", label: "AI" },
+  inferred:   { bg: "bg-orange-100", text: "text-orange-700", label: "Inferred" },
   cached:     { bg: "bg-cyan-100",   text: "text-cyan-700",   label: "Cached" },
   placeholder:{ bg: "bg-gray-100",   text: "text-gray-600",   label: "Placeholder" },
   original:   { bg: "bg-slate-100",  text: "text-slate-600",  label: "Original" },
@@ -20,7 +21,7 @@ function Badge({ method }) {
 
 function SummaryBar({ mappings }) {
   const counts = useMemo(() => {
-    const c = { exact: 0, fuzzy: 0, ai: 0, cached: 0, unresolved: 0 };
+    const c = { exact: 0, fuzzy: 0, ai: 0, inferred: 0, cached: 0, placeholder: 0, original: 0, unresolved: 0 };
     mappings.forEach(m => { c[m.method] = (c[m.method] || 0) + 1; });
     return c;
   }, [mappings]);

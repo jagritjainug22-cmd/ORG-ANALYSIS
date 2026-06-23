@@ -52,12 +52,15 @@ async def list_my_projects(user: dict = Depends(get_current_user)):
 @router.get("/{project_id}")
 async def get_project_detail(
     project_id: int,
+    request: Request,
     user: dict = Depends(require_project_access()),
 ):
     """Get project details with deadline warnings and lock status."""
-    project = project_service.get_project(project_id)
+    project = getattr(request.state, "project", None)
     if not project:
-        raise HTTPException(404, detail="Project not found")
+        project = project_service.get_project(project_id)
+        if not project:
+            raise HTTPException(404, detail="Project not found")
 
     assignments = project_service.list_project_assignments(project_id)
     lock = lock_service.get_lock(project_id)

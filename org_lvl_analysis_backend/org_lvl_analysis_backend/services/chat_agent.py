@@ -35,43 +35,28 @@ log = logging.getLogger(__name__)
 # Industry benchmark constants (A&M defaults — override per project if needed)
 # ---------------------------------------------------------------------------
 
-BENCHMARKS = """## INDUSTRY BENCHMARKS
-Use these for any question comparing the organisation against standards.
+BENCHMARKS = """## BENCHMARKING
 
-SPAN OF CONTROL:
-  - Front-line managers (Level 4+):    ideal 6–10 direct reports
-  - Mid-level managers (Level 3):      ideal 5–7 direct reports
-  - Senior leaders (Level 2):          ideal 4–6 direct reports
-  - Default target span (mixed):       6
-  - Narrow/problematic span:           < 4 direct reports
-  - Wide span (review needed):         > 12 direct reports
+You have access to A&M industry benchmarks via the get_benchmarks tool.
 
-ORGANISATIONAL LAYERS:
-  - Small org (< 500 employees):       max 5 layers
-  - Mid-market (500–2 000 employees):  max 7 layers
-  - Enterprise (2 000–10 000):         max 7–8 layers
-  - Global MNC (> 10 000):             max 9 layers
-  - Default threshold:                 7 layers
+WHEN TO CALL get_benchmarks:
+- User asks to "compare against benchmark" or "how do we compare"
+- User asks "is this good/bad/normal" about a metric
+- User asks about "industry standard" or "best practice"
+- User asks about "optimization opportunities" or "efficiency"
+- User asks "which functions are over-managed / under-managed"
+- User asks about "delayering savings" or "managers to remove"
+- User mentions "benchmark" explicitly
+- You are analyzing spans, layers, or management ratios and need a reference point
 
-MANAGEMENT RATIOS:
-  - Target manager-to-IC ratio:        1 manager per 6 ICs
-  - Management cost as % of total:     target below 25%
-  - % managers with < 4 reports:       should be below 20%
+HOW TO USE:
+1. First run the data query (run_sql or named tool) to get the computed metric
+2. Then call get_benchmarks with the relevant categories
+3. Compare the computed value against the benchmark in your response
+4. Always state BOTH numbers: "Average span is 3.2, below the industry benchmark of 6"
 
-LOCATION COST TIERS:
-  High cost  (> USD 80 k avg):   USA, UK, Germany, Switzerland, Australia, Singapore, Nordics
-  Mid cost   (USD 30–80 k avg):  France, Spain, Italy, Poland, Czech Republic, Romania, Portugal
-  Low cost   (< USD 30 k avg):   India, Philippines, Malaysia, Vietnam, Sri Lanka, Egypt, Mexico, Morocco
-
-OFFSHORE / SHARED-SERVICE CENTRES (typical):
-  India, Philippines, Poland, Romania, Malaysia, Mexico, Egypt
-
-FUNCTION CLASSIFICATION:
-  Customer-facing:  Sales, Account Management, Customer Success, Field Operations,
-                    Client Delivery, Business Development, Revenue, Consulting
-  Support/overhead: HR, Human Resources, People & Culture, Finance, Accounting,
-                    Legal, Compliance, Risk, IT, Technology, Facilities,
-                    Procurement, Strategy, Corporate Development
+Available benchmark categories: span, layers, management, delayering, location, functions
+Pick only the categories relevant to the question — don't request "all" unless doing a full org review.
 """
 
 # ---------------------------------------------------------------------------
@@ -692,6 +677,19 @@ def execute_tool(
             "_static_response": intent.get("_static_response", ""),
         }
 
+    # ── Benchmark Tool ───────────────────────────────────────────────────────
+    if tool_name == "get_benchmarks":
+        from services.benchmark_constants import execute_get_benchmarks
+        categories = intent.get("categories") or ["all"]
+        text_result, _ = execute_get_benchmarks({"categories": categories})
+        return {
+            "source": "get_benchmarks",
+            "data": [],
+            "columns": [],
+            "row_count": 0,
+            "_static_response": text_result,
+        }
+
     # ── Named SQL tool ──────────────────────────────────────────────────────
     if route == "named_tool" and tool_name in _TOOLS:
         from services.column_resolver import resolve_column
@@ -907,14 +905,57 @@ Query returned {row_count} rows{total_note}:
 
 Answer this question in clear business language based on the data above."""
 
+    messages = [
+        {"role": "system", "content": _FORMAT_SYSTEM + "\n\n" + BENCHMARKS},
+        {"role": "user", "content": prompt}
+    ]
+
+    from services.benchmark_constants import BENCHMARK_TOOL
+
     try:
-        content, _, _ = call_llm(
-            prompt,
-            system_message=_FORMAT_SYSTEM,
-            max_tokens=600,
-            temperature=0.3,
-        )
-        return content
+        # Loop for tool call resolution (max 4 iterations)
+        for iteration in range(4):
+            response_msg, usage_dict, latency_ms = call_llm(
+                messages=messages,
+                tools=[BENCHMARK_TOOL],
+                tool_choice="auto",
+                max_tokens=600,
+                temperature=0.3,
+            )
+
+            # If response_msg is a string (meaning no tool calls were generated)
+            if isinstance(response_msg, str):
+                return response_msg
+
+            tool_calls = getattr(response_msg, "tool_calls", None)
+            if not tool_calls:
+                content = getattr(response_msg, "content", "")
+                return content.strip() if content else ""
+
+            # Append the assistant's message (with tool calls) to messages history
+            messages.append(response_msg)
+
+            # Execute the tool calls
+            for tool_call in tool_calls:
+                if tool_call.function.name == "get_benchmarks":
+                    try:
+                        args = json.loads(tool_call.function.arguments)
+                    except Exception:
+                        args = {}
+
+                    from services.benchmark_constants import execute_get_benchmarks
+                    text_result, _ = execute_get_benchmarks(args)
+
+                    messages.append({
+                        "role": "tool",
+                        "tool_call_id": tool_call.id,
+                        "name": tool_call.function.name,
+                        "content": text_result,
+                    })
+
+        # Fallback if loop ends without returning
+        return getattr(response_msg, "content", "") if not isinstance(response_msg, str) else response_msg
+
     except Exception as e:
         log.error("Response formatting failed: %s", e)
         # Fallback: return a plain summary
@@ -1005,7 +1046,9 @@ def run_agent_turn(
         "intent":      dict — full intent classification result,
       }
     """
+    import time as _time
     history = history or []
+    _t0 = _time.monotonic()
 
     # Step 1: build system prompt
     system_prompt = build_system_prompt(schema, dataset_meta)
@@ -1024,6 +1067,8 @@ def run_agent_turn(
     # Step 5: determine chart hint
     chart_hint = _suggest_chart(intent, tool_result)
 
+    elapsed_ms = int((_time.monotonic() - _t0) * 1000)
+
     try:
         from services.logging_service import log_chat_query
         log_chat_query(
@@ -1033,6 +1078,7 @@ def run_agent_turn(
             intent=intent,
             tool_result=tool_result,
             response_text=response_text,
+            elapsed_ms=elapsed_ms,
         )
     except Exception as log_err:
         log.error("Failed to log chat query details: %s", log_err, exc_info=True)
@@ -1049,6 +1095,7 @@ def run_agent_turn(
         "chart_hint": chart_hint,
         "follow_ups": _get_followups(intent),
         "intent": intent,
+        "elapsed_ms": elapsed_ms,
     }
 
 
@@ -1108,7 +1155,9 @@ async def run_agent_turn_stream(
     """
     from services.llm_service import call_llm_stream
 
+    import time as _time
     history = history or []
+    _t0 = _time.monotonic()
 
     try:
         # ── Phase 1: Intent classification ──────────────────────────────────
@@ -1195,17 +1244,72 @@ Query returned {row_count} rows{total_note}:
 
 Answer this question in clear business language based on the data above."""
 
-            # Stream tokens and accumulate for logging
-            full_text = ""
-            async for token in call_llm_stream(
-                format_prompt,
-                system_message=_FORMAT_SYSTEM,
-                max_tokens=600,
-                temperature=0.3,
-            ):
-                full_text += token
-                yield {"type": "token", "data": {"text": token}}
-            response_text_for_log = full_text
+            messages = [
+                {"role": "system", "content": _FORMAT_SYSTEM + "\n\n" + BENCHMARKS},
+                {"role": "user", "content": format_prompt}
+            ]
+
+            from services.benchmark_constants import BENCHMARK_TOOL
+
+            has_tool_called = False
+            for iteration in range(4):
+                response_msg, usage_dict, latency_ms = await asyncio.to_thread(
+                    call_llm,
+                    messages=messages,
+                    tools=[BENCHMARK_TOOL],
+                    tool_choice="auto",
+                    max_tokens=600,
+                    temperature=0.3,
+                )
+
+                # Check if response_msg is a string (meaning no tool calls were generated)
+                if isinstance(response_msg, str):
+                    yield {"type": "token", "data": {"text": response_msg}}
+                    response_text_for_log = response_msg
+                    break
+
+                tool_calls = getattr(response_msg, "tool_calls", None)
+                if not tool_calls:
+                    content = getattr(response_msg, "content", "")
+                    yield {"type": "token", "data": {"text": content}}
+                    response_text_for_log = content
+                    break
+
+                # If there are tool calls, append and execute them
+                has_tool_called = True
+                messages.append(response_msg)
+
+                for tool_call in tool_calls:
+                    if tool_call.function.name == "get_benchmarks":
+                        try:
+                            args = json.loads(tool_call.function.arguments)
+                        except Exception:
+                            args = {}
+
+                        from services.benchmark_constants import execute_get_benchmarks
+                        text_result, _ = execute_get_benchmarks(args)
+
+                        messages.append({
+                            "role": "tool",
+                            "tool_call_id": tool_call.id,
+                            "name": tool_call.function.name,
+                            "content": text_result,
+                        })
+
+                # Break after handling tool calls so we stream the subsequent final completion
+                break
+
+            if has_tool_called:
+                # Stream the final turn chunk-by-chunk
+                full_text = ""
+                async for token in call_llm_stream(
+                    messages=messages,
+                    max_tokens=600,
+                    temperature=0.3,
+                ):
+                    full_text += token
+                    yield {"type": "token", "data": {"text": token}}
+                response_text_for_log = full_text
 
         # ── Logging ──────────────────────────────────────────────────────────
         try:
@@ -1217,6 +1321,7 @@ Answer this question in clear business language based on the data above."""
                 intent=intent,
                 tool_result=tool_result,
                 response_text=response_text_for_log,
+                elapsed_ms=int((_time.monotonic() - _t0) * 1000),
             )
         except Exception as log_err:
             log.error("Failed to log chat query (stream): %s", log_err)

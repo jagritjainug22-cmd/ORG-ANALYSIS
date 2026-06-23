@@ -13,7 +13,7 @@ from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
 from services.pg_adapter import IntegrityError
-from services.db_service import _connect
+from services.db_service import _connect, _connect_ro
 
 LOCK_EXPIRY_SECONDS = 90
 
@@ -24,6 +24,16 @@ def _now_iso() -> str:
 
 def cleanup_expired() -> int:
     cutoff = (datetime.utcnow() - timedelta(seconds=LOCK_EXPIRY_SECONDS)).isoformat()
+    # 1. Quick read check (no write transaction)
+    with _connect_ro() as conn:
+        has_expired = conn.execute(
+            "SELECT 1 FROM dataset_locks WHERE last_heartbeat < ? LIMIT 1", (cutoff,)
+        ).fetchone()
+
+    if not has_expired:
+        return 0  # Skip the write transaction entirely
+
+    # 2. Only write if there is actually something to clean up
     with _connect() as conn:
         result = conn.execute("DELETE FROM dataset_locks WHERE last_heartbeat < ?", (cutoff,))
         conn.commit()
@@ -32,7 +42,7 @@ def cleanup_expired() -> int:
 
 def get_lock(dataset_id: int) -> Optional[Dict[str, Any]]:
     cleanup_expired()
-    with _connect() as conn:
+    with _connect_ro() as conn:
         row = conn.execute(
             "SELECT * FROM dataset_locks WHERE dataset_id = ?", (dataset_id,)
         ).fetchone()
@@ -42,7 +52,7 @@ def get_lock(dataset_id: int) -> Optional[Dict[str, Any]]:
 def get_locks_for_project(project_id: int) -> Dict[int, Dict[str, Any]]:
     """Return a map of dataset_id -> lock info for all active locks in a project."""
     cleanup_expired()
-    with _connect() as conn:
+    with _connect_ro() as conn:
         rows = conn.execute(
             "SELECT * FROM dataset_locks WHERE project_id = ?", (project_id,)
         ).fetchall()
@@ -178,7 +188,7 @@ def check_holder(dataset_id: int, user_id: int) -> Optional[Dict[str, Any]]:
     Returns holder info dict if locked by someone else.
     """
     cleanup_expired()
-    with _connect() as conn:
+    with _connect_ro() as conn:
         row = conn.execute(
             "SELECT * FROM dataset_locks WHERE dataset_id = ?", (dataset_id,)
         ).fetchone()

@@ -33,7 +33,7 @@ def create_project(
 
 
 def get_project(project_id: int) -> Optional[Dict[str, Any]]:
-    with _connect() as conn:
+    with _connect_ro() as conn:
         row = conn.execute("SELECT * FROM projects WHERE id = ?", (project_id,)).fetchone()
         return dict(row) if row else None
 
@@ -63,6 +63,8 @@ def list_projects_with_metadata(user_id: int, is_admin: bool = False) -> List[Di
     """Fetch the list of projects (either all projects for admins, or assigned projects for a user)
     including locks, dataset count, member count, and first 5 active members preview in just 2 queries.
     """
+    from services.lock_service import cleanup_expired
+    cleanup_expired()
     if is_admin:
         project_query = """
             SELECT 
@@ -209,10 +211,12 @@ def cleanup_stale_archived(days: int = 30) -> List[int]:
     """Hard-delete projects archived more than `days` ago. Returns list of deleted project IDs."""
     from datetime import timedelta
     cutoff = (datetime.utcnow() - timedelta(days=days)).isoformat()
-    with _connect() as conn:
+    with _connect_ro() as conn:
         rows = conn.execute(
             "SELECT id FROM projects WHERE status = 'archived' AND updated_at <= ?", (cutoff,)
         ).fetchall()
+    if not rows:
+        return []
     deleted = []
     for row in rows:
         if hard_delete_project(row["id"]):
@@ -225,7 +229,7 @@ def cleanup_stale_archived(days: int = 30) -> List[int]:
 # ---------------------------------------------------------------------------
 
 def get_assignment(project_id: int, user_id: int) -> Optional[Dict[str, Any]]:
-    with _connect() as conn:
+    with _connect_ro() as conn:
         row = conn.execute(
             "SELECT * FROM project_assignments WHERE project_id = ? AND user_id = ?",
             (project_id, user_id),
@@ -293,7 +297,7 @@ def get_projects_overview(project_ids: List[int]) -> Dict[int, Dict[str, Any]]:
 
 
 def list_project_assignments(project_id: int) -> List[Dict[str, Any]]:
-    with _connect() as conn:
+    with _connect_ro() as conn:
         rows = conn.execute(
             """
             SELECT pa.*, u.username, u.display_name, u.role AS user_role, u.is_active

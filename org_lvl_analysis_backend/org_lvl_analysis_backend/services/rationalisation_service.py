@@ -657,9 +657,12 @@ def rationalise(
             }
 
     if unique_pairs:
+        # Functions that have inferred coverage don't need placeholder fallback entries in the review UI
+        inferred_funcs = {item["func_raw"] for item in inferred_pairs}
         result["subfunction_mappings"] = [
             {"function": f, "input": s, **subfunc_result[(f, s)]}
             for f, s in unique_pairs
+            if not (subfunc_result[(f, s)].get("method") == "placeholder" and f in inferred_funcs)
         ]
         # Append inferred entries (input = raw title, resolved = inferred subfunction)
         if inferred_pairs:

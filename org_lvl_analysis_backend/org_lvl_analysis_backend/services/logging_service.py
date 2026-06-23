@@ -142,6 +142,7 @@ def log_chat_query(
     intent: dict,
     tool_result: dict,
     response_text: str,
+    elapsed_ms: Optional[int] = None,
 ):
     """
     Log detailed chatbot query execution steps to a dedicated chatbot log file.
@@ -169,9 +170,11 @@ def log_chat_query(
     divider = "=" * 80
     sub_divider = "-" * 80
     
+    timing_str = f" | ELAPSED: {elapsed_ms}ms" if elapsed_ms is not None else ""
+
     entry_parts = [
         divider,
-        f"TIMESTAMP: {timestamp}",
+        f"TIMESTAMP: {timestamp}{timing_str}",
         f"USER ID: {user_id} | PROJECT ID: {project_id}",
         f"USER MESSAGE: \"{message}\"",
         sub_divider,

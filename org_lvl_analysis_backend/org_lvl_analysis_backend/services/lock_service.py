@@ -42,7 +42,7 @@ def cleanup_expired() -> int:
 
 def get_lock(project_id: int) -> Optional[Dict[str, Any]]:
     cleanup_expired()
-    with _connect() as conn:
+    with _connect_ro() as conn:
         row = conn.execute(
             "SELECT * FROM project_locks WHERE project_id = ?", (project_id,)
         ).fetchone()
@@ -52,7 +52,7 @@ def get_lock(project_id: int) -> Optional[Dict[str, Any]]:
 def get_all_locks() -> Dict[int, Dict[str, Any]]:
     """Return a map of project_id -> lock info for all active locks."""
     cleanup_expired()
-    with _connect() as conn:
+    with _connect_ro() as conn:
         rows = conn.execute("SELECT * FROM project_locks").fetchall()
         return {r["project_id"]: dict(r) for r in rows}
 

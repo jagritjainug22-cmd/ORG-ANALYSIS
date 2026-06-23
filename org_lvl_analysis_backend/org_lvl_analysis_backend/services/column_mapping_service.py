@@ -171,22 +171,18 @@ def auto_map_columns(
     columns: list[str],
     sample_rows: list[dict],
 ) -> dict[str, dict[str, Any]]:
+    """Map uploaded columns to OrgSight target columns (backwards compatibility)."""
+    mappings, _, _ = auto_map_columns_with_feedback(columns, sample_rows)
+    return mappings
+
+
+def auto_map_columns_with_feedback(
+    columns: list[str],
+    sample_rows: list[dict],
+) -> tuple[dict[str, dict[str, Any]], str, bool]:
     """Map uploaded columns to OrgSight target columns.
 
-    Returns a dict keyed by target column ID::
-
-        {
-            "employee_id": {
-                "label": "Employee ID",
-                "source_column": "Emp ID",
-                "confidence": "high",
-                "method": "alias_match",
-            },
-            ...
-        }
-
-    Confidence levels: "high" | "medium" | "low" | "none"
-    Methods: "exact_match" | "alias_match" | "llm" | "none"
+    Returns a tuple of (mappings, warning_message, requires_attention).
     """
     result: dict[str, dict[str, Any]] = {}
     matched_sources: set[str] = set()
@@ -209,8 +205,9 @@ def auto_map_columns(
     }
     unmatched_columns = [c for c in columns if c not in matched_sources]
 
+    ai_explanation = None
     if unresolved_targets and unmatched_columns:
-        llm_mappings = _llm_map_columns(
+        llm_mappings, ai_explanation = _llm_map_columns(
             unmatched_columns, sample_rows, unresolved_targets,
         )
         for target_id, source_col in llm_mappings.items():
@@ -233,7 +230,32 @@ def auto_map_columns(
                 "method": "none",
             }
 
-    return result
+    # ── Compile warnings and feedback ───────────────────────────────────
+    warnings = []
+    requires_attention = False
+
+    for target_id, target_def in TARGET_COLUMNS.items():
+        # Check core columns
+        if target_def.get("core"):
+            m = result.get(target_id)
+            if not m or not m.get("source_column"):
+                warnings.append(f"Necessary column '{target_def['label']}' was not mapped automatically.")
+                requires_attention = True
+            elif m.get("confidence") == "low":
+                warnings.append(f"Necessary column '{target_def['label']}' was mapped to '{m['source_column']}' with low confidence.")
+                requires_attention = True
+
+    if ai_explanation:
+        feedback_message = f"{ai_explanation.strip()}"
+        if warnings:
+            feedback_message = "Mapping Issues:\n" + "\n".join(f"- {w}" for w in warnings) + f"\n\nDetails: {feedback_message}"
+    else:
+        if warnings:
+            feedback_message = "Mapping Issues:\n" + "\n".join(f"- {w}" for w in warnings)
+        else:
+            feedback_message = "All necessary columns mapped successfully."
+
+    return result, feedback_message, requires_attention
 
 
 # ---------------------------------------------------------------------------
@@ -278,10 +300,10 @@ def _llm_map_columns(
     unmatched_columns: list[str],
     sample_rows: list[dict],
     unresolved_targets: dict[str, dict[str, Any]],
-) -> dict[str, str | None]:
+) -> tuple[dict[str, str | None], str | None]:
     """Use a single LLM call to map remaining columns.
 
-    Returns {target_id: source_column_name | None}.
+    Returns (mappings, explanation).
     """
     # Build sample data preview (first 5 rows, only unmatched columns)
     sample_df = pd.DataFrame(sample_rows[:5])
@@ -326,12 +348,16 @@ INSTRUCTIONS:
 2. Match based on column name meaning AND sample data patterns.
 3. If no uploaded column is a reasonable match for a target, map it to null.
 4. Each uploaded column can only be mapped to ONE target (no duplicates).
-5. Return ONLY a JSON object where keys are target field IDs and values are
-   the exact uploaded column names (or null if no match).
+5. Return a JSON object with two fields:
+   - "mappings": a dictionary where keys are target field IDs and values are the exact uploaded column names (or null).
+   - "explanation": a brief, professional summary explaining any matches, especially highlighting columns that could not be mapped or were mapped with low confidence.
 
 RESPONSE FORMAT:
 Return ONLY a JSON object like:
-{{"target_id": "Uploaded Column Name", "another_target": null, ...}}
+{{
+  "mappings": {{"target_id": "Uploaded Column Name", "another_target": null, ...}},
+  "explanation": "A short message describing mapping results and any human attention needed."
+}}
 
 No explanation, no markdown, just the JSON object."""
 
@@ -345,8 +371,12 @@ No explanation, no markdown, just the JSON object."""
         )
         if not isinstance(result, dict):
             log.warning("LLM returned non-dict for column mapping: %s", type(result))
-            return {}
-        return result
+            return {}, None
+        mappings = result.get("mappings", {})
+        explanation = result.get("explanation", None)
+        if not isinstance(mappings, dict):
+            return result, None
+        return mappings, explanation
     except Exception as e:
         log.error("Column mapping LLM call failed: %s", e)
-        return {}
+        return {}, None

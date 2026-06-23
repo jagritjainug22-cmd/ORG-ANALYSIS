@@ -38,14 +38,13 @@ def _deadline_info(project: dict) -> dict:
 
 @router.get("")
 async def list_my_projects(user: dict = Depends(get_current_user)):
-    """List projects assigned to the current user. Admins see all.
+    """List projects assigned to the current user.
 
     Augments each project with deadline warnings, lock status, team
     member preview, and dataset count -- everything the project picker
     needs to render rich cards/rows in one round-trip.
     """
-    is_admin = (user["role"] == "admin")
-    projects = project_service.list_projects_with_metadata(user["id"], is_admin=is_admin)
+    projects = project_service.list_projects_with_metadata(user["id"], is_admin=False)
     return [{**p, **_deadline_info(p)} for p in projects]
 
 

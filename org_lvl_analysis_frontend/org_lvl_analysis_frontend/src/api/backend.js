@@ -891,6 +891,10 @@ export const autoMapColumns = (columns, sampleRows) =>
   axios.post(`${getProjectUrl()}/auto-map-columns`, { columns, sample_rows: sampleRows }, { headers: jsonHeaders() })
     .then(r => r.data?.mappings ?? r.data);
 
+export const autoMapColumnsWithFeedback = (columns, sampleRows) =>
+  axios.post(`${getProjectUrl()}/auto-map-columns`, { columns, sample_rows: sampleRows }, { headers: jsonHeaders() })
+    .then(r => r.data);
+
 export const rationalisePropose = (records, funcCol, subfuncCol, titleCol, useLearnedAliases = false) =>
   axios.post(`${getProjectUrl()}/rationalise`, {
     records,

@@ -58,7 +58,7 @@ from services.spans_layers_service import (
 )
 from services.upload_service import read_excel_file, smart_read_excel
 from services.validation_service import validate_org_data, validate_scenario
-from services.column_mapping_service import auto_map_columns
+from services.column_mapping_service import auto_map_columns, auto_map_columns_with_feedback
 from services.rationalisation_service import (
     rationalise,
     apply_rationalisation,
@@ -947,13 +947,17 @@ def auto_map_columns_endpoint(
     matching + a single LLM call for unresolved columns."""
     username = user["username"]
     try:
-        mappings = auto_map_columns(body.columns, body.sample_rows)
+        mappings, message, requires_attention = auto_map_columns_with_feedback(body.columns, body.sample_rows)
         write_activity_log(
             username=username, action="process", module="ColumnMapping",
             status="success",
             details=f"Mapped {sum(1 for m in mappings.values() if m.get('source_column'))} of {len(mappings)} target columns",
         )
-        return {"mappings": mappings}
+        return {
+            "mappings": mappings,
+            "message": message,
+            "requires_attention": requires_attention
+        }
     except Exception as e:
         write_activity_log(
             username=username, action="process", module="ColumnMapping",
@@ -1118,7 +1122,7 @@ async def process_upload_endpoint(
 
         # 2. Auto-map columns
         sample_rows = records[:10]
-        col_mappings = auto_map_columns(columns, sample_rows)
+        col_mappings, mapping_msg, mapping_attention = auto_map_columns_with_feedback(columns, sample_rows)
 
         # Determine mapped columns for downstream steps
         country_col = (col_mappings.get("country") or {}).get("source_column")
@@ -1184,6 +1188,8 @@ async def process_upload_endpoint(
             "records": safe_records,
             "preprocessing": preprocessing,
             "column_mappings": col_mappings,
+            "column_mapping_message": mapping_msg,
+            "column_mapping_requires_attention": mapping_attention,
             "cleanup": {"removed": cleanup_removed},
             "rationalisation": rationalisation_result,
             "validation": validation_result,

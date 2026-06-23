@@ -3,7 +3,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import { useConfirmLogout } from "../hooks/useConfirmLogout";
 import { useWorkGuard } from "../contexts/WorkGuardContext";
-import { setCurrentProjectId, fetchProjectDetail, orgchart, acquireLock, lockHeartbeat, releaseLock, dbPromoteScenario, dbResetScenario, releaseDatasetLock, dbListDatasets, dbGetDatasetRecords, dbListFormulas, smartUpload, autoMapColumns, dbUpdateColumnConfig } from "../api/backend";
+import { setCurrentProjectId, fetchProjectDetail, orgchart, acquireLock, lockHeartbeat, releaseLock, dbPromoteScenario, dbResetScenario, releaseDatasetLock, dbListDatasets, dbGetDatasetRecords, dbListFormulas, smartUpload, autoMapColumns, autoMapColumnsWithFeedback, dbUpdateColumnConfig } from "../api/backend";
 import ActiveDatasetDropdown from "../components/ActiveDatasetDropdown";
 import FormulaEditor from "../components/FormulaEditor";
 
@@ -93,6 +93,8 @@ export default function ProjectWorkspace() {
 
   // --- Smart upload state (Phase 1: read + auto-map) ---
   const [columnMappings, setColumnMappings] = useState(null);
+  const [columnMappingMessage, setColumnMappingMessage] = useState(null);
+  const [columnMappingRequiresAttention, setColumnMappingRequiresAttention] = useState(false);
   const [preprocessingSummary, setPreprocessingSummary] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [uploadStep, setUploadStep] = useState("");
@@ -355,9 +357,11 @@ export default function ProjectWorkspace() {
     const needsAutoMap = optionalDbFields.some((f) => !dataset[f]);
     if (!needsAutoMap || !cols?.length || !records?.length) return;
     try {
-      const mapRes = await autoMapColumns(cols, records.slice(0, 10));
-      setColumnMappings(mapRes);
-      const get = (key) => (mapRes[key] || {}).source_column || "";
+      const mapRes = await autoMapColumnsWithFeedback(cols, records.slice(0, 10));
+      setColumnMappings(mapRes.mappings);
+      setColumnMappingMessage(mapRes.message);
+      setColumnMappingRequiresAttention(mapRes.requires_attention);
+      const get = (key) => (mapRes.mappings[key] || {}).source_column || "";
       if (!dataset.func_col && get("function")) setFuncCol(get("function"));
       if (!dataset.subfunc_col && get("subfunction")) setSubfuncCol(get("subfunction"));
       if (!dataset.grade_col && get("grade")) setGradeCol(get("grade"));
@@ -419,8 +423,28 @@ export default function ProjectWorkspace() {
     setUploadStep("read");
     setPreprocessingSummary(null);
     setColumnMappings(null);
+    setColumnMappingMessage(null);
+    setColumnMappingRequiresAttention(false);
     setValidatedDf(null);
     setFilteredRowCount(null);
+    
+    // Clear previous column configurations immediately on new upload
+    setEmpCol("");
+    setMgrCol("");
+    setFteCol("");
+    setFlcCol("");
+    setCountryCol("");
+    setJobTitleCol("");
+    setFuncCol("");
+    setSubfuncCol("");
+    setGradeCol("");
+    setDivisionCol("");
+    setEntityCol("");
+    setStartDateCol("");
+    setBasicPayCol("");
+    setContractTypeCol("");
+    setStatusCol("");
+
     try {
       const readRes = await smartUpload(file);
       setColumns(readRes.columns);
@@ -428,9 +452,11 @@ export default function ProjectWorkspace() {
       setPreprocessingSummary(readRes.preprocessing);
 
       setUploadStep("map");
-      const mapRes = await autoMapColumns(readRes.columns, readRes.records.slice(0, 10));
-      setColumnMappings(mapRes);
-      hydrateColumnSelections(mapRes);
+      const mapRes = await autoMapColumnsWithFeedback(readRes.columns, readRes.records.slice(0, 10));
+      setColumnMappings(mapRes.mappings);
+      setColumnMappingMessage(mapRes.message);
+      setColumnMappingRequiresAttention(mapRes.requires_attention);
+      hydrateColumnSelections(mapRes.mappings);
       setColConfigCollapsed(false);
 
       setUploadedFileName(file.name);
@@ -526,6 +552,24 @@ export default function ProjectWorkspace() {
       const scenarioName = scenarios.find((s) => s.id === scenarioId)?.name || "Baseline";
       setActiveDatasetLabel(dataset.name + " — " + scenarioName);
       setActiveDatasetName(dataset.name);
+      
+      // Perform core check on saved dataset
+      const missingCore = [];
+      if (!dataset.emp_col) missingCore.push("Employee ID");
+      if (!dataset.mgr_col) missingCore.push("Manager ID");
+      if (!dataset.fte_col) missingCore.push("FTE");
+      if (!dataset.flc_col) missingCore.push("Fully Loaded Cost (FLC)");
+      if (!dataset.country_col) missingCore.push("Country");
+      if (!dataset.job_title_col) missingCore.push("Job Title");
+
+      if (missingCore.length > 0) {
+        setColumnMappingMessage(`Necessary column(s) [${missingCore.join(", ")}] are not mapped in this dataset. Please set them in the Column Configuration below.`);
+        setColumnMappingRequiresAttention(true);
+      } else {
+        setColumnMappingMessage("All necessary columns mapped successfully.");
+        setColumnMappingRequiresAttention(false);
+      }
+
       dbListFormulas(dataset.id)
         .then((data) => setFormulas(data?.formulas || []))
         .catch(() => setFormulas([]));
@@ -596,6 +640,8 @@ export default function ProjectWorkspace() {
             uploadedFileName={uploadedFileName}
             setUploadedFileName={setUploadedFileName}
             columnMappings={columnMappings}
+            columnMappingMessage={columnMappingMessage}
+            columnMappingRequiresAttention={columnMappingRequiresAttention}
             datasetId={datasetId}
             onDatasetPicked={({ dataset, scenarios: scs, activeScenarioId: sid }) =>
               activateDataset(dataset, scs, sid)

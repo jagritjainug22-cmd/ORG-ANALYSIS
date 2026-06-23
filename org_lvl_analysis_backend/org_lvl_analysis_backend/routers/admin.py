@@ -395,6 +395,13 @@ async def assign_user_to_project(
         ip_address=request.client.host if request.client else None,
     )
 
+    try:
+        from services.email_service import notify_user_assigned_to_project
+        notify_user_assigned_to_project(username=user["username"], project_name=project["name"], role=body.role)
+    except Exception as email_err:
+        import logging
+        logging.getLogger(__name__).warning("Failed to trigger assignment email: %s", email_err)
+
     return assignment
 
 

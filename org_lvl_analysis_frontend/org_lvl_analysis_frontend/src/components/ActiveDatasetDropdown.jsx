@@ -223,7 +223,7 @@ export default function ActiveDatasetDropdown({
                           {/* Info */}
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-1">
-                              <span className={`text-sm font-semibold truncate ${isActive ? "text-white" : "text-gray-800"}`}>
+                              <span className={`text-sm font-semibold truncate ${isActive ? "text-[#01244a]" : "text-gray-800"}`}>
                                 {d.name}
                               </span>
                               {isActive && (

@@ -474,6 +474,93 @@ export default function AskOrgSight({ projectId, datasetId, scenarioId, onNaviga
 // MESSAGE BUBBLE — renders text + optional table + optional chart
 // =============================================================================
 
+function formatMarkdown(text) {
+  if (!text) return "";
+  const lines = text.split("\n");
+  const elements = [];
+  let listItems = [];
+  let inList = false;
+
+  const parseInlineStyles = (lineText) => {
+    const regex = /(\*\*.*?\*\*|`.*?`)/g;
+    const tokens = lineText.split(regex);
+    return tokens.map((token, idx) => {
+      if (token.startsWith("**") && token.endsWith("**")) {
+        return <strong key={idx} className="font-bold text-[#01244a]">{token.slice(2, -2)}</strong>;
+      }
+      if (token.startsWith("`") && token.endsWith("`")) {
+        return <code key={idx} className="bg-gray-100 border border-gray-200 px-1 py-0.5 rounded text-xs text-red-600 font-mono">{token.slice(1, -1)}</code>;
+      }
+      return token;
+    });
+  };
+
+  const flushList = (key) => {
+    if (listItems.length > 0) {
+      elements.push(
+        <ul key={key} className="list-disc pl-5 my-2 space-y-1 text-gray-700">
+          {listItems.map((item, idx) => (
+            <li key={idx}>{parseInlineStyles(item)}</li>
+          ))}
+        </ul>
+      );
+      listItems = [];
+      inList = false;
+    }
+  };
+
+  lines.forEach((line, index) => {
+    const trimmed = line.trim();
+    if (trimmed.startsWith("### ")) {
+      flushList(`list-${index}`);
+      elements.push(
+        <h4 key={index} className="text-sm font-bold text-[#01244a] mt-3 mb-1.5 border-b border-gray-100 pb-1">
+          {parseInlineStyles(trimmed.slice(4))}
+        </h4>
+      );
+    } else if (trimmed.startsWith("## ")) {
+      flushList(`list-${index}`);
+      elements.push(
+        <h3 key={index} className="text-base font-bold text-[#01244a] mt-4 mb-2">
+          {parseInlineStyles(trimmed.slice(3))}
+        </h3>
+      );
+    } else if (trimmed.startsWith("# ")) {
+      flushList(`list-${index}`);
+      elements.push(
+        <h2 key={index} className="text-lg font-bold text-[#01244a] mt-5 mb-2.5">
+          {parseInlineStyles(trimmed.slice(2))}
+        </h2>
+      );
+    } else if (trimmed.startsWith("- ") || trimmed.startsWith("* ")) {
+      inList = true;
+      listItems.push(trimmed.slice(2));
+    } else if (/^\d+\.\s+/.test(trimmed)) {
+      flushList(`list-${index}`);
+      const match = trimmed.match(/^(\d+)\.\s+(.*)/);
+      elements.push(
+        <div key={index} className="flex gap-2 my-1.5 text-gray-700">
+          <span className="font-bold text-[#01244a] min-w-[1.25rem] text-right">{match[1]}.</span>
+          <span className="flex-1">{parseInlineStyles(match[2])}</span>
+        </div>
+      );
+    } else if (trimmed === "") {
+      flushList(`list-${index}`);
+      elements.push(<div key={index} className="h-2" />);
+    } else {
+      flushList(`list-${index}`);
+      elements.push(
+        <p key={index} className="my-1.5 text-gray-700 leading-relaxed">
+          {parseInlineStyles(line)}
+        </p>
+      );
+    }
+  });
+
+  flushList("list-final");
+  return elements;
+}
+
 function MessageBubble({ message, onFollowUp, onClarify }) {
   const isUser = message.role === "user";
   const display = message.display || "text";
@@ -484,15 +571,20 @@ function MessageBubble({ message, onFollowUp, onClarify }) {
   return (
     <div className={`flex flex-col ${isUser ? "items-end" : "items-start"} max-w-[85%] ${isUser ? "ml-auto" : ""}`}>
       {/* Reply text */}
-      <div className={`px-4 py-3 rounded-2xl text-sm leading-relaxed whitespace-pre-wrap ${
+      <div className={`px-4 py-3 rounded-2xl text-sm leading-relaxed ${
         isUser
-          ? "bg-brand-500 text-white rounded-br-md"
+          ? "bg-brand-500 text-white rounded-br-md whitespace-pre-wrap"
           : "bg-white text-gray-800 border border-gray-200 shadow-sm rounded-bl-md"
       }`}>
-        {message.content || (isStreaming ? "" : "—")}
-        {/* Blinking cursor while streaming */}
-        {isStreaming && (
-          <span className="inline-block w-0.5 h-4 bg-brand-400 ml-0.5 align-middle animate-[blink_1s_step-end_infinite]" />
+        {isUser ? (
+          message.content || "—"
+        ) : (
+          <div className="space-y-1">
+            {formatMarkdown(message.content)}
+            {isStreaming && (
+              <span className="inline-block w-0.5 h-4 bg-brand-400 ml-0.5 align-middle animate-[blink_1s_step-end_infinite]" />
+            )}
+          </div>
         )}
       </div>
 
@@ -690,11 +782,11 @@ function DataTable({ columns, rows }) {
                 <th
                   key={col}
                   onClick={() => handleSort(col)}
-                  className="px-3 py-2 text-left font-semibold text-gray-600 bg-gray-50 border-b-2 border-gray-200 cursor-pointer hover:bg-gray-100 whitespace-nowrap transition select-none"
+                  className="px-3 py-2 text-left font-bold text-white bg-[#01244a] border-b border-[#08304a] cursor-pointer hover:bg-[#08304a]/85 whitespace-nowrap transition select-none"
                 >
                   {col}
                   {sortCol === col && (
-                    <span className="ml-1 text-brand-500">{sortDir === "asc" ? "↑" : "↓"}</span>
+                    <span className="ml-1 text-[#c5a84a] font-bold">{sortDir === "asc" ? "↑" : "↓"}</span>
                   )}
                 </th>
               ))}
@@ -730,19 +822,23 @@ function DataTable({ columns, rows }) {
 function DynamicChart({ spec, data }) {
   if (!data || data.length === 0) return null;
 
-  const { chart_type, title, x, y } = spec;
+  const [chartType, setChartType] = useState(spec.chart_type);
+  const [selectedX, setSelectedX] = useState(spec.x);
+  const [selectedY, setSelectedY] = useState(spec.y);
+
+  const keys = Object.keys(data[0] || {});
   const commonProps = { data, margin: { top: 10, right: 20, left: 10, bottom: 10 } };
 
   const renderChart = () => {
-    switch (chart_type) {
+    switch (chartType) {
       case "bar":
         return (
           <BarChart {...commonProps}>
             <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-            <XAxis dataKey={x} tick={{ fontSize: 11 }} />
+            <XAxis dataKey={selectedX} tick={{ fontSize: 11 }} />
             <YAxis tick={{ fontSize: 11 }} />
             <Tooltip formatter={(v) => typeof v === "number" ? v.toLocaleString() : v} />
-            <Bar dataKey={y} fill={CHART_COLORS[0]} radius={[4, 4, 0, 0]} />
+            <Bar dataKey={selectedY} fill={CHART_COLORS[0]} radius={[4, 4, 0, 0]} />
           </BarChart>
         );
       case "horizontal_bar":
@@ -750,25 +846,25 @@ function DynamicChart({ spec, data }) {
           <BarChart {...commonProps} layout="vertical">
             <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
             <XAxis type="number" tick={{ fontSize: 11 }} />
-            <YAxis dataKey={x} type="category" tick={{ fontSize: 11 }} width={140} />
+            <YAxis dataKey={selectedX} type="category" tick={{ fontSize: 11 }} width={140} />
             <Tooltip formatter={(v) => typeof v === "number" ? v.toLocaleString() : v} />
-            <Bar dataKey={y} fill={CHART_COLORS[0]} radius={[0, 4, 4, 0]} />
+            <Bar dataKey={selectedY} fill={CHART_COLORS[0]} radius={[0, 4, 4, 0]} />
           </BarChart>
         );
       case "line":
         return (
           <LineChart {...commonProps}>
             <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-            <XAxis dataKey={x} tick={{ fontSize: 11 }} />
+            <XAxis dataKey={selectedX} tick={{ fontSize: 11 }} />
             <YAxis tick={{ fontSize: 11 }} />
             <Tooltip />
-            <Line type="monotone" dataKey={y} stroke={CHART_COLORS[1]} strokeWidth={2} dot={{ r: 3 }} />
+            <Line type="monotone" dataKey={selectedY} stroke={CHART_COLORS[1]} strokeWidth={2} dot={{ r: 3 }} />
           </LineChart>
         );
       case "pie":
         return (
           <PieChart>
-            <Pie data={data} dataKey={y} nameKey={x} cx="50%" cy="50%" outerRadius={100} label={{ fontSize: 11 }}>
+            <Pie data={data} dataKey={selectedY} nameKey={selectedX} cx="50%" cy="50%" outerRadius={100} label={{ fontSize: 11 }}>
               {data.map((_, i) => <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />)}
             </Pie>
             <Tooltip />
@@ -779,8 +875,8 @@ function DynamicChart({ spec, data }) {
         return (
           <ScatterChart {...commonProps}>
             <CartesianGrid stroke="#f0f0f0" />
-            <XAxis dataKey={x} tick={{ fontSize: 11 }} />
-            <YAxis dataKey={y} tick={{ fontSize: 11 }} />
+            <XAxis dataKey={selectedX} tick={{ fontSize: 11 }} />
+            <YAxis dataKey={selectedY} tick={{ fontSize: 11 }} />
             <Tooltip />
             <Scatter data={data} fill={CHART_COLORS[0]} />
           </ScatterChart>
@@ -789,26 +885,81 @@ function DynamicChart({ spec, data }) {
         return (
           <AreaChart {...commonProps}>
             <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-            <XAxis dataKey={x} tick={{ fontSize: 11 }} />
+            <XAxis dataKey={selectedX} tick={{ fontSize: 11 }} />
             <YAxis tick={{ fontSize: 11 }} />
             <Tooltip />
-            <Area type="monotone" dataKey={y} stroke={CHART_COLORS[1]} fill={CHART_COLORS[1]} fillOpacity={0.15} />
+            <Area type="monotone" dataKey={selectedY} stroke={CHART_COLORS[1]} fill={CHART_COLORS[1]} fillOpacity={0.15} />
           </AreaChart>
         );
       default:
         return (
           <div className="text-gray-400 text-sm text-center py-8">
-            Unsupported chart type: {chart_type}
+            Unsupported chart type: {chartType}
           </div>
         );
     }
   };
 
   return (
-    <div className="border border-gray-200 rounded-lg p-4 bg-white shadow-sm">
-      {title && (
-        <div className="text-center text-sm font-semibold text-brand-700 mb-3">{title}</div>
-      )}
+    <div className="border border-gray-200 rounded-lg p-4 bg-white shadow-sm space-y-4">
+      <div className="flex flex-col sm:flex-row items-center justify-between gap-3 border-b border-gray-100 pb-3">
+        {spec.title ? (
+          <div className="text-sm font-semibold text-brand-700">{spec.title}</div>
+        ) : (
+          <div className="text-sm font-semibold text-brand-700">Dynamic Chart</div>
+        )}
+        
+        <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto justify-end">
+          <div className="flex bg-gray-100 p-0.5 rounded-lg border border-gray-200/50">
+            {[
+              { id: "bar", label: "Bar" },
+              { id: "line", label: "Line" },
+              { id: "pie", label: "Pie" },
+              { id: "area", label: "Area" }
+            ].map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                onClick={() => setChartType(t.id)}
+                className={`px-2 py-0.5 text-[10px] font-bold rounded transition-all ${
+                  chartType === t.id
+                    ? "bg-[#01244a] text-white shadow-sm"
+                    : "text-slate-600 hover:text-slate-800"
+                }`}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+
+          <div className="flex items-center gap-1">
+            <span className="text-[10px] font-bold text-slate-500 uppercase">X:</span>
+            <select
+              value={selectedX}
+              onChange={(e) => setSelectedX(e.target.value)}
+              className="bg-white border border-gray-200 rounded px-1.5 py-0.5 text-[10px] font-medium text-slate-700 focus:outline-none focus:ring-1 focus:ring-brand-500"
+            >
+              {keys.map((k) => (
+                <option key={k} value={k}>{k}</option>
+              ))}
+            </select>
+          </div>
+
+          <div className="flex items-center gap-1">
+            <span className="text-[10px] font-bold text-slate-500 uppercase">Y:</span>
+            <select
+              value={selectedY}
+              onChange={(e) => setSelectedY(e.target.value)}
+              className="bg-white border border-gray-200 rounded px-1.5 py-0.5 text-[10px] font-medium text-slate-700 focus:outline-none focus:ring-1 focus:ring-brand-500"
+            >
+              {keys.map((k) => (
+                <option key={k} value={k}>{k}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+      </div>
+
       <ResponsiveContainer width="100%" height={280}>
         {renderChart()}
       </ResponsiveContainer>
@@ -823,41 +974,97 @@ function DynamicChart({ spec, data }) {
 
 function EmptyState({ onSelect }) {
   const suggestions = [
-    { text: "Give me an org summary", icon: "📊" },
-    { text: "Headcount by country", icon: "🌍" },
-    { text: "Top 10 highest cost employees", icon: "💰" },
-    { text: "Span of control distribution", icon: "📈" },
-    { text: "L2 leader breakdown", icon: "👥" },
-    { text: "Managers with fewer than 4 reports", icon: "⚠️" },
-    { text: "Compare our spans against benchmark", icon: "📏" },
-    { text: "What are the structural risks?", icon: "🔍" },
+    { 
+      text: "Give me an org summary", 
+      icon: (
+        <svg className="w-4 h-4 text-blue-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2m0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+        </svg>
+      ) 
+    },
+    { 
+      text: "Headcount by country", 
+      icon: (
+        <svg className="w-4 h-4 text-blue-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 002 2h2m-4-3.5a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0zM2 12a10 10 0 1120 0 10 10 0 01-20 0z" />
+        </svg>
+      ) 
+    },
+    { 
+      text: "Top 10 highest cost employees", 
+      icon: (
+        <svg className="w-4 h-4 text-blue-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+      ) 
+    },
+    { 
+      text: "Span of control distribution", 
+      icon: (
+        <svg className="w-4 h-4 text-blue-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+        </svg>
+      ) 
+    },
+    { 
+      text: "L2 leader breakdown", 
+      icon: (
+        <svg className="w-4 h-4 text-blue-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a3 3 0 11-6 0 3 3 0 016 0z" />
+        </svg>
+      ) 
+    },
+    { 
+      text: "Managers with fewer than 4 reports", 
+      icon: (
+        <svg className="w-4 h-4 text-blue-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+        </svg>
+      ) 
+    },
+    { 
+      text: "Compare our spans against benchmark", 
+      icon: (
+        <svg className="w-4 h-4 text-blue-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+        </svg>
+      ) 
+    },
+    { 
+      text: "What are the structural risks?", 
+      icon: (
+        <svg className="w-4 h-4 text-blue-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+        </svg>
+      ) 
+    },
   ];
 
   return (
     <div className="flex flex-col items-center justify-center py-16 px-8">
       {/* Logo / Icon */}
-      <div className="w-16 h-16 bg-gradient-to-br from-brand-500 to-brand-700 rounded-2xl flex items-center justify-center mb-6 shadow-lg">
+      <div className="w-16 h-16 bg-gradient-to-br from-[#01244a] to-blue-600 rounded-2xl flex items-center justify-center mb-6 shadow-lg animate-pulse">
         <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
         </svg>
       </div>
 
-      <h3 className="text-xl font-bold text-gray-800 mb-2">Ask OrgSight</h3>
+      <h3 className="text-xl font-bold text-[#01244a] mb-2" style={{ fontFamily: "Manrope, Inter, sans-serif" }}>Ask OrgSight</h3>
       <p className="text-sm text-gray-500 mb-8 max-w-md text-center">
         Ask questions about your organisation data in plain English.
         I can analyse headcount, cost, hierarchy structure, spans of control, and more.
       </p>
 
       {/* Suggestion chips */}
-      <div className="flex flex-wrap gap-2 justify-center max-w-2xl">
+      <div className="flex flex-wrap gap-2.5 justify-center max-w-2xl">
         {suggestions.map((s, i) => (
           <button
             key={i}
             onClick={() => onSelect(s.text)}
-            className="group flex items-center gap-2 px-4 py-2.5 border border-gray-200 rounded-xl bg-white text-sm text-gray-700 hover:bg-brand-50 hover:text-brand-700 hover:border-brand-200 hover:shadow-md transition-all cursor-pointer"
+            className="group flex items-center gap-2.5 px-4 py-2.5 border border-blue-100 rounded-xl bg-blue-50/50 text-sm text-slate-800 hover:bg-blue-100/70 hover:border-blue-300 hover:shadow-sm transition-all duration-200 cursor-pointer"
           >
-            <span className="text-base">{s.icon}</span>
-            <span className="font-medium">{s.text}</span>
+            {s.icon}
+            <span className="font-semibold text-slate-700 group-hover:text-blue-900 transition-colors">{s.text}</span>
           </button>
         ))}
       </div>

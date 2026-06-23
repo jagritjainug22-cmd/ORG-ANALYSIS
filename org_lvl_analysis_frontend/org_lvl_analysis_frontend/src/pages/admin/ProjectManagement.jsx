@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   adminListProjects, adminCreateProject, adminUpdateProject, adminArchiveProject,
   adminHardDeleteProject, adminListAssignments, adminAssignUser, adminUnassignUser, adminListUsers,
@@ -370,6 +371,7 @@ function DatasetPanel({ project, onClose }) {
 }
 
 export default function ProjectManagement() {
+  const navigate = useNavigate();
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -486,6 +488,10 @@ export default function ProjectManagement() {
                         <button onClick={() => setDatasetProject(p)}
                           className="px-3 py-1.5 text-xs font-medium text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded-md transition-all">
                           Datasets
+                        </button>
+                        <button onClick={() => navigate(`/projects/${p.id}`)}
+                          className="px-3 py-1.5 text-xs font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-md transition-all">
+                          Open
                         </button>
                         <button onClick={() => { setEditProject(p); setShowForm(true); }}
                           className="px-3 py-1.5 text-xs font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-md transition-all">

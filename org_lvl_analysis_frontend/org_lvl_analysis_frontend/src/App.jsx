@@ -24,7 +24,7 @@ function LoginPage() {
         className="hidden lg:flex relative flex-col justify-between p-12 text-white overflow-hidden"
         style={{
           background:
-            "linear-gradient(135deg, #0a3f86 0%, #155bb2 55%, #315f9b 100%)",
+            "linear-gradient(135deg, #01244a 0%, #0a3366 55%, #0a3f86 100%)",
         }}
       >
         {/* subtle decorative grid */}

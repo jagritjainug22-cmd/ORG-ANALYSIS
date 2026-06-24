@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { dbListDatasets, dbGetDataset } from "../api/backend";
 
-const BRAND_500 = "#155bb2";
+const BRAND_500 = "#0a3f86";
 const ACCENT_GOLD = "#c5a84a";
 
 function accentFor(dataset) {

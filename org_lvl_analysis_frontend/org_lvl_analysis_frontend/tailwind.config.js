@@ -10,30 +10,30 @@ export default {
         sans: ['Inter', 'system-ui', 'Avenir', 'Helvetica', 'Arial', 'sans-serif'],
       },
       colors: {
-        // Legacy class prefix (am-*) — values mapped to OrgSight blue
+        // Legacy class prefix (am-*) — aligned with admin panel navy palette
         am: {
-          50:  "#eaf3ff",
-          100: "#dbeafe",
+          50:  "#e8eef5",
+          100: "#dce4ee",
           200: "#74a9e7",
           300: "#5a93d5",
           400: "#315f9b",
-          500: "#155bb2", // primary
-          600: "#0a3f86",
-          700: "#0f2e5c",
+          500: "#0a3f86", // primary buttons, active nav
+          600: "#01244a", // headers, dark surfaces
+          700: "#08304a", // borders, hover
           800: "#0f172a",
           900: "#0a1628",
-          deep: "#0a3f86",
+          deep: "#01244a",
           teal: "#14b8a6",
         },
         brand: {
-          50:  "#eaf3ff",
-          100: "#dbeafe",
+          50:  "#e8eef5",
+          100: "#dce4ee",
           200: "#74a9e7",
           300: "#5a93d5",
           400: "#315f9b",
-          500: "#155bb2",
-          600: "#0a3f86",
-          700: "#0f2e5c",
+          500: "#0a3f86", // primary buttons, active sidebar
+          600: "#01244a", // app headers
+          700: "#08304a", // header borders, pressed states
           800: "#0f172a",
         },
       },

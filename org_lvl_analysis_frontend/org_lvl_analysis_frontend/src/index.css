@@ -35,3 +35,18 @@ body {
 .animate-fadeInUp {
   animation: fadeInUp 0.25s ease-out both;
 }
+
+/* Thin scrollbar for toolbars that can overflow */
+.org-toolbar-scroll::-webkit-scrollbar {
+  height: 3px;
+}
+.org-toolbar-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.org-toolbar-scroll::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.25);
+  border-radius: 2px;
+}
+.org-toolbar-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.4);
+}

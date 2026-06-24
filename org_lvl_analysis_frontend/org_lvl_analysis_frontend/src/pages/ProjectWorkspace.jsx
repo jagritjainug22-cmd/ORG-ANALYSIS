@@ -801,7 +801,7 @@ export default function ProjectWorkspace() {
               />
             )}
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-shrink-0">
             {user?.role === "admin" && (
               <button
                 onClick={() => navigate("/admin")}

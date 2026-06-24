@@ -418,7 +418,7 @@ export default function UploadAndPrepare({
                 <div className="w-48 h-1.5 bg-gray-200 rounded-full overflow-hidden">
                   <div className="h-full bg-brand-500 rounded-full" style={{
                     width: uploadStep === "map" ? "70%" : "30%",
-                    backgroundImage: "linear-gradient(90deg, #155bb2 0%, #74a9e7 50%, #155bb2 100%)",
+                    backgroundImage: "linear-gradient(90deg, #0a3f86 0%, #74a9e7 50%, #0a3f86 100%)",
                     backgroundSize: "200% 100%", animation: "shimmer 1.5s infinite", transition: "width 0.5s",
                   }} />
                 </div>

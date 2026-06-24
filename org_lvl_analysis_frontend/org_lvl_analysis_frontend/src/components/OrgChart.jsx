@@ -1511,6 +1511,7 @@ export default function OrgChart({
 
       {/* Header bar -- single compact line */}
       <div
+        className="org-toolbar-scroll"
         style={{
           background: AM.navy,
           color: AM.white,
@@ -1520,7 +1521,8 @@ export default function OrgChart({
           gap: 12,
           flexShrink: 0,
           flexWrap: "nowrap",
-          overflow: "visible",
+          overflowX: "auto",
+          overflowY: "hidden",
           position: "relative",
           zIndex: 10,
           minHeight: 44,
@@ -1565,7 +1567,9 @@ export default function OrgChart({
             padding: "6px 12px",
             fontSize: 12,
             outline: "none",
-            width: 180,
+            width: 160,
+            minWidth: 120,
+            flexShrink: 1,
           }}
         />
         {departments.length > 0 && (
@@ -1582,6 +1586,8 @@ export default function OrgChart({
               fontSize: 12,
               outline: "none",
               maxWidth: 140,
+              flexShrink: 1,
+              minWidth: 0,
             }}
           >
             <option value="">All departments</option>
@@ -1604,6 +1610,8 @@ export default function OrgChart({
               fontSize: 12,
               outline: "none",
               maxWidth: 160,
+              flexShrink: 1,
+              minWidth: 0,
             }}
           >
             <option value="">All job titles</option>
@@ -1628,6 +1636,7 @@ export default function OrgChart({
             padding: "6px 8px",
             fontSize: 12,
             outline: "none",
+            flexShrink: 0,
           }}
         >
           {[1, 2, 3, 4, 5, 6].map((n) => (
@@ -1636,9 +1645,9 @@ export default function OrgChart({
           <option value={0}>All levels</option>
         </select>
 
-        <div style={{ display: "flex", alignItems: "center", gap: 4, marginLeft: 6 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 4, marginLeft: 6, flexShrink: 0 }}>
           <ZoomBtn onClick={() => setZoom((z) => z / 1.15)} title="Zoom out">−</ZoomBtn>
-          <span style={{ fontSize: 11, color: AM.white, width: 42, textAlign: "center", fontFamily: "'IBM Plex Mono', monospace" }}>
+          <span style={{ fontSize: 11, color: AM.white, width: 42, textAlign: "center", fontFamily: "'IBM Plex Mono', monospace", whiteSpace: "nowrap" }}>
             {(zoomLabel * 100).toFixed(0)}%
           </span>
           <ZoomBtn onClick={() => setZoom((z) => z * 1.15)} title="Zoom in">+</ZoomBtn>
@@ -1651,7 +1660,7 @@ export default function OrgChart({
           </ZoomBtn>
         </div>
 
-        <div style={{ position: "relative" }}>
+        <div style={{ position: "relative", flexShrink: 0 }}>
           <button
             onClick={() => setExportMenuOpen((v) => !v)}
             style={{
@@ -1668,6 +1677,7 @@ export default function OrgChart({
               display: "flex",
               alignItems: "center",
               gap: 6,
+              whiteSpace: "nowrap",
             }}
           >
             Export

@@ -2,6 +2,9 @@ import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { rationalisePropose, rationaliseApply } from "../api/backend";
 import MappingRegistry from "./MappingRegistry";
 import ExportExcel from "./ExportExcel";
+import Paginator from "./Paginator";
+
+const RAT_PAGE_SIZE = 15;
 
 const METHOD_BADGE = {
   exact:      { bg: "bg-green-100",  text: "text-green-700",  label: "Master" },
@@ -40,6 +43,7 @@ function SummaryBar({ mappings }) {
 
 function MappingTable({
   mappings,
+  allMappings,
   overrides,
   setOverrides,
   accepted,
@@ -49,26 +53,65 @@ function MappingTable({
   datalistId,
   showFuncCol = false
 }) {
+  const [page, setPage] = useState(1);
+  const [flashedIdxs, setFlashedIdxs] = useState(new Set());
+
+  // Reset to page 1 when the mapping list changes (tab switch or filter)
+  const mappingKey = (mappings || []).map(m => m.originalIdx).join(",");
+  useEffect(() => { setPage(1); }, [mappingKey]);
+
+  const totalPages = Math.ceil((mappings || []).length / RAT_PAGE_SIZE);
+  const paged = (mappings || []).slice((page - 1) * RAT_PAGE_SIZE, page * RAT_PAGE_SIZE);
+
   if (!mappings || mappings.length === 0) {
     return <p className="text-sm text-slate-400 italic py-6 text-center">No mappings to review</p>;
   }
-  const toggleAccept = (idx) => setAccepted(prev => ({ ...prev, [idx]: prev[idx] === false ? true : false }));
-  const setOverride = (idx, val) => setOverrides(prev => ({ ...prev, [idx]: val }));
 
-  const allSelected = mappings.length > 0 && mappings.every(m => !!selected[m.originalIdx]);
+  const toggleAccept = (idx) => setAccepted(prev => ({ ...prev, [idx]: prev[idx] === false ? true : false }));
+
+  const handleOverrideChange = (m, val) => {
+    // Clear flash when user manually edits again
+    if (flashedIdxs.has(m.originalIdx)) {
+      setFlashedIdxs(prev => { const next = new Set(prev); next.delete(m.originalIdx); return next; });
+    }
+    setOverrides(prev => ({ ...prev, [m.originalIdx]: val }));
+  };
+
+  // Apply a value to all sibling rows that still have a different current value
+  const applyToSiblings = (m, val) => {
+    const allSibs = (allMappings || mappings).filter(
+      s => s.originalIdx !== m.originalIdx && s.resolved === m.resolved
+    );
+    const needsUpdate = allSibs.filter(s => {
+      const sibVal = overrides[s.originalIdx] !== undefined ? overrides[s.originalIdx] : s.resolved;
+      return sibVal !== val;
+    });
+    setOverrides(prev => {
+      const next = { ...prev, [m.originalIdx]: val };
+      needsUpdate.forEach(s => { next[s.originalIdx] = val; });
+      return next;
+    });
+    // Flash self + all updated siblings
+    const affected = new Set([m.originalIdx, ...needsUpdate.map(s => s.originalIdx)]);
+    setFlashedIdxs(affected);
+    setTimeout(() => setFlashedIdxs(new Set()), 1800);
+  };
+
+  const allSelected = paged.length > 0 && paged.every(m => !!selected[m.originalIdx]);
   const toggleSelectAll = () => {
     setSelected(prev => {
       const next = { ...prev };
       if (allSelected) {
-        mappings.forEach(m => { next[m.originalIdx] = false; });
+        paged.forEach(m => { next[m.originalIdx] = false; });
       } else {
-        mappings.forEach(m => { next[m.originalIdx] = true; });
+        paged.forEach(m => { next[m.originalIdx] = true; });
       }
       return next;
     });
   };
 
   return (
+    <div>
     <div className="overflow-x-auto">
       <table className="w-full text-sm">
         <thead>
@@ -79,6 +122,7 @@ function MappingTable({
                 checked={allSelected}
                 onChange={toggleSelectAll}
                 className="rounded border-gray-300 text-brand-500 focus:ring-brand-500 h-4 w-4 cursor-pointer"
+                title="Select all for Accept / Reject"
               />
             </th>
             {showFuncCol && <th className="text-left px-3 py-2.5 font-semibold">Function</th>}
@@ -89,34 +133,86 @@ function MappingTable({
           </tr>
         </thead>
         <tbody className="divide-y divide-gray-100">
-          {mappings.map((m) => {
+          {paged.map((m) => {
             const isAccepted = accepted[m.originalIdx] !== false;
-            const overrideVal = overrides[m.originalIdx];
+            const currentVal = overrides[m.originalIdx] !== undefined ? overrides[m.originalIdx] : m.resolved;
+            const isDirty = overrides[m.originalIdx] !== undefined && overrides[m.originalIdx] !== m.resolved;
             const isSelected = !!selected[m.originalIdx];
-            const toggleSelect = () => {
-              setSelected(prev => ({ ...prev, [m.originalIdx]: !prev[m.originalIdx] }));
-            };
+            const isFlashed = flashedIdxs.has(m.originalIdx);
+
+            // Siblings = other rows that the AI also proposed the same resolved value AND currently have a different value from this row
+            const allSiblings = (allMappings || mappings).filter(
+              s => s.originalIdx !== m.originalIdx && s.resolved === m.resolved
+            );
+            const siblingCount = allSiblings.length;
+            // Only count siblings that still need to be updated (their current value ≠ currentVal)
+            const siblingsOutOfSync = allSiblings.filter(s => {
+              const sibVal = overrides[s.originalIdx] !== undefined ? overrides[s.originalIdx] : s.resolved;
+              return sibVal !== currentVal;
+            });
+            const outOfSyncCount = siblingsOutOfSync.length;
 
             return (
-              <tr key={m.originalIdx} className={`transition ${isAccepted ? "bg-white" : "bg-gray-50 opacity-60"}`}>
+              <tr
+                key={m.originalIdx}
+                className={`transition-colors duration-500 ${
+                  isFlashed
+                    ? "bg-brand-50"
+                    : isDirty
+                    ? "bg-amber-50/40"
+                    : isAccepted
+                    ? "bg-white"
+                    : "bg-gray-50 opacity-60"
+                }`}
+              >
                 <td className="px-3 py-2 text-center">
                   <input
                     type="checkbox"
                     checked={isSelected}
-                    onChange={toggleSelect}
+                    onChange={() => setSelected(prev => ({ ...prev, [m.originalIdx]: !prev[m.originalIdx] }))}
                     className="rounded border-gray-300 text-brand-500 focus:ring-brand-500 h-4 w-4 cursor-pointer"
+                    title="Select for Accept / Reject"
                   />
                 </td>
                 {showFuncCol && <td className="px-3 py-2 text-slate-500 text-xs">{m.function}</td>}
                 <td className="px-3 py-2 text-slate-700 font-medium">{m.input}</td>
                 <td className="px-3 py-2">
-                  <input
-                    type="text"
-                    list={datalistId}
-                    value={overrideVal !== undefined ? overrideVal : m.resolved}
-                    onChange={(e) => setOverride(m.originalIdx, e.target.value)}
-                    className="w-full border border-gray-200 rounded px-2 py-1 text-sm focus:ring-1 focus:ring-brand-500 focus:border-brand-500 outline-none bg-white hover:border-gray-300 transition"
-                  />
+                  <div className="flex items-center gap-1.5">
+                    <input
+                      type="text"
+                      list={datalistId}
+                      value={currentVal}
+                      onChange={(e) => handleOverrideChange(m, e.target.value)}
+                      className={`flex-1 border rounded px-2 py-1 text-sm focus:ring-1 focus:ring-brand-500 focus:border-brand-500 outline-none bg-white hover:border-gray-300 transition ${
+                        isDirty ? "border-amber-400" : "border-gray-200"
+                      }`}
+                    />
+                  {/* Badge: show how many share same proposed value (only when not dirty) */}
+                  {siblingCount > 0 && !isDirty && (
+                    <span className="flex-shrink-0 text-[10px] font-semibold text-slate-400 bg-gray-100 rounded-full px-1.5 py-0.5" title={`${siblingCount + 1} rows share this proposed value`}>
+                      ×{siblingCount + 1}
+                    </span>
+                  )}
+                  </div>
+                  {/* Show apply link only when siblings still have a different current value */}
+                  {isDirty && outOfSyncCount > 0 && !isFlashed && (
+                    <button
+                      onClick={() => applyToSiblings(m, currentVal)}
+                      className="mt-1 text-[11px] text-brand-600 hover:text-brand-800 font-semibold flex items-center gap-1"
+                      title={`Apply "${currentVal}" to ${outOfSyncCount} row${outOfSyncCount > 1 ? "s" : ""} still proposed as "${m.resolved}"`}
+                    >
+                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                      </svg>
+                      Apply to {outOfSyncCount} other{outOfSyncCount > 1 ? "s" : ""} still showing "{m.resolved}"
+                    </button>
+                  )}
+                  {isFlashed && (
+                    <span className="mt-1 text-[11px] text-brand-500 flex items-center gap-1 font-medium">
+                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" /></svg>
+                      Updated
+                    </span>
+                  )}
                 </td>
                 <td className="px-3 py-2"><Badge method={m.method} /></td>
                 <td className="px-3 py-2 text-center">
@@ -135,6 +231,18 @@ function MappingTable({
           })}
         </tbody>
       </table>
+    </div>
+    {totalPages > 1 && (
+      <div className="px-4 border-t border-gray-100">
+        <Paginator
+          page={page}
+          totalPages={totalPages}
+          totalItems={mappings.length}
+          pageSize={RAT_PAGE_SIZE}
+          onChange={setPage}
+        />
+      </div>
+    )}
     </div>
   );
 }
@@ -165,8 +273,7 @@ export default function Rationalise({
   const [subfuncSelected, setSubfuncSelected] = useState({});
   const [titleSelected, setTitleSelected] = useState({});
 
-  // Bulk overrides state
-  const [bulkValue, setBulkValue] = useState("");
+  // (bulk value input removed — overrides propagate via inline "Apply to N others" button)
 
   // Run state
   const [running, setRunning] = useState(false);
@@ -213,7 +320,8 @@ export default function Rationalise({
     { key: "titles", label: "Titles", count: titleMappings.length },
   ];
 
-  const hasRequiredCols = funcCol || subfuncCol || jobTitleCol;
+  const hasRequiredCols = !!funcCol;
+  const hasSubfuncCol = !!subfuncCol;
 
   const handleRun = async () => {
     if (!dfRecords || !hasRequiredCols) return;
@@ -355,19 +463,6 @@ export default function Rationalise({
 
   const selectedCount = selectedOriginalIdxs.length;
 
-  const handleBulkApply = () => {
-    if (!bulkValue) return;
-    const setOverrides = activeTab === "functions" ? setFuncOverrides : activeTab === "subfunctions" ? setSubfuncOverrides : setTitleOverrides;
-    setOverrides(prev => {
-      const next = { ...prev };
-      selectedOriginalIdxs.forEach(idx => { next[idx] = bulkValue; });
-      return next;
-    });
-    setBulkValue("");
-    const setSelected = activeTab === "functions" ? setFuncSelected : activeTab === "subfunctions" ? setSubfuncSelected : setTitleSelected;
-    setSelected({});
-  };
-
   const handleBulkAcceptReject = (accept) => {
     const setAccepted = activeTab === "functions" ? setFuncAccepted : activeTab === "subfunctions" ? setSubfuncAccepted : setTitleAccepted;
     setAccepted(prev => {
@@ -470,7 +565,13 @@ export default function Rationalise({
         <div className="space-y-3">
           {!hasRequiredCols && (
             <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 text-sm text-amber-700">
-              Select at least one of <span className="font-semibold">Function</span>, <span className="font-semibold">Sub-Function</span>, or <span className="font-semibold">Job Title</span> in the Column Configuration bar above.
+              Map <span className="font-semibold">Function</span> in the Column Configuration bar above, then click <span className="font-semibold">Save Config</span>.
+              Subfunction and title rationalisation also require Function to be mapped.
+            </div>
+          )}
+          {hasRequiredCols && !hasSubfuncCol && (
+            <div className="bg-brand-50 border border-brand-100 rounded-lg px-4 py-3 text-sm text-brand-700">
+              Function is mapped. Sub-Function is optional but recommended for subfunction rationalisation.
             </div>
           )}
           <label className="flex items-start gap-2.5 px-1 cursor-pointer select-none">
@@ -585,6 +686,7 @@ export default function Rationalise({
             {activeTab === "functions" && (
               <MappingTable
                 mappings={filteredMappings}
+                allMappings={funcMappings.map((m, i) => ({ ...m, originalIdx: i }))}
                 overrides={funcOverrides}
                 setOverrides={setFuncOverrides}
                 accepted={funcAccepted}
@@ -597,6 +699,7 @@ export default function Rationalise({
             {activeTab === "subfunctions" && (
               <MappingTable
                 mappings={filteredMappings}
+                allMappings={subfuncMappings.map((m, i) => ({ ...m, originalIdx: i }))}
                 overrides={subfuncOverrides}
                 setOverrides={setSubfuncOverrides}
                 accepted={subfuncAccepted}
@@ -610,6 +713,7 @@ export default function Rationalise({
             {activeTab === "titles" && (
               <MappingTable
                 mappings={filteredMappings}
+                allMappings={titleMappings.map((m, i) => ({ ...m, originalIdx: i }))}
                 overrides={titleOverrides}
                 setOverrides={setTitleOverrides}
                 accepted={titleAccepted}
@@ -645,40 +749,32 @@ export default function Rationalise({
             <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm text-red-700">{applyError}</div>
           )}
 
-          {/* Floating Bulk Action Bar */}
+          {/* Floating Bulk Action Bar — selection used for Accept / Reject only */}
           {selectedCount > 0 && (
-            <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2 bg-[#01244a] border border-[#08304a] text-white rounded-xl px-5 py-3 shadow-2xl flex items-center gap-4 z-50 animate-bounceOnce select-none">
+            <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2 bg-[#01244a] border border-[#08304a] text-white rounded-xl px-5 py-3 shadow-2xl flex items-center gap-3 z-50 animate-bounceOnce select-none">
               <span className="text-xs font-semibold text-gray-200">
-                {selectedCount} item{selectedCount > 1 ? "s" : ""} selected
+                {selectedCount} row{selectedCount > 1 ? "s" : ""} selected
               </span>
-              
-              <input
-                type="text"
-                placeholder="Bulk override value..."
-                value={bulkValue}
-                onChange={(e) => setBulkValue(e.target.value)}
-                className="border border-gray-400 bg-white/10 text-white placeholder-gray-300 rounded px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-brand-400 outline-none w-48 font-medium"
-              />
-              
-              <button
-                onClick={handleBulkApply}
-                className="px-3 py-1.5 bg-[#c5a84a] hover:bg-[#b0933f] text-[#01244a] font-bold rounded text-xs shadow-sm transition"
-              >
-                Bulk Apply
-              </button>
-              
+              <div className="w-px h-4 bg-white/20" />
               <button
                 onClick={() => handleBulkAcceptReject(true)}
-                className="px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white font-semibold rounded text-xs shadow-sm transition"
+                className="px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white font-semibold rounded text-xs shadow-sm transition flex items-center gap-1.5"
               >
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" /></svg>
                 Accept
               </button>
-              
               <button
                 onClick={() => handleBulkAcceptReject(false)}
-                className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white font-semibold rounded text-xs shadow-sm transition"
+                className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white font-semibold rounded text-xs shadow-sm transition flex items-center gap-1.5"
               >
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
                 Reject
+              </button>
+              <button
+                onClick={() => { setFuncSelected({}); setSubfuncSelected({}); setTitleSelected({}); }}
+                className="text-xs text-gray-400 hover:text-white transition ml-1"
+              >
+                Clear
               </button>
             </div>
           )}

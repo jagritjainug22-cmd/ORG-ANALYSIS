@@ -1,1 +1,262 @@
-{"entries": []}
+{
+  "entries": [],
+  "function_aliases": {
+    "C&P": "Procurement",
+    "Central IBD": "Sales & Marketing",
+    "Commercial": "Sales & Marketing",
+    "Corporate": "HR",
+    "ERA": "Compliance and Legal",
+    "HSSE & Health": "Compliance and Legal",
+    "Human Resources": "HR",
+    "Information Technology": "IT",
+    "Legal": "Compliance and Legal",
+    "Lubricants": "Sales & Marketing",
+    "Marketing, Comms & Transformation": "Sales & Marketing",
+    "Office Services": "HR",
+    "Retail": "Sales & Marketing",
+    "S&D": "Sales & Marketing",
+    "Security": "Compliance and Legal",
+    "TRR": "Compliance and Legal"
+  },
+  "subfunction_aliases": {
+    "Legal": {
+      "SA Legal - Cosec": "Manage compliance",
+      "SA Legal - Forensics": "Enterprise Risk",
+      "Manager,Legal Services & Advis": "Manage compliance"
+    },
+    "Information Technology": {
+      "CIO": "Information Technology Services"
+    },
+    "HSSE & Health": {
+      "SA HSSE - Commercial": "Manage compliance",
+      "SA HSSE - Risk & Assurance": "Enterprise Risk",
+      "SA HSSE - Strategy & Performance": "Business Resiliency",
+      "SA HSSE - Environment": "Compliance",
+      "SA HSSE - Safety & Product Quality": "Compliance",
+      "SA HSSE - Sustainability": "Compliance",
+      "SA HSSE - Lubricants": "General HSSE Lubricants",
+      "General Manager: HSEQ": "Manage compliance",
+      "Manager,OH & Wellness": "Manage remediation efforts",
+      "Executive Assistant: HSEQ": "Manage compliance"
+    },
+    "Commercial": {
+      "SA Com - Chemicals - Bitumen&Speciality": "Develop marketing plans",
+      "SA Com - Chemicals": "Develop marketing plans",
+      "SA Com - Direct Sales": "Develop sales plans",
+      "SA Com - BPI": "Develop marketing plans",
+      "SA Com - Reseller Sales": "Develop sales plans",
+      "SA Com - Chemicals - Base": "Develop marketing plans",
+      "SA Com - Technical Advisory": "Understand markets",
+      "General Manager: Commercial": "Develop and manage sales plans",
+      "Executive Assistant: Commercia": "Develop and manage sales plans",
+      "Manager,Marketing Business Dev": "Develop marketing strategy"
+    },
+    "Finance": {
+      "SA Finance - Optimus": "General",
+      "SA Finance - Treasury": "Treasury Operations",
+      "SA Finance - Tax": "Manage taxes",
+      "SA Finance - Credit": "Credit Operations",
+      "SA Finance - Planning": "Planning and Management Accounting",
+      "SA Corporate - Strategy": "Corporate Strategy",
+      "General Manager: Finance": "Perform general accounting and reporting",
+      "Manager,Fin.Governance,Risk &": "Manage internal controls",
+      "Head: Data": "Perform planning and management accounting"
+    },
+    "Human Resources": {
+      "SA HR - Comp & Ben": "Reward and retain employees",
+      "SA HR - BP - Corporate & Retail": "Manage employee relations",
+      "SA HR - BP - Supply Chain, Comm & Lubes": "Manage employee relations",
+      "SA HR - T & D": "Develop and counsel employees",
+      "SA HR - OD & EE": "Develop and counsel employees",
+      "SA HR - Employee Relations": "Manage employee relations",
+      "SA HR - Technology": "Manage employee information and analytics",
+      "General Manager: Human Resourc": "Develop and manage human resources (HR) planning, policies, and strategies",
+      "Manager, Change Management & C": "Manage employee communication"
+    },
+    "ERA": {
+      "SA ERA - Enterprise Risk": "Manage enterprise risk",
+      "General Manager: ERA": "Manage enterprise risk",
+      "Executive Assistant: ERA": "Manage enterprise risk",
+      "Manager,Audit": "Manage compliance"
+    },
+    "Office Services": {
+      "SA Office Services - Inland": "Manage employee relations",
+      "SA Office Services - Coastal": "General Office Services",
+      "Asset Management Controller": "Develop and manage human resources (HR) planning, policies, and strategies",
+      "Manager,Facilities Management": "Develop and manage human resources (HR) planning, policies, and strategies"
+    },
+    "Retail": {
+      "SA Ret - BPI": "General Retail BPI",
+      "SA Ret - CR": "General Retail CR",
+      "SA Ret - HSEQ": "General Retail HSEQ",
+      "SA Ret - S&O Inland": "General Retail S&O",
+      "SA Ret - S&O Coastal": "General Retail S&O",
+      "SA Ret - Assets": "General Retail Assets",
+      "General Manager: Retail": "Develop and manage sales plans"
+    },
+    "Lubricants": {
+      "SA Lubes - Direct Sales": "Sales Plans",
+      "SA Lubes - Ind Sales": "Sales Plans",
+      "SA Lubes - Technical Advisory": "Technical Advisory",
+      "SA Lubes - SSA Distributor Sales": "Sales Plans",
+      "SA Lubes - SC": "General Lubricants SC",
+      "SA Lubes - S&OP": "General Lubricants S&OP",
+      "SA Lubes - Technical Advisory - Field": "Technical Advisory",
+      "SA Lubes - Growth Enablement": "General Lubricants Growth",
+      "SA Lubes - BPI": "General Lubricants BPI",
+      "General Manager: Lubricants": "Develop and manage sales plans",
+      "Executive Assistant: Lubes": "Develop and manage sales plans"
+    },
+    "Marketing, Comms & Transformation": {
+      "SA Marketing - Market Intelligence": "Understand Markets",
+      "Chief Marketing Officer": "Develop marketing strategy",
+      "Manager,Strategic Communicatio": "Develop marketing strategy",
+      "Manager,Digital Innovation": "Develop marketing strategy"
+    },
+    "Security": {
+      "Manager,Security": "Manage enterprise risk",
+      "Corporate Security Advisor": "Manage enterprise risk",
+      "Cost Centre & Contracts Manage": "Manage compliance",
+      "Travel Risk & Administration M": "Manage business resiliency",
+      "Security Manager": "Manage enterprise risk",
+      "Engen Court Security & Systems": "Manage compliance",
+      "Senior Corporate Security Advi": "Manage enterprise risk"
+    },
+    "S&D": {
+      "General Manager: Supply Chain": "Develop and manage sales plans"
+    },
+    "TRR": {
+      "Manager, Transition, Repurpose": "Manage remediation efforts"
+    },
+    "Corporate": {
+      "Executive Assistant": "Develop and manage human resources (HR) planning, policies, and strategies",
+      "Managing Director and CEO": "Develop and manage human resources (HR) planning, policies, and strategies"
+    },
+    "Central IBD": {
+      "Manager, International Busines": "Develop and manage sales plans"
+    },
+    "C&P": {
+      "Chief Procurement Officer": "Procure materials and services"
+    }
+  },
+  "title_aliases": {
+    "Commercial": {
+      "General Manager: Commercial": "General Manager",
+      "Specialities &Renewable Busi": "Business Development Executive",
+      "Executive Assistant: Commercia": "Executive Assistant",
+      "Manager,Marketing Business Dev": "Business Development Executive",
+      "Pricing &New Product Develop": "Business Development Executive",
+      "Manager,Direct Sales": "Sales Manager",
+      "Head: Finance (Commercial)": "Head",
+      "Manager,Reseller Sales": "Sales Manager",
+      "Chemicals &Intermediate Busi": "Business Development Executive",
+      "Manager,Technical Advisory": "Manager"
+    },
+    "Finance": {
+      "General Manager: Finance": "General Manager",
+      "Manager,Business Cutover": "Finance Manager",
+      "Manager,Treasury": "Finance Manager",
+      "Manager,Tax": "Finance Manager",
+      "Manager,Fin.Governance,Risk &": "Finance Manager",
+      "Manager,Credit": "Finance Manager",
+      "Manager,Planning,Performance": "Finance Manager",
+      "Manager,Strategy": "Finance Manager",
+      "Head: Data": "Head"
+    },
+    "Human Resources": {
+      "General Manager: Human Resourc": "General Manager",
+      "Manager,Compensation & Benef": "HR Business Partner",
+      "Manager,HR Business Partner-": "HR Business Partner",
+      "Manager,HR Business Partner(": "HR Business Partner",
+      "HR & Talent Coordinator": "L&D Coordinator",
+      "Manager, Organisation Design": "Organizational Development Manager",
+      "Manager,Employee Relations": "HR Generalist",
+      "Manager, Change Management & C": "Organizational Development Manager",
+      "Manager, HR Technology & Con": "HR Business Partner",
+      "Manager,Talent Attraction &": "Recruiter"
+    },
+    "ERA": {
+      "General Manager: ERA": "General Manager",
+      "Manager,Enterprise Risk": "Compliance Manager",
+      "Manager,Audit": "Compliance Manager"
+    },
+    "Legal": {
+      "Group Company Secretary": "Corporate Counsel",
+      "Manager,Legal Services & Advis": "Compliance Manager",
+      "Assistant Company Secretaria": "Paralegal",
+      "Forensic Manager": "Compliance Manager"
+    },
+    "HSSE & Health": {
+      "General Manager: HSEQ": "General Manager",
+      "Manager, HSEQ Compliance & P": "Compliance Manager",
+      "Product Quality Specialist": "Specialist",
+      "Manager,HSEQ Strategy,Perfor": "Compliance Manager",
+      "HSEQ Risk Management Special": "Specialist",
+      "Laboratory & Quality Special": "Specialist",
+      "HSEQ Crisis & Incident Mgt S": "Specialist",
+      "Manager,Environment": "Compliance Manager",
+      "Manager,OH & Wellness": "Compliance Manager",
+      "Executive Assistant: HSEQ": "Executive Assistant",
+      "HSEQ, Assurance & Management": "Specialist",
+      "Manager,Operations & Process": "Compliance Manager",
+      "Manager,Sustainability": "Compliance Manager"
+    },
+    "Retail": {
+      "General Manager: Retail": "General Manager",
+      "Head: Finance (Retail)": "Head",
+      "Manager,Convenience Strategy": "Account Manager",
+      "Manager, HSEQ & Food Complia": "Account Manager",
+      "Manager,Sales & Operations-I": "Account Manager",
+      "Manager,Sales & Operations-C": "Account Manager",
+      "Manager,Retail Assets": "Account Manager"
+    },
+    "Lubricants": {
+      "General Manager: Lubricants": "General Manager",
+      "Manager,Direct Sales": "Account Manager",
+      "Manager,Indirect Sales": "Account Manager",
+      "Manager,SSA Distributor Sale": "Account Manager",
+      "Product Manager Automotive": "Account Manager",
+      "Executive Assistant: Lubes": "Executive Assistant",
+      "Manager,Supply Chain": "Account Manager",
+      "Manager,Sales & Operations P": "Sales Manager",
+      "Field Technical Manager": "Technical Manager",
+      "Product Manager Industrial": "Product Manager",
+      "Manager, Growth Enablement": "Growth Enablement Manager",
+      "Product Manager - Greases": "Product Manager",
+      "Head: Finance (Lubricants)": "Head of Finance"
+    },
+    "Security": {
+      "Manager,Security": "Compliance Manager",
+      "Cost Centre & Contracts Manage": "Contracts Manager",
+      "Travel Risk & Administration M": "Travel Risk & Administration Manager",
+      "Engen Court Security & Systems": "Security Specialist",
+      "Senior Corporate Security Advi": "Senior Corporate Security Advisor"
+    },
+    "S&D": {
+      "General Manager: Supply Chain": "General Manager"
+    },
+    "TRR": {
+      "Manager, Transition, Repurpose": "Compliance Manager"
+    },
+    "Information Technology": {
+      "Chief Information and Chief Procurement": "Chief Information Officer"
+    },
+    "Central IBD": {
+      "Manager, International Busines": "Business Development Executive"
+    },
+    "Office Services": {
+      "Manager,Facilities Management": "Operations Lead",
+      "Inland Facilities Manager": "Operations Lead",
+      "Coastal Facilities Manager": "Operations Lead"
+    },
+    "Marketing, Comms & Transformation": {
+      "Customer Experience & Market": "Marketing Specialist",
+      "Manager,Strategic Communicatio": "Campaign Brigadier",
+      "Manager,Digital Innovation": "Campaign Manager"
+    },
+    "Corporate": {
+      "Managing Director and CEO": "Chief Executive Officer"
+    }
+  },
+  "disabled": []
+}

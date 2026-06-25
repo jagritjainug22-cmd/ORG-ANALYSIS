@@ -508,8 +508,6 @@ def _add_pptx_summary_slide(prs, summary, dataset, scenario, page_num: int = 2) 
     C_NAVY = RGBColor(0x01, 0x24, 0x4A)
     C_WHITE = RGBColor(0xFF, 0xFF, 0xFF)
     C_GREY = RGBColor(0x4F, 0x60, 0x77)
-    C_GREEN = RGBColor(0x27, 0xAE, 0x60)
-    C_RED = RGBColor(0xC0, 0x39, 0x2B)
 
     cur = summary.get("current", {})
     base = summary.get("baseline", {})
@@ -528,56 +526,256 @@ def _add_pptx_summary_slide(prs, summary, dataset, scenario, page_num: int = 2) 
         r.font.bold = True
         r.font.color.rgb = C_WHITE
 
-    metrics = [
-        ("HEADCOUNT", f"{cur.get('headcount', 0):,}", delta.get("headcount", 0), ""),
-        ("TOTAL FTE", f"{cur.get('total_fte', 0):,.1f}", delta.get("fte", 0), ""),
-        ("TOTAL COST", f"${cur.get('total_cost', 0):,.0f}", delta.get("cost", 0), "$"),
-        ("CHANGES", f"{summary.get('change_count', 0)}", None, ""),
-    ]
-    card_w = 2.9
-    gap = 0.25
-    start_x = (13.333 - (4 * card_w + 3 * gap)) / 2
-    for i, (label, value, dval, prefix) in enumerate(metrics):
-        left = I(start_x + i * (card_w + gap))
-        card = slide.shapes.add_shape(1, left, I(1.5), I(card_w), I(2.2))
-        card.fill.solid()
-        card.fill.fore_color.rgb = C_WHITE
-        card.line.color.rgb = RGBColor(0xDC, 0xE4, 0xEE)
-        card.shadow.inherit = False
+    # 1. Comparison Table (Left Side)
+    # Metric | Baseline | Target (To-Be) | Delta
+    table_shape = slide.shapes.add_table(4, 4, I(0.5), I(1.5), I(7.0), I(2.5))
+    tbl = table_shape.table
+    tbl.columns[0].width = I(2.2)
+    tbl.columns[1].width = I(1.6)
+    tbl.columns[2].width = I(1.6)
+    tbl.columns[3].width = I(1.6)
 
-        hdr_band = slide.shapes.add_shape(1, left, I(1.5), I(card_w), I(0.45))
-        hdr_band.fill.solid()
-        hdr_band.fill.fore_color.rgb = C_NAVY
-        hdr_band.line.fill.background()
-        hdr = slide.shapes.add_textbox(left, I(1.55), I(card_w), I(0.4))
-        hp = hdr.text_frame.paragraphs[0]
-        hp.text = label
-        hp.alignment = PP_ALIGN.CENTER
-        for r in hp.runs:
-            r.font.size = Pt(11)
-            r.font.bold = True
-            r.font.color.rgb = C_WHITE
-
-        vb = slide.shapes.add_textbox(left, I(2.2), I(card_w), I(0.8))
-        vp = vb.text_frame.paragraphs[0]
-        vp.text = value
-        vp.alignment = PP_ALIGN.CENTER
-        for r in vp.runs:
-            r.font.size = Pt(32)
-            r.font.bold = True
-            r.font.color.rgb = C_NAVY
-
-        if dval is not None:
-            db = slide.shapes.add_textbox(left, I(3.0), I(card_w), I(0.4))
-            dp = db.text_frame.paragraphs[0]
-            dp.text = f"{prefix}{dval:+,.0f} from baseline" if dval != 0 else "no change"
-            dp.alignment = PP_ALIGN.CENTER
-            color = C_GREEN if dval > 0 else C_RED if dval < 0 else C_GREY
-            for r in dp.runs:
+    headers = ["Metric", "Baseline", "Current (To-Be)", "Delta"]
+    for c, h in enumerate(headers):
+        cell = tbl.cell(0, c)
+        cell.text = h
+        cell.fill.solid()
+        cell.fill.fore_color.rgb = C_NAVY
+        for p in cell.text_frame.paragraphs:
+            p.alignment = PP_ALIGN.CENTER if c > 0 else PP_ALIGN.LEFT
+            for r in p.runs:
+                r.font.bold = True
                 r.font.size = Pt(11)
-                r.font.color.rgb = color
+                r.font.color.rgb = C_WHITE
+
+    metrics_rows = [
+        ("Headcount", f"{base.get('headcount', 0):,}", f"{cur.get('headcount', 0):,}", f"{delta.get('headcount', 0):+d}"),
+        ("Total FTE", f"{base.get('total_fte', 0):,.1f}", f"{cur.get('total_fte', 0):,.1f}", f"{delta.get('fte', 0):+.1f}"),
+        ("Total Cost", f"${base.get('total_cost', 0):,.0f}", f"${cur.get('total_cost', 0):,.0f}", f"${delta.get('cost', 0):+,.0f}")
+    ]
+
+    for r_idx, (m, b_val, c_val, d_val) in enumerate(metrics_rows, start=1):
+        vals = [m, b_val, c_val, d_val]
+        for c_idx, v in enumerate(vals):
+            cell = tbl.cell(r_idx, c_idx)
+            cell.text = v
+            if r_idx % 2 == 0:
+                cell.fill.solid()
+                cell.fill.fore_color.rgb = RGBColor(0xF5, 0xF7, 0xFA)
+            for p in cell.text_frame.paragraphs:
+                p.alignment = PP_ALIGN.CENTER if c_idx > 0 else PP_ALIGN.LEFT
+                for r in p.runs:
+                    r.font.size = Pt(10)
+                    if c_idx == 3:
+                        r.font.bold = True
+                        if "-" in d_val:
+                            r.font.color.rgb = RGBColor(0x27, 0xAE, 0x60)
+                        elif "+" in d_val:
+                            r.font.color.rgb = RGBColor(0xC0, 0x39, 0x2B)
+
+    # 2. Savings and Impact Panel (Right Side)
+    panel_left = I(8.0)
+    panel = slide.shapes.add_shape(1, panel_left, I(1.5), I(4.8), I(4.5))
+    panel.fill.solid()
+    panel.fill.fore_color.rgb = RGBColor(0xFA, 0xFB, 0xFC)
+    panel.line.color.rgb = RGBColor(0xDC, 0xE4, 0xEE)
+    
+    # Title inside panel
+    shdr = slide.shapes.add_shape(1, panel_left, I(1.5), I(4.8), I(0.45))
+    shdr.fill.solid()
+    shdr.fill.fore_color.rgb = C_NAVY
+    shdr.line.fill.background()
+    shdr_tb = slide.shapes.add_textbox(panel_left, I(1.55), I(4.8), I(0.4))
+    shp = shdr_tb.text_frame.paragraphs[0]
+    shp.text = "SAVINGS & IMPACT SUMMARY"
+    shp.alignment = PP_ALIGN.CENTER
+    for r in shp.runs:
+        r.font.size = Pt(11)
+        r.font.bold = True
+        r.font.color.rgb = C_WHITE
+
+    # Fetch phasing to display financial savings
+    phasing = db_service.get_phasing_view(scenario["id"], fy_start_month=1)
+    ph_sum = phasing.get("summary", {})
+    
+    info_points = [
+        ("Full-Year Annualized Savings:", f"${ph_sum.get('full_year_savings', 0):,.0f}"),
+        ("Prorated In-Year Savings:", f"${ph_sum.get('in_year_savings', 0):,.0f}"),
+        ("Months Remaining in FY:", f"{ph_sum.get('months_remaining_in_fy', 0)}"),
+        ("Flagged Removed Roles:", f"{summary.get('flagged_removed', {}).get('count', 0)}"),
+        ("Flagged Removed Value:", f"${summary.get('flagged_removed', {}).get('cost', 0):,.0f}"),
+        ("Total Changes Logged:", f"{summary.get('change_count', 0)}"),
+    ]
+    
+    tb_content = slide.shapes.add_textbox(panel_left + I(0.2), I(2.1), I(4.4), I(3.8))
+    tf = tb_content.text_frame
+    tf.word_wrap = True
+    for idx, (lbl, val) in enumerate(info_points):
+        p = tf.paragraphs[0] if idx == 0 else tf.add_paragraph()
+        p.space_after = Pt(8)
+        run_lbl = p.add_run()
+        run_lbl.text = f"{lbl} "
+        run_lbl.font.size = Pt(11)
+        run_lbl.font.bold = True
+        run_lbl.font.color.rgb = C_NAVY
+        
+        run_val = p.add_run()
+        run_val.text = val
+        run_val.font.size = Pt(11)
+        run_val.font.bold = True
+        if "Savings" in lbl:
+            run_val.font.color.rgb = RGBColor(0x27, 0xAE, 0x60)
+        else:
+            run_val.font.color.rgb = C_GREY
 
     _add_pptx_footer(slide, prs, scenario["name"], page_num)
+
+
+def _add_pptx_comparison_slide(prs, dataset_id: int, active_scenario_id: int, scenario_name: str, page_num: int) -> None:
+    from pptx.util import Inches as I, Pt, Emu
+    from pptx.dml.color import RGBColor
+    from pptx.enum.text import PP_ALIGN
+
+    C_NAVY = RGBColor(0x01, 0x24, 0x4A)
+    C_WHITE = RGBColor(0xFF, 0xFF, 0xFF)
+
+    slide = prs.slides.add_slide(prs.slide_layouts[6])
+    band = slide.shapes.add_shape(1, Emu(0), Emu(0), prs.slide_width, I(0.7))
+    band.fill.solid()
+    band.fill.fore_color.rgb = C_NAVY
+    band.line.fill.background()
+    ttl = slide.shapes.add_textbox(I(0.5), I(0.12), I(12), I(0.5))
+    tp = ttl.text_frame.paragraphs[0]
+    tp.text = "Scenario Comparison Analysis"
+    for r in tp.runs:
+        r.font.size = Pt(20)
+        r.font.bold = True
+        r.font.color.rgb = C_WHITE
+
+    # Get comparison data
+    scenarios_list = db_service.list_scenarios(dataset_id)
+    headers = ["Scenario Name", "HC", "FTE", "Cost", "Δ HC", "Δ Cost", "Changes"]
+    
+    rows = len(scenarios_list) + 1
+    cols = len(headers)
+    table_shape = slide.shapes.add_table(rows, cols, I(0.5), I(1.2), I(12.33), I(min(5.0, 0.4 * rows)))
+    tbl = table_shape.table
+    
+    tbl.columns[0].width = I(3.0)
+    for c in range(1, cols):
+        tbl.columns[c].width = I(1.55)
+
+    for c, h in enumerate(headers):
+        cell = tbl.cell(0, c)
+        cell.text = h
+        cell.fill.solid()
+        cell.fill.fore_color.rgb = C_NAVY
+        for p in cell.text_frame.paragraphs:
+            p.alignment = PP_ALIGN.CENTER if c > 0 else PP_ALIGN.LEFT
+            for r in p.runs:
+                r.font.bold = True
+                r.font.size = Pt(11)
+                r.font.color.rgb = C_WHITE
+
+    for i, s in enumerate(scenarios_list, start=1):
+        try:
+            s_sum = db_service.get_scenario_summary(s["id"])
+            hc = f"{s_sum['current']['headcount']:,}"
+            fte = f"{s_sum['current']['total_fte']:,.1f}"
+            cost = f"${s_sum['current']['total_cost']:,.0f}"
+            dhc = f"{s_sum['delta']['headcount']:+d}"
+            dcost = f"${s_sum['delta']['cost']:+,.0f}"
+            ch = f"{s_sum['change_count']}"
+            name = s["name"]
+            if s["id"] == active_scenario_id:
+                name += " (Active)"
+            if s["is_promoted"]:
+                name += " [Baseline]"
+                
+            vals = [name, hc, fte, cost, dhc, dcost, ch]
+            for c, v in enumerate(vals):
+                cell = tbl.cell(i, c)
+                cell.text = v
+                if i % 2 == 0:
+                    cell.fill.solid()
+                    cell.fill.fore_color.rgb = RGBColor(0xF5, 0xF7, 0xFA)
+                for p in cell.text_frame.paragraphs:
+                    p.alignment = PP_ALIGN.CENTER if c > 0 else PP_ALIGN.LEFT
+                    for r in p.runs:
+                        r.font.size = Pt(10)
+                        if s["id"] == active_scenario_id:
+                            r.font.bold = True
+                            r.font.color.rgb = C_NAVY
+        except Exception:
+            continue
+
+    _add_pptx_footer(slide, prs, scenario_name, page_num)
+
+
+def _add_pptx_phasing_slide(prs, scenario_id: int, scenario_name: str, page_num: int) -> None:
+    from pptx.util import Inches as I, Pt, Emu
+    from pptx.dml.color import RGBColor
+    from pptx.enum.text import PP_ALIGN
+
+    C_NAVY = RGBColor(0x01, 0x24, 0x4A)
+    C_WHITE = RGBColor(0xFF, 0xFF, 0xFF)
+
+    slide = prs.slides.add_slide(prs.slide_layouts[6])
+    band = slide.shapes.add_shape(1, Emu(0), Emu(0), prs.slide_width, I(0.7))
+    band.fill.solid()
+    band.fill.fore_color.rgb = C_NAVY
+    band.line.fill.background()
+    ttl = slide.shapes.add_textbox(I(0.5), I(0.12), I(12), I(0.5))
+    tp = ttl.text_frame.paragraphs[0]
+    tp.text = "Implementation Phasing Timeline"
+    for r in tp.runs:
+        r.font.size = Pt(20)
+        r.font.bold = True
+        r.font.color.rgb = C_WHITE
+
+    # Get phasing data
+    phasing = db_service.get_phasing_view(scenario_id, fy_start_month=1)
+    buckets = phasing.get("monthly", [])
+    
+    headers = ["Month", "Adds", "Removals", "Net HC", "Cost Delta", "Cum. Cost Delta"]
+    rows = len(buckets) + 1
+    cols = len(headers)
+    table_shape = slide.shapes.add_table(rows, cols, I(0.5), I(1.2), I(12.33), I(min(5.0, 0.4 * rows)))
+    tbl = table_shape.table
+
+    for c, h in enumerate(headers):
+        cell = tbl.cell(0, c)
+        cell.text = h
+        cell.fill.solid()
+        cell.fill.fore_color.rgb = C_NAVY
+        for p in cell.text_frame.paragraphs:
+            p.alignment = PP_ALIGN.CENTER
+            for r in p.runs:
+                r.font.bold = True
+                r.font.size = Pt(11)
+                r.font.color.rgb = C_WHITE
+
+    for i, b in enumerate(buckets, start=1):
+        month = b["label"]
+        adds = f"{b['adds_count']}"
+        rem = f"{b['removes_count']}"
+        net_hc = f"{b['net_hc_delta']:+d}"
+        c_delta = f"${b['cost_delta']:+,.0f}"
+        cum_cost = f"${b['cumulative_cost_delta']:+,.0f}"
+        
+        vals = [month, adds, rem, net_hc, c_delta, cum_cost]
+        for c, v in enumerate(vals):
+            cell = tbl.cell(i, c)
+            cell.text = v
+            if i % 2 == 0:
+                cell.fill.solid()
+                cell.fill.fore_color.rgb = RGBColor(0xF5, 0xF7, 0xFA)
+            for p in cell.text_frame.paragraphs:
+                p.alignment = PP_ALIGN.CENTER
+                for r in p.runs:
+                    r.font.size = Pt(10)
+
+    _add_pptx_footer(slide, prs, scenario_name, page_num)
 
 
 def _add_pptx_chart_slide(prs, png_bytes: bytes, title: str, scenario_name: str, page_num: int) -> None:
@@ -624,7 +822,6 @@ def _add_pptx_changelog_slides(prs, change_log: list, scenario_name: str, page_s
 
     C_NAVY = RGBColor(0x01, 0x24, 0x4A)
     C_WHITE = RGBColor(0xFF, 0xFF, 0xFF)
-    C_GREY = RGBColor(0x4F, 0x60, 0x77)
     ROWS_PER_SLIDE = 20
     page = page_start
 
@@ -715,11 +912,12 @@ def _build_scenario_pptx(
     scenario: dict,
     detail: str = "summary",
 ) -> bytes:
-    """Build a multi-slide PPTX with title, summary, org chart pages, and
-    change log.  *detail* controls depth:
-      - ``overview``: title + summary + L1-L2 overview only
-      - ``summary``: + one subtree slide per L1 direct report (3 levels deep)
-      - ``full``: + recursive drill-down for subtrees with >20 headcount
+    """Build a multi-slide PPTX with title, summary, scenario comparison,
+    phasing monthly timeline, org chart pages, and change log.
+    *detail* controls depth:
+      - ``overview``: title + summary + comparison + phasing + L1-L2 overview only
+      - ``summary``: same as overview (L1-L2 overview only, no subtree slides)
+      - ``full``: + recursive L1 team subtrees
     """
     from pptx.util import Emu
 
@@ -747,7 +945,11 @@ def _build_scenario_pptx(
 
     _add_pptx_summary_slide(prs, summary_data, dataset, scenario, page_num=2)
 
-    page = 3
+    _add_pptx_comparison_slide(prs, dataset["id"], scenario["id"], scenario["name"], page_num=3)
+
+    _add_pptx_phasing_slide(prs, scenario["id"], scenario["name"], page_num=4)
+
+    page = 5
 
     overview_svg = render_scenario_svg(
         records, **svg_kwargs,
@@ -762,7 +964,7 @@ def _build_scenario_pptx(
     except Exception:
         pass
 
-    if detail in ("summary", "full"):
+    if detail == "full":
         for root_id in tree["roots"]:
             l1_kids = tree["children"].get(root_id, [])
             for kid_id in l1_kids:
@@ -789,7 +991,7 @@ def _build_scenario_pptx(
                 except Exception:
                     pass
 
-                if detail == "full" and kid_hc > 20:
+                if kid_hc > 20:
                     l2_kids = tree["children"].get(kid_id, [])
                     for gk_id in l2_kids:
                         gk_rec = tree["by_id"].get(gk_id, {})
@@ -2896,13 +3098,58 @@ def db_export_change_summary(
         used.add(cleaned.lower())
         return cleaned
 
+    # Phasing Data
+    phasing = db_service.get_phasing_view(scenario_id, fy_start_month=1)
+    phasing_rows = []
+    for b in phasing.get("monthly", []):
+        phasing_rows.append({
+            "Month": b["label"],
+            "Adds": b["adds_count"],
+            "Removals": b["removes_count"],
+            "Edits": b["edits_count"],
+            "Net HC Delta": b["net_hc_delta"],
+            "Cost Delta": round(b["cost_delta"], 2),
+            "Cumulative HC Delta": b["cumulative_hc_delta"],
+            "Cumulative Cost Delta": round(b["cumulative_cost_delta"], 2)
+        })
+    phasing_df = pd.DataFrame(phasing_rows) if phasing_rows else pd.DataFrame(columns=[
+        "Month", "Adds", "Removals", "Edits", "Net HC Delta", "Cost Delta", "Cumulative HC Delta", "Cumulative Cost Delta"
+    ])
+
+    # Scenario Comparison Data
+    scenarios_list = db_service.list_scenarios(dataset["id"])
+    comparison_rows = []
+    for s in scenarios_list:
+        try:
+            s_sum = db_service.get_scenario_summary(s["id"])
+            comparison_rows.append({
+                "Scenario Name": s["name"],
+                "Is Promoted": "Yes" if s["is_promoted"] else "No",
+                "Baseline Headcount": s_sum["baseline"]["headcount"],
+                "Current Headcount": s_sum["current"]["headcount"],
+                "Delta Headcount": s_sum["delta"]["headcount"],
+                "Baseline FTE": round(s_sum["baseline"]["total_fte"], 2),
+                "Current FTE": round(s_sum["current"]["total_fte"], 2),
+                "Delta FTE": round(s_sum["delta"]["fte"], 2),
+                "Baseline Cost": round(s_sum["baseline"]["total_cost"], 2),
+                "Current Cost": round(s_sum["current"]["total_cost"], 2),
+                "Delta Cost": round(s_sum["delta"]["cost"], 2),
+                "Changes Logged": s_sum["change_count"]
+            })
+        except Exception:
+            continue
+    comparison_df = pd.DataFrame(comparison_rows) if comparison_rows else pd.DataFrame()
+
     dim_cols = db_service.get_export_dimension_columns(dataset["id"])
-    used_sheet_names = {"summary", "changes"}
+    used_sheet_names = {"summary", "changes", "phasing", "scenario comparison"}
 
     buf = BytesIO()
     with pd.ExcelWriter(buf, engine="openpyxl") as writer:
         summary_df.to_excel(writer, index=False, sheet_name="Summary")
         changes_df.to_excel(writer, index=False, sheet_name="Changes")
+        phasing_df.to_excel(writer, index=False, sheet_name="Phasing")
+        if not comparison_df.empty:
+            comparison_df.to_excel(writer, index=False, sheet_name="Scenario Comparison")
         for dim_col in dim_cols:
             try:
                 df = _breakdown_df(dim_col)
@@ -2961,6 +3208,206 @@ def db_export_scenario_ppt(
     )
 
 
+def _render_summary_table_svg(summary, dataset, scenario) -> str:
+    from html import escape
+    cur = summary.get("current", {})
+    base = summary.get("baseline", {})
+    delta = summary.get("delta", {})
+    
+    phasing = db_service.get_phasing_view(scenario["id"], fy_start_month=1)
+    ph_sum = phasing.get("summary", {})
+    
+    hc_color = '#27ae60' if delta.get('headcount', 0) <= 0 else '#c0392b'
+    fte_color = '#27ae60' if delta.get('fte', 0) <= 0 else '#c0392b'
+    cost_color = '#27ae60' if delta.get('cost', 0) <= 0 else '#c0392b'
+    
+    svg = f"""<svg xmlns="http://www.w3.org/2000/svg" width="1219" height="685" viewBox="0 0 1219 685" font-family="Inter, Arial, sans-serif">
+      <rect x="0" y="0" width="1219" height="685" fill="#f4f6f9"/>
+      <rect x="0" y="0" width="1219" height="60" fill="#01244a"/>
+      <text x="30" y="35" font-size="20" font-weight="700" fill="#ffffff" dominant-baseline="central">Executive Summary — {escape(scenario['name'])}</text>
+      
+      <!-- Comparison Table -->
+      <g transform="translate(50, 100)">
+        <rect x="0" y="0" width="600" height="220" fill="#ffffff" rx="8" ry="8" stroke="#dce4ee" stroke-width="1.5"/>
+        <rect x="0" y="0" width="600" height="40" fill="#01244a" rx="8" ry="8" clip-path="url(#table-header-clip)"/>
+        <clipPath id="table-header-clip">
+          <rect x="0" y="0" width="600" height="40" rx="8" ry="8"/>
+        </clipPath>
+        
+        <text x="20" y="20" font-size="12" font-weight="700" fill="#ffffff" dominant-baseline="central">Metric</text>
+        <text x="220" y="20" font-size="12" font-weight="700" fill="#ffffff" dominant-baseline="central" text-anchor="middle">Baseline</text>
+        <text x="380" y="20" font-size="12" font-weight="700" fill="#ffffff" dominant-baseline="central" text-anchor="middle">Current (To-Be)</text>
+        <text x="520" y="20" font-size="12" font-weight="700" fill="#ffffff" dominant-baseline="central" text-anchor="middle">Delta</text>
+        
+        <!-- Row 1: Headcount -->
+        <line x1="0" y1="90" x2="600" y2="90" stroke="#dce4ee" stroke-width="1"/>
+        <text x="20" y="65" font-size="11" font-weight="600" fill="#01244a" dominant-baseline="central">Headcount</text>
+        <text x="220" y="65" font-size="11" fill="#4f6077" dominant-baseline="central" text-anchor="middle">{base.get('headcount', 0):,}</text>
+        <text x="380" y="65" font-size="11" fill="#4f6077" dominant-baseline="central" text-anchor="middle">{cur.get('headcount', 0):,}</text>
+        <text x="520" y="65" font-size="11" font-weight="700" fill="{hc_color}" dominant-baseline="central" text-anchor="middle">{delta.get('headcount', 0):+d}</text>
+        
+        <!-- Row 2: FTE -->
+        <line x1="0" y1="140" x2="600" y2="140" stroke="#dce4ee" stroke-width="1"/>
+        <text x="20" y="115" font-size="11" font-weight="600" fill="#01244a" dominant-baseline="central">Total FTE</text>
+        <text x="220" y="115" font-size="11" fill="#4f6077" dominant-baseline="central" text-anchor="middle">{base.get('total_fte', 0):,.1f}</text>
+        <text x="380" y="115" font-size="11" fill="#4f6077" dominant-baseline="central" text-anchor="middle">{cur.get('total_fte', 0):,.1f}</text>
+        <text x="520" y="115" font-size="11" font-weight="700" fill="{fte_color}" dominant-baseline="central" text-anchor="middle">{delta.get('fte', 0):+.1f}</text>
+        
+        <!-- Row 3: Cost -->
+        <text x="20" y="175" font-size="11" font-weight="600" fill="#01244a" dominant-baseline="central">Total Cost</text>
+        <text x="220" y="175" font-size="11" fill="#4f6077" dominant-baseline="central" text-anchor="middle">${base.get('total_cost', 0):,.0f}</text>
+        <text x="380" y="175" font-size="11" fill="#4f6077" dominant-baseline="central" text-anchor="middle">${cur.get('total_cost', 0):,.0f}</text>
+        <text x="520" y="175" font-size="11" font-weight="700" fill="{cost_color}" dominant-baseline="central" text-anchor="middle">${delta.get('cost', 0):+,.0f}</text>
+      </g>
+      
+      <!-- Savings & Impact Summary Card -->
+      <g transform="translate(680, 100)">
+        <rect x="0" y="0" width="490" height="480" fill="#fafbfc" rx="8" ry="8" stroke="#dce4ee" stroke-width="1.5"/>
+        <rect x="0" y="0" width="490" height="40" fill="#01244a" rx="8" ry="8" clip-path="url(#savings-header-clip)"/>
+        <clipPath id="savings-header-clip">
+          <rect x="0" y="0" width="490" height="40" rx="8" ry="8"/>
+        </clipPath>
+        <text x="245" y="20" font-size="12" font-weight="700" fill="#ffffff" dominant-baseline="central" text-anchor="middle">SAVINGS &amp; IMPACT SUMMARY</text>
+        
+        <text x="30" y="80" font-size="12" font-weight="700" fill="#01244a" dominant-baseline="central">Full-Year Annualized Savings:</text>
+        <text x="460" y="80" font-size="12" font-weight="700" fill="#27ae60" dominant-baseline="central" text-anchor="end">${ph_sum.get('full_year_savings', 0):,.0f}</text>
+        
+        <text x="30" y="130" font-size="12" font-weight="700" fill="#01244a" dominant-baseline="central">Prorated In-Year Savings:</text>
+        <text x="460" y="130" font-size="12" font-weight="700" fill="#27ae60" dominant-baseline="central" text-anchor="end">${ph_sum.get('in_year_savings', 0):,.0f}</text>
+        
+        <line x1="20" y1="175" x2="470" y2="175" stroke="#dce4ee" stroke-width="1"/>
+        
+        <text x="30" y="210" font-size="11" font-weight="600" fill="#4f6077" dominant-baseline="central">Months Remaining in FY:</text>
+        <text x="460" y="210" font-size="11" font-weight="700" fill="#01244a" dominant-baseline="central" text-anchor="end">{ph_sum.get('months_remaining_in_fy', 0)}</text>
+        
+        <text x="30" y="260" font-size="11" font-weight="600" fill="#4f6077" dominant-baseline="central">Flagged Removed Roles:</text>
+        <text x="460" y="260" font-size="11" font-weight="700" fill="#01244a" dominant-baseline="central" text-anchor="end">{summary.get('flagged_removed', {}).get('count', 0)}</text>
+        
+        <text x="30" y="310" font-size="11" font-weight="600" fill="#4f6077" dominant-baseline="central">Flagged Removed Value:</text>
+        <text x="460" y="310" font-size="11" font-weight="700" fill="#01244a" dominant-baseline="central" text-anchor="end">${summary.get('flagged_removed', {}).get('cost', 0):,.0f}</text>
+        
+        <text x="30" y="360" font-size="11" font-weight="600" fill="#4f6077" dominant-baseline="central">Total Changes Logged:</text>
+        <text x="460" y="360" font-size="11" font-weight="700" fill="#01244a" dominant-baseline="central" text-anchor="end">{summary.get('change_count', 0)}</text>
+      </g>
+    </svg>"""
+    return svg
+
+
+def _render_comparison_table_svg(dataset_id: int, active_scenario_id: int, scenario_name: str) -> str:
+    from html import escape
+    scenarios_list = db_service.list_scenarios(dataset_id)
+    headers = ["Scenario Name", "HC", "FTE", "Cost", "Δ HC", "Δ Cost", "Changes"]
+    
+    rows_svg = []
+    y_cursor = 100
+    
+    header_svg = f"""
+      <rect x="50" y="{y_cursor}" width="1119" height="40" fill="#01244a" rx="4" ry="4"/>
+      <text x="70" y="{y_cursor + 20}" font-size="11" font-weight="700" fill="#ffffff" dominant-baseline="central">Scenario Name</text>
+      <text x="350" y="{y_cursor + 20}" font-size="11" font-weight="700" fill="#ffffff" dominant-baseline="central" text-anchor="middle">HC</text>
+      <text x="480" y="{y_cursor + 20}" font-size="11" font-weight="700" fill="#ffffff" dominant-baseline="central" text-anchor="middle">FTE</text>
+      <text x="630" y="{y_cursor + 20}" font-size="11" font-weight="700" fill="#ffffff" dominant-baseline="central" text-anchor="middle">Cost</text>
+      <text x="780" y="{y_cursor + 20}" font-size="11" font-weight="700" fill="#ffffff" dominant-baseline="central" text-anchor="middle">Δ HC</text>
+      <text x="930" y="{y_cursor + 20}" font-size="11" font-weight="700" fill="#ffffff" dominant-baseline="central" text-anchor="middle">Δ Cost</text>
+      <text x="1080" y="{y_cursor + 20}" font-size="11" font-weight="700" fill="#ffffff" dominant-baseline="central" text-anchor="middle">Changes</text>
+    """
+    rows_svg.append(header_svg)
+    y_cursor += 40
+    
+    for i, s in enumerate(scenarios_list):
+        try:
+            s_sum = db_service.get_scenario_summary(s["id"])
+            hc = f"{s_sum['current']['headcount']:,}"
+            fte = f"{s_sum['current']['total_fte']:,.1f}"
+            cost = f"${s_sum['current']['total_cost']:,.0f}"
+            dhc = f"{s_sum['delta']['headcount']:+d}"
+            dcost = f"${s_sum['delta']['cost']:+,.0f}"
+            ch = f"{s_sum['change_count']}"
+            name = s["name"]
+            if s["id"] == active_scenario_id:
+                name += " (Active)"
+            if s["is_promoted"]:
+                name += " [Baseline]"
+                
+            bg_color = "#ffffff" if i % 2 == 0 else "#f8f9fa"
+            bold_flag = 'font-weight="700" fill="#01244a"' if s["id"] == active_scenario_id else 'fill="#4f6077"'
+            
+            row_content = f"""
+              <rect x="50" y="{y_cursor}" width="1119" height="35" fill="{bg_color}" stroke="#dce4ee" stroke-width="0.5"/>
+              <text x="70" y="{y_cursor + 17.5}" font-size="10" {bold_flag} dominant-baseline="central">{escape(name)}</text>
+              <text x="350" y="{y_cursor + 17.5}" font-size="10" {bold_flag} dominant-baseline="central" text-anchor="middle">{hc}</text>
+              <text x="480" y="{y_cursor + 17.5}" font-size="10" {bold_flag} dominant-baseline="central" text-anchor="middle">{fte}</text>
+              <text x="630" y="{y_cursor + 17.5}" font-size="10" {bold_flag} dominant-baseline="central" text-anchor="middle">{cost}</text>
+              <text x="780" y="{y_cursor + 17.5}" font-size="10" {bold_flag} dominant-baseline="central" text-anchor="middle">{dhc}</text>
+              <text x="930" y="{y_cursor + 17.5}" font-size="10" {bold_flag} dominant-baseline="central" text-anchor="middle">{dcost}</text>
+              <text x="1080" y="{y_cursor + 17.5}" font-size="10" {bold_flag} dominant-baseline="central" text-anchor="middle">{ch}</text>
+            """
+            rows_svg.append(row_content)
+            y_cursor += 35
+        except Exception:
+            continue
+            
+    svg = f"""<svg xmlns="http://www.w3.org/2000/svg" width="1219" height="685" viewBox="0 0 1219 685" font-family="Inter, Arial, sans-serif">
+      <rect x="0" y="0" width="1219" height="685" fill="#f4f6f9"/>
+      <rect x="0" y="0" width="1219" height="60" fill="#01244a"/>
+      <text x="30" y="35" font-size="20" font-weight="700" fill="#ffffff" dominant-baseline="central">Scenario Comparison Analysis</text>
+      {"".join(rows_svg)}
+    </svg>"""
+    return svg
+
+
+def _render_phasing_table_svg(scenario_id: int, scenario_name: str) -> str:
+    from html import escape
+    phasing = db_service.get_phasing_view(scenario_id, fy_start_month=1)
+    buckets = phasing.get("monthly", [])
+    
+    headers = ["Month", "Adds", "Removals", "Net HC", "Cost Delta", "Cum. Cost Delta"]
+    rows_svg = []
+    y_cursor = 100
+    
+    header_svg = f"""
+      <rect x="50" y="{y_cursor}" width="1119" height="40" fill="#01244a" rx="4" ry="4"/>
+      <text x="150" y="{y_cursor + 20}" font-size="11" font-weight="700" fill="#ffffff" dominant-baseline="central" text-anchor="middle">Month</text>
+      <text x="330" y="{y_cursor + 20}" font-size="11" font-weight="700" fill="#ffffff" dominant-baseline="central" text-anchor="middle">Adds</text>
+      <text x="510" y="{y_cursor + 20}" font-size="11" font-weight="700" fill="#ffffff" dominant-baseline="central" text-anchor="middle">Removals</text>
+      <text x="690" y="{y_cursor + 20}" font-size="11" font-weight="700" fill="#ffffff" dominant-baseline="central" text-anchor="middle">Net HC</text>
+      <text x="870" y="{y_cursor + 20}" font-size="11" font-weight="700" fill="#ffffff" dominant-baseline="central" text-anchor="middle">Cost Delta</text>
+      <text x="1050" y="{y_cursor + 20}" font-size="11" font-weight="700" fill="#ffffff" dominant-baseline="central" text-anchor="middle">Cum. Cost Delta</text>
+    """
+    rows_svg.append(header_svg)
+    y_cursor += 40
+    
+    for i, b in enumerate(buckets):
+        month = b["label"]
+        adds = f"{b['adds_count']}"
+        rem = f"{b['removes_count']}"
+        net_hc = f"{b['net_hc_delta']:+d}"
+        c_delta = f"${b['cost_delta']:+,.0f}"
+        cum_cost = f"${b['cumulative_cost_delta']:+,.0f}"
+        
+        bg_color = "#ffffff" if i % 2 == 0 else "#f8f9fa"
+        
+        row_content = f"""
+          <rect x="50" y="{y_cursor}" width="1119" height="35" fill="{bg_color}" stroke="#dce4ee" stroke-width="0.5"/>
+          <text x="150" y="{y_cursor + 17.5}" font-size="10" fill="#4f6077" dominant-baseline="central" text-anchor="middle">{escape(month)}</text>
+          <text x="330" y="{y_cursor + 17.5}" font-size="10" fill="#4f6077" dominant-baseline="central" text-anchor="middle">{adds}</text>
+          <text x="510" y="{y_cursor + 17.5}" font-size="10" fill="#4f6077" dominant-baseline="central" text-anchor="middle">{rem}</text>
+          <text x="690" y="{y_cursor + 17.5}" font-size="10" fill="#01244a" font-weight="600" dominant-baseline="central" text-anchor="middle">{net_hc}</text>
+          <text x="870" y="{y_cursor + 17.5}" font-size="10" fill="{ '#27ae60' if b['cost_delta'] < 0 else '#c0392b' if b['cost_delta'] > 0 else '#4f6077' }" font-weight="600" dominant-baseline="central" text-anchor="middle">{c_delta}</text>
+          <text x="1050" y="{y_cursor + 17.5}" font-size="10" fill="{ '#27ae60' if b['cumulative_cost_delta'] < 0 else '#c0392b' if b['cumulative_cost_delta'] > 0 else '#4f6077' }" font-weight="600" dominant-baseline="central" text-anchor="middle">{cum_cost}</text>
+        """
+        rows_svg.append(row_content)
+        y_cursor += 35
+        
+    svg = f"""<svg xmlns="http://www.w3.org/2000/svg" width="1219" height="685" viewBox="0 0 1219 685" font-family="Inter, Arial, sans-serif">
+      <rect x="0" y="0" width="1219" height="685" fill="#f4f6f9"/>
+      <rect x="0" y="0" width="1219" height="60" fill="#01244a"/>
+      <text x="30" y="35" font-size="20" font-weight="700" fill="#ffffff" dominant-baseline="central">Implementation Phasing Timeline</text>
+      {"".join(rows_svg)}
+    </svg>"""
+    return svg
+
+
 @router.get("/db/scenarios/{scenario_id}/export/pdf")
 def db_export_scenario_pdf(
     scenario_id: int,
@@ -2970,6 +3417,7 @@ def db_export_scenario_pdf(
 ):
     scenario, dataset = _require_scenario_in_project(scenario_id, project_id)
     records = db_service.get_scenario_records(scenario_id)
+    summary_data = db_service.get_scenario_summary(scenario_id)
 
     emp_col = dataset["emp_col"]
     mgr_col = dataset["mgr_col"]
@@ -2983,6 +3431,16 @@ def db_export_scenario_pdf(
 
     svg_pages: List[str] = []
 
+    # 1. Executive Summary Table Page
+    svg_pages.append(_render_summary_table_svg(summary_data, dataset, scenario))
+
+    # 2. Scenario Comparison Page
+    svg_pages.append(_render_comparison_table_svg(dataset["id"], scenario["id"], scenario["name"]))
+
+    # 3. Phasing Page
+    svg_pages.append(_render_phasing_table_svg(scenario["id"], scenario["name"]))
+
+    # 4. Overview L1-L2 Page
     overview_svg = render_scenario_svg(
         records, **svg_kwargs,
         title=f"OrgSight 2.0  —  {scenario['name']}",
@@ -2991,7 +3449,7 @@ def db_export_scenario_pdf(
     )
     svg_pages.append(overview_svg)
 
-    if detail in ("summary", "full"):
+    if detail == "full":
         tree = get_tree_structure(records, emp_col, mgr_col)
         for root_id in tree["roots"]:
             for kid_id in tree["children"].get(root_id, []):
@@ -3016,8 +3474,8 @@ def db_export_scenario_pdf(
     if len(pdf_parts) == 1:
         pdf_bytes = pdf_parts[0]
     else:
-        from pypdf import PdfMerger
-        merger = PdfMerger()
+        from pypdf import PdfWriter
+        merger = PdfWriter()
         for part in pdf_parts:
             merger.append(BytesIO(part))
         merged = BytesIO()

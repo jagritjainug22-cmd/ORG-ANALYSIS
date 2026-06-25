@@ -25,6 +25,23 @@ function fmtRows(n) {
   return `${num} rows`;
 }
 
+function fmtId(id) {
+  if (id == null || id === "") return "";
+  return String(id);
+}
+
+function IdBadge({ label, id, className = "" }) {
+  if (id == null || id === "") return null;
+  return (
+    <span
+      className={`font-mono text-[10px] text-gray-500 tabular-nums border border-gray-200 rounded px-1.5 py-0.5 bg-gray-50 ${className}`}
+      title={label ? `${label}: ${fmtId(id)}` : fmtId(id)}
+    >
+      {label ? `${label} ` : ""}{fmtId(id)}
+    </span>
+  );
+}
+
 function initialsOf(name) {
   const parts = (name || "?").trim().split(/\s+/).filter(Boolean);
   if (parts.length === 0) return "?";
@@ -146,9 +163,9 @@ export default function ActiveDatasetDropdown({
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4" />
           </svg>
           <span className="truncate max-w-[160px] text-white">{label}</span>
-          {activeDatasetId && (
-            <span className="font-mono text-[9px] text-white/50 flex-shrink-0 tabular-nums leading-none border border-white/20 rounded px-1 py-0.5 hidden sm:inline">
-              #{activeDatasetId.slice(0, 8)}
+          {activeDatasetId != null && (
+            <span className="font-mono text-[9px] text-white/70 flex-shrink-0 tabular-nums leading-none border border-white/20 rounded px-1 py-0.5 hidden sm:inline">
+              #{fmtId(activeDatasetId)}
             </span>
           )}
           <svg
@@ -240,7 +257,9 @@ export default function ActiveDatasetDropdown({
                                 </span>
                               )}
                             </div>
-                            <div className="flex items-center gap-1.5 mt-0.5">
+                            <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                              <IdBadge label="Dataset ID" id={d.id} />
+                              <span className="text-gray-300">·</span>
                               <span className="text-[11px] text-gray-400">{fmtRows(d.row_count)}</span>
                               {promoted && promoted !== "Baseline" && (
                                 <>
@@ -404,13 +423,9 @@ function ScenarioPickerModal({ dataset, scenarios, onConfirm, onCancel, error })
             </div>
             <div className="flex-1 min-w-0">
               <h3 className="text-sm font-bold text-gray-900 truncate">{dataset.name}</h3>
-              <div className="flex items-center gap-2 mt-0.5">
+              <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                <IdBadge label="Dataset ID" id={dataset.id} />
                 <span className="text-xs text-gray-400">{fmtRows(dataset.row_count)}</span>
-                {dataset.id && (
-                  <span className="font-mono text-[9px] text-gray-400 tabular-nums border border-gray-200 rounded px-1 py-0.5">
-                    #{dataset.id.slice(0, 8)}
-                  </span>
-                )}
               </div>
             </div>
             <button onClick={onCancel} className="text-gray-400 hover:text-gray-600 transition flex-shrink-0">
@@ -455,11 +470,9 @@ function ScenarioPickerModal({ dataset, scenarios, onConfirm, onCancel, error })
                         Active
                       </span>
                     )}
-                    {sc.id && (
-                      <span className="font-mono text-[9px] text-gray-400 tabular-nums border border-gray-200 rounded px-1 py-0.5 ml-auto flex-shrink-0">
-                        #{sc.id.slice(0, 8)}
-                      </span>
-                    )}
+                  </div>
+                  <div className="flex items-center gap-2 mt-1 flex-wrap">
+                    <IdBadge label="Scenario ID" id={sc.id} />
                   </div>
                   {sc.description && <p className="text-[11px] text-gray-400 mt-0.5 truncate">{sc.description}</p>}
                 </div>

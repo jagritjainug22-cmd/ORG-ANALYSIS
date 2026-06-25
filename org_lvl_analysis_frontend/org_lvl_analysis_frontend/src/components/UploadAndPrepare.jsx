@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { cleanup as cleanupApi, validate as validateApi, filterErrors as filterErrorsApi } from "../api/backend";
 import DataSourceSelector from "./DataSourceSelector";
 
@@ -229,34 +229,53 @@ const CONFIDENCE_STYLES = {
   low:    { dot: "bg-red-400",     badge: "bg-red-50 text-red-700 border-red-200" },
 };
 
-function MappingResultBanner({ requiresAttention, summary, fallbackMessage, onDismiss }) {
-  const unmappedCore = summary?.unmapped_core || [];
+function MappingResultBanner({ requiresAttention, summary, fallbackMessage, readiness, onDismiss }) {
+  const unmappedCore = summary?.unmapped_core || readiness?.summary?.unmapped_core || [];
+  const unmappedRationalise = summary?.unmapped_rationalise || readiness?.summary?.unmapped_rationalise || [];
+  const unmappedRecommended = summary?.unmapped_recommended || readiness?.summary?.unmapped_recommended || [];
   const aiMapped    = summary?.ai_mapped || [];
   const explanation = summary?.ai_explanation || null;
 
-  const hasSummary = unmappedCore.length > 0 || aiMapped.length > 0 || explanation;
+  const level = readiness?.level;
+  const isBlocked = level === "blocked";
+  const isPartial = level === "partial";
+  const bannerStyle = isBlocked
+    ? "bg-red-50 border-red-200 text-red-800"
+    : isPartial || requiresAttention
+      ? "bg-amber-50 border-amber-200 text-amber-800"
+      : "bg-emerald-50 border-emerald-200 text-emerald-800";
 
-  if (!hasSummary) {
-    // Simple success or plain-text banner
+  const hasTieredSummary = unmappedCore.length > 0 || unmappedRationalise.length > 0 || unmappedRecommended.length > 0;
+  const hasSummary = hasTieredSummary || aiMapped.length > 0 || explanation;
+
+  const headerLabel = isBlocked
+    ? "Core columns missing"
+    : isPartial
+      ? "Core mapped — Rationalise needs Function"
+      : requiresAttention
+        ? "Column mapping needs attention"
+        : "Column mapping complete";
+
+  const StatusIcon = isBlocked ? (
+    <svg className="w-4 h-4 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+    </svg>
+  ) : isPartial || requiresAttention ? (
+    <svg className="w-4 h-4 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+    </svg>
+  ) : (
+    <svg className="w-4 h-4 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+    </svg>
+  );
+
+  if (!hasSummary && !readiness) {
     return (
-      <div className={`relative p-3.5 rounded-lg border flex items-start gap-3 animate-fadeIn ${
-        requiresAttention
-          ? "bg-amber-50 border-amber-200 text-amber-800"
-          : "bg-emerald-50 border-emerald-200 text-emerald-800"
-      }`}>
-        <div className="mt-0.5 flex-shrink-0">
-          {requiresAttention ? (
-            <svg className="w-4 h-4 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-            </svg>
-          ) : (
-            <svg className="w-4 h-4 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-          )}
-        </div>
+      <div className={`relative p-3.5 rounded-lg border flex items-start gap-3 animate-fadeIn ${bannerStyle}`}>
+        <div className="mt-0.5 flex-shrink-0">{StatusIcon}</div>
         <p className="text-xs flex-1 leading-relaxed">{fallbackMessage}</p>
-        <button onClick={onDismiss} className="flex-shrink-0 text-current opacity-40 hover:opacity-70 ml-1">
+        <button type="button" onClick={onDismiss} className="flex-shrink-0 text-current opacity-40 hover:opacity-70 ml-1">
           <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
         </button>
       </div>
@@ -264,51 +283,73 @@ function MappingResultBanner({ requiresAttention, summary, fallbackMessage, onDi
   }
 
   return (
-    <div className={`relative rounded-lg border animate-fadeIn ${
-      requiresAttention ? "bg-amber-50 border-amber-200" : "bg-emerald-50 border-emerald-200"
-    }`}>
-      {/* Header row */}
+    <div className={`relative rounded-lg border animate-fadeIn ${bannerStyle}`}>
       <div className={`flex items-center justify-between px-4 py-2.5 border-b ${
-        requiresAttention ? "border-amber-200" : "border-emerald-200"
+        isBlocked ? "border-red-200" : isPartial || requiresAttention ? "border-amber-200" : "border-emerald-200"
       }`}>
         <div className="flex items-center gap-2">
-          {requiresAttention ? (
-            <svg className="w-4 h-4 text-amber-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-            </svg>
-          ) : (
-            <svg className="w-4 h-4 text-emerald-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-          )}
-          <span className={`text-xs font-semibold ${requiresAttention ? "text-amber-900" : "text-emerald-900"}`}>
-            {requiresAttention ? "Column mapping needs attention" : "Column mapping complete"}
+          {StatusIcon}
+          <span className={`text-xs font-semibold ${
+            isBlocked ? "text-red-900" : isPartial || requiresAttention ? "text-amber-900" : "text-emerald-900"
+          }`}>
+            {headerLabel}
           </span>
         </div>
-        <button onClick={onDismiss} className={`opacity-40 hover:opacity-70 ${requiresAttention ? "text-amber-800" : "text-emerald-800"}`}>
+        <button type="button" onClick={onDismiss} className="opacity-40 hover:opacity-70">
           <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
         </button>
       </div>
 
       <div className="px-4 py-3 space-y-2.5">
-        {/* Unmapped required fields */}
+        <p className="text-xs leading-relaxed">{fallbackMessage || readiness?.message}</p>
+
         {unmappedCore.length > 0 && (
           <div className="flex items-start gap-2">
             <span className="text-[10px] font-bold uppercase tracking-wide text-red-600 bg-red-100 border border-red-200 rounded px-1.5 py-0.5 flex-shrink-0 mt-0.5">
-              Required
+              Core
             </span>
             <div className="flex flex-wrap gap-1.5">
               {unmappedCore.map((f) => (
-                <span key={f.target_id} className="inline-flex items-center gap-1 px-2 py-0.5 bg-white border border-red-200 text-red-700 text-xs rounded font-medium">
+                <span key={f.label || f.target_id} className="inline-flex items-center gap-1 px-2 py-0.5 bg-white border border-red-200 text-red-700 text-xs rounded font-medium">
                   <span className="w-1.5 h-1.5 rounded-full bg-red-400 flex-shrink-0" />
-                  {f.label} not found
+                  {f.label || f.target_id} not mapped
                 </span>
               ))}
             </div>
           </div>
         )}
 
-        {/* AI-mapped fields needing review */}
+        {unmappedRationalise.length > 0 && (
+          <div className="flex items-start gap-2">
+            <span className="text-[10px] font-bold uppercase tracking-wide text-amber-700 bg-amber-100 border border-amber-200 rounded px-1.5 py-0.5 flex-shrink-0 mt-0.5">
+              Rationalise
+            </span>
+            <div className="flex flex-wrap gap-1.5">
+              {unmappedRationalise.map((f) => (
+                <span key={f.label} className="inline-flex items-center gap-1 px-2 py-0.5 bg-white border border-amber-200 text-amber-800 text-xs rounded font-medium">
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-400 flex-shrink-0" />
+                  {f.label} not mapped
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {unmappedRecommended.length > 0 && unmappedRationalise.length === 0 && (
+          <div className="flex items-start gap-2">
+            <span className="text-[10px] font-bold uppercase tracking-wide text-brand-600 bg-brand-50 border border-brand-200 rounded px-1.5 py-0.5 flex-shrink-0 mt-0.5">
+              Recommended
+            </span>
+            <div className="flex flex-wrap gap-1.5">
+              {unmappedRecommended.map((f) => (
+                <span key={f.label} className="inline-flex items-center gap-1 px-2 py-0.5 bg-white border border-brand-100 text-brand-700 text-xs rounded font-medium">
+                  {f.label} not mapped
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+
         {aiMapped.length > 0 && (
           <div className="flex items-start gap-2">
             <span className="text-[10px] font-bold uppercase tracking-wide text-amber-700 bg-amber-100 border border-amber-200 rounded px-1.5 py-0.5 flex-shrink-0 mt-0.5">
@@ -341,6 +382,77 @@ function MappingResultBanner({ requiresAttention, summary, fallbackMessage, onDi
 
 const PRIMARY_BTN = "bg-brand-500 text-white hover:bg-brand-600 disabled:bg-gray-200 disabled:text-gray-500 disabled:cursor-not-allowed transition shadow-sm";
 
+function formatRelative(iso) {
+  if (!iso) return "never";
+  try {
+    const then = new Date(iso + (iso.endsWith("Z") ? "" : "Z"));
+    const now = new Date();
+    const diffMs = now - then;
+    const sec = Math.max(0, Math.round(diffMs / 1000));
+    if (sec < 60) return `${sec}s ago`;
+    const min = Math.round(sec / 60);
+    if (min < 60) return `${min}m ago`;
+    const hr = Math.round(min / 60);
+    if (hr < 24) return `${hr}h ago`;
+    const day = Math.round(hr / 24);
+    if (day < 7) return day === 1 ? "yesterday" : `${day}d ago`;
+    return then.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+  } catch {
+    return "—";
+  }
+}
+
+function PageHeader({ title, subtitle, icon }) {
+  return (
+    <div className="bg-brand-50 border border-brand-100 rounded-lg p-5">
+      <div className="flex items-start gap-3">
+        <div className="w-10 h-10 bg-brand-500 rounded-lg flex items-center justify-center flex-shrink-0">
+          {icon}
+        </div>
+        <div>
+          <h3 className="text-lg font-bold text-brand-800" style={{ fontFamily: "Manrope, Inter, sans-serif" }}>{title}</h3>
+          <p className="text-sm text-slate-500 mt-0.5">{subtitle}</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const HEADER_ICONS = {
+  upload: (
+    <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+    </svg>
+  ),
+  saved: (
+    <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" />
+    </svg>
+  ),
+  prepare: (
+    <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+    </svg>
+  ),
+};
+
+function PipelineStatusBadge({ label, ts }) {
+  const ran = !!ts;
+  return (
+    <span
+      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-semibold ${
+        ran
+          ? "bg-green-50 text-green-700 border border-green-200"
+          : "bg-slate-50 text-slate-400 border border-slate-200"
+      }`}
+      title={ran ? `${label}: ${new Date(ts.endsWith("Z") ? ts : ts + "Z").toLocaleString()}` : `${label}: never run`}
+    >
+      <span className={`w-1.5 h-1.5 rounded-full ${ran ? "bg-green-500" : "bg-slate-300"}`} />
+      {label}: {ran ? formatRelative(ts) : "never"}
+    </span>
+  );
+}
+
 export default function UploadAndPrepare({
   onSmartUpload,
   uploading,
@@ -363,11 +475,26 @@ export default function UploadAndPrepare({
   columnMappingMessage = null,
   columnMappingRequiresAttention = false,
   columnMappingSummary = null,
+  columnReadiness = null,
   onPipelineComplete,
+  dataSource = null,
+  pipelineStatus = { cleanup: null, validate: null, rationalise: null },
+  activeDatasetLabel = null,
+  activeScenarioId = null,
+  scenarios = [],
+  datasetSwitching = false,
 }) {
   const [isDragging, setIsDragging] = useState(false);
   const [uploadError, setUploadError] = useState(null);
   const [mappingBannerDismissed, setMappingBannerDismissed] = useState(false);
+  const [sourceView, setSourceView] = useState("upload");
+
+  useEffect(() => {
+    setMappingBannerDismissed(false);
+  }, [columnMappingMessage, columnReadiness?.level]);
+  const [showSourcePicker, setShowSourcePicker] = useState(
+    () => !(Array.isArray(dfRecords) && dfRecords.length > 0 && dataSource)
+  );
 
   // Upload loader stage text
   const [mapSubStep, setMapSubStep] = useState(0);
@@ -413,7 +540,61 @@ export default function UploadAndPrepare({
   const [filtering, setFiltering] = useState(false);
   const [filterApplied, setFilterApplied] = useState(false);
 
-  const fileUploaded = !uploading && dfRecords && preprocessingSummary;
+  const hasWorkingData = !uploading && Array.isArray(dfRecords) && dfRecords.length > 0;
+  const showPreparePanel = hasWorkingData && !showSourcePicker;
+  const isSavedSource = dataSource === "saved";
+  const isUploadSource = dataSource === "upload";
+  const scenarioName = scenarios.find((s) => s.id === activeScenarioId)?.name || "Baseline";
+  const hadPriorPipeline = !!(pipelineStatus?.cleanup || pipelineStatus?.validate);
+
+  // When a new dataset loads, show prepare panel
+  const datasetKeyRef = useRef(null);
+  useEffect(() => {
+    if (!hasWorkingData || !dataSource) return;
+    setShowSourcePicker(false);
+    const key = `${datasetId ?? "mem"}:${dataSource}`;
+    if (datasetKeyRef.current !== null && datasetKeyRef.current !== key) {
+      setPipelineComplete(false);
+      setCleanupResult(null);
+      setValidationResult(null);
+      setFilterApplied(false);
+      setFilterFlags({});
+      setPipelineError(null);
+      setMappingBannerDismissed(false);
+    }
+    datasetKeyRef.current = key;
+  }, [hasWorkingData, dataSource, datasetId]);
+
+  const handleSwitchDataset = () => {
+    setShowSourcePicker(true);
+    setSourceView(isSavedSource ? "picker" : "upload");
+    setPipelineComplete(false);
+    setCleanupResult(null);
+    setValidationResult(null);
+    setFilterApplied(false);
+    setFilterFlags({});
+    setPipelineError(null);
+  };
+
+  const headerConfig = showPreparePanel
+    ? {
+        title: "Prepare Dataset",
+        subtitle: isSavedSource
+          ? "Review column mappings in the config bar above, then re-run cleanup & validation before analysis."
+          : "Review column mappings in the config bar above, then run cleanup & validation.",
+        icon: HEADER_ICONS.prepare,
+      }
+    : sourceView === "picker"
+      ? {
+          title: "Saved Org Charts",
+          subtitle: "Select a dataset to load into your workspace. You can review mappings and run cleanup & validation after loading.",
+          icon: HEADER_ICONS.saved,
+        }
+      : {
+          title: "Upload & Prepare",
+          subtitle: "Upload your Excel file. Columns will be auto-mapped — review them in the config bar above, then run cleanup & validation.",
+          icon: HEADER_ICONS.upload,
+        };
 
   const handleFile = useCallback((file) => {
     if (!file) return;
@@ -510,39 +691,58 @@ export default function UploadAndPrepare({
   };
 
   const pre = preprocessingSummary || {};
-  const canRunPipeline = fileUploaded && empCol && mgrCol;
+  const canRunPipeline = hasWorkingData && empCol && mgrCol;
   const mappedEntries = columnMappings
     ? Object.entries(columnMappings).filter(([, m]) => m?.source_column)
     : [];
 
+  const displayMappedEntries = isSavedSource && mappedEntries.length === 0
+    ? [
+        ["employee_id", empCol],
+        ["manager_id", mgrCol],
+        ["country", countryCol],
+      ].filter(([, col]) => col).map(([key, col]) => [key, { source_column: col }])
+    : mappedEntries;
+
+  const pipelineButtonLabel = pipelineRunning
+    ? null
+    : !empCol || !mgrCol
+      ? "Select Employee & Manager columns to continue"
+      : isSavedSource && hadPriorPipeline
+        ? "Re-run Cleanup & Validate"
+        : "Run Cleanup & Validate";
+
   return (
     <div className="space-y-5">
-      {/* Header */}
-      <div className="bg-brand-50 border border-brand-100 rounded-lg p-5">
-        <div className="flex items-start gap-3">
-          <div className="w-10 h-10 bg-brand-500 rounded-lg flex items-center justify-center flex-shrink-0">
-            <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" /></svg>
-          </div>
-          <div>
-            <h3 className="text-lg font-bold text-brand-800" style={{ fontFamily: "Manrope, Inter, sans-serif" }}>Upload & Prepare</h3>
-            <p className="text-sm text-slate-500">Upload your Excel file. Columns will be auto-mapped — review them in the config bar above, then run cleanup & validation.</p>
-          </div>
-        </div>
-      </div>
+      <PageHeader {...headerConfig} />
 
-      {/* Column mapping summary banner */}
-      {columnMappingMessage && !mappingBannerDismissed && (
+      {/* Column mapping summary banner — shown in prepare view */}
+      {showPreparePanel && columnMappingMessage && !mappingBannerDismissed && (
         <MappingResultBanner
           requiresAttention={columnMappingRequiresAttention}
           summary={columnMappingSummary}
           fallbackMessage={columnMappingMessage}
+          readiness={columnReadiness}
           onDismiss={() => setMappingBannerDismissed(true)}
         />
       )}
 
-      {/* ─── Phase 1: DataSourceSelector (upload zone + saved org charts) ─── */}
-      {!fileUploaded && (
+      {/* ─── Source picker: upload zone + saved org charts ─── */}
+      {!showPreparePanel && (
         <>
+          {hasWorkingData && dataSource && (
+            <button
+              type="button"
+              onClick={() => setShowSourcePicker(false)}
+              className="inline-flex items-center gap-1.5 text-xs font-semibold text-brand-600 hover:text-brand-800 transition -mt-2"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+              Back to prepare
+            </button>
+          )}
+
           {/* Loading state (while smart-uploading) */}
           {uploading && (
             <div className="border-2 border-dashed border-brand-200 rounded-xl p-10 bg-brand-50/30">
@@ -566,8 +766,10 @@ export default function UploadAndPrepare({
           )}
 
           {/* DataSourceSelector: toggle between Upload New (drag-drop) and Saved Org Charts */}
-          {!uploading && (
+          {!uploading && !datasetSwitching && (
             <DataSourceSelector
+              view={sourceView}
+              onViewChange={setSourceView}
               onDatasetPicked={onDatasetPicked}
               setDfRecords={setDfRecords}
               setValidatedDf={setValidatedDf}
@@ -597,6 +799,21 @@ export default function UploadAndPrepare({
               )}
             />
           )}
+
+          {datasetSwitching && (
+            <div className="border-2 border-dashed border-brand-200 rounded-xl p-10 bg-brand-50/30">
+              <div className="flex flex-col items-center gap-4">
+                <div className="w-16 h-16 rounded-full bg-brand-100 flex items-center justify-center">
+                  <svg className="w-8 h-8 text-brand-500 animate-spin" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                  </svg>
+                </div>
+                <p className="text-sm font-semibold text-brand-700">Loading dataset…</p>
+                <p className="text-xs text-slate-400">Fetching records and column mappings</p>
+              </div>
+            </div>
+          )}
         </>
       )}
 
@@ -604,39 +821,82 @@ export default function UploadAndPrepare({
         <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm text-red-700">{uploadError}</div>
       )}
 
-      {/* ─── After file is uploaded: preprocessing summary + run pipeline button ─── */}
-      {fileUploaded && (
+      {/* ─── Prepare panel (upload or saved dataset loaded) ─── */}
+      {showPreparePanel && (
         <div className="space-y-4 animate-fadeInUp">
-          {/* File info + re-upload */}
+          {/* Switch dataset link */}
+          <div className="flex items-center justify-between">
+            <button
+              type="button"
+              onClick={handleSwitchDataset}
+              className="inline-flex items-center gap-1.5 text-xs font-semibold text-brand-600 hover:text-brand-800 transition"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+              Switch dataset
+            </button>
+            {isSavedSource && datasetId && (
+              <span className="text-[10px] font-mono text-slate-400">Dataset #{datasetId}</span>
+            )}
+          </div>
+
+          {/* Dataset / file info card */}
           <div className="flex items-center justify-between bg-white border border-brand-100 rounded-lg px-4 py-3 shadow-sm">
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center">
-                <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+            <div className="flex items-center gap-3 min-w-0">
+              <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${isSavedSource ? "bg-brand-100" : "bg-green-100"}`}>
+                {isSavedSource ? (
+                  <svg className="w-5 h-5 text-brand-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4" />
+                  </svg>
+                ) : (
+                  <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                )}
               </div>
-              <div>
-                <p className="text-sm font-semibold text-slate-800">{uploadedFileName || "File uploaded"}</p>
-                <p className="text-xs text-slate-400">{dfRecords.length} rows · {columns?.length || 0} columns</p>
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-slate-800 truncate">
+                  {isSavedSource ? (activeDatasetLabel || "Saved dataset") : (uploadedFileName || "File uploaded")}
+                </p>
+                <p className="text-xs text-slate-400">
+                  {dfRecords.length.toLocaleString()} rows · {columns?.length || 0} columns
+                  {isSavedSource && ` · ${scenarioName}`}
+                </p>
               </div>
             </div>
-            <label htmlFor="smart-file-reupload" className="text-xs text-brand-500 hover:text-brand-700 font-medium cursor-pointer">
-              Upload different file
-              <input id="smart-file-reupload" type="file" accept=".xlsx,.xls,.xlsm" className="hidden" onChange={(e) => handleFile(e.target.files[0])} />
-            </label>
+            {isUploadSource && (
+              <label htmlFor="smart-file-reupload" className="text-xs text-brand-500 hover:text-brand-700 font-medium cursor-pointer flex-shrink-0 ml-3">
+                Upload different file
+                <input id="smart-file-reupload" type="file" accept=".xlsx,.xls,.xlsm" className="hidden" onChange={(e) => handleFile(e.target.files[0])} />
+              </label>
+            )}
           </div>
 
-          {/* Preprocessing summary */}
-          <div>
-            <h4 className="text-xs font-semibold text-brand-400 uppercase tracking-wide mb-2" style={{ fontFamily: "Manrope, Inter, sans-serif" }}>Preprocessing</h4>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              <StatCard label="Sheet used" value={pre.sheet_used || "—"} />
-              <StatCard label="Header row" value={pre.header_row_detected ?? "1"} />
-              <StatCard label="Merged cells fixed" value={pre.merged_cells_resolved ?? 0} accent={pre.merged_cells_resolved > 0} />
-              <StatCard label="Float IDs fixed" value={pre.float_ids_fixed ?? 0} accent={pre.float_ids_fixed > 0} />
+          {/* Saved: prior pipeline status */}
+          {isSavedSource && (
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-[10px] font-bold text-brand-400 uppercase tracking-wider font-display">Last run</span>
+              <PipelineStatusBadge label="Cleanup" ts={pipelineStatus?.cleanup} />
+              <PipelineStatusBadge label="Validated" ts={pipelineStatus?.validate} />
             </div>
-          </div>
+          )}
 
-          {/* Auto-mapped columns summary */}
-          {mappedEntries.length > 0 && !pipelineComplete && (
+          {/* Upload: preprocessing summary */}
+          {isUploadSource && preprocessingSummary && (
+            <div>
+              <h4 className="text-xs font-semibold text-brand-400 uppercase tracking-wide mb-2" style={{ fontFamily: "Manrope, Inter, sans-serif" }}>Preprocessing</h4>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <StatCard label="Sheet used" value={pre.sheet_used || "—"} />
+                <StatCard label="Header row" value={pre.header_row_detected ?? "1"} />
+                <StatCard label="Merged cells fixed" value={pre.merged_cells_resolved ?? 0} accent={pre.merged_cells_resolved > 0} />
+                <StatCard label="Float IDs fixed" value={pre.float_ids_fixed ?? 0} accent={pre.float_ids_fixed > 0} />
+              </div>
+            </div>
+          )}
+
+          {/* Auto-mapped columns summary (upload flow, before pipeline) */}
+          {isUploadSource && mappedEntries.length > 0 && !pipelineComplete && (
             <div>
               <h4 className="text-xs font-semibold text-brand-400 uppercase tracking-wide mb-2" style={{ fontFamily: "Manrope, Inter, sans-serif" }}>
                 Auto-mapped columns
@@ -654,17 +914,45 @@ export default function UploadAndPrepare({
             </div>
           )}
 
+          {/* Saved: mapped columns from DB */}
+          {isSavedSource && displayMappedEntries.length > 0 && !pipelineComplete && (
+            <div>
+              <h4 className="text-xs font-semibold text-brand-400 uppercase tracking-wide mb-2" style={{ fontFamily: "Manrope, Inter, sans-serif" }}>
+                Column mappings
+              </h4>
+              <div className="bg-white border border-brand-100 rounded-lg overflow-hidden shadow-sm">
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 divide-x divide-y divide-brand-50">
+                  {displayMappedEntries.map(([key, m]) => (
+                    <div key={key} className="px-3 py-2.5">
+                      <p className="text-[10px] font-medium text-slate-400 uppercase tracking-wide">{MAPPING_LABELS[key] || key}</p>
+                      <p className="text-sm font-semibold text-brand-800 truncate" title={m.source_column}>{m.source_column}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Column mapping notice */}
           {!pipelineComplete && !pipelineRunning && (
             <div className="bg-brand-50 border border-brand-100 rounded-lg px-4 py-3">
               <p className="text-sm text-brand-700">
-                <span className="font-semibold">Columns have been auto-mapped</span> — review them in the Column Configuration bar above (green dots = high confidence).
-                Override any incorrect mappings, then click the button below.
+                {isSavedSource ? (
+                  <>
+                    <span className="font-semibold">Review column mappings</span> in the Column Configuration bar above, then click <span className="font-semibold">Save Config</span> to update readiness.
+                    {hadPriorPipeline ? " Re-run cleanup & validation to refresh results." : " Run cleanup & validation before proceeding to analysis."}
+                  </>
+                ) : (
+                  <>
+                    <span className="font-semibold">Columns have been auto-mapped</span> — review them in the Column Configuration bar above (green dots = high confidence).
+                    Override any incorrect mappings, then click the button below.
+                  </>
+                )}
               </p>
             </div>
           )}
 
-          {/* Run Pipeline button (Phase 2 trigger) */}
+          {/* Run Pipeline button */}
           {!pipelineComplete && (
             <button
               onClick={handleRunPipeline}
@@ -676,11 +964,25 @@ export default function UploadAndPrepare({
                   <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
                   {PIPELINE_STAGES[pipelineStage].msg} <span className="text-xs font-normal opacity-70 ml-1">{PIPELINE_STAGES[pipelineStage].sub}</span>
                 </>
-              ) : !empCol || !mgrCol ? (
-                "Select Employee & Manager columns to continue"
               ) : (
-                "Run Cleanup & Validate"
+                pipelineButtonLabel
               )}
+            </button>
+          )}
+
+          {pipelineComplete && isSavedSource && (
+            <button
+              type="button"
+              onClick={() => {
+                setPipelineComplete(false);
+                setCleanupResult(null);
+                setValidationResult(null);
+                setFilterApplied(false);
+                setFilterFlags({});
+              }}
+              className="text-xs font-semibold text-brand-600 hover:text-brand-800 transition"
+            >
+              ← Run again
             </button>
           )}
 

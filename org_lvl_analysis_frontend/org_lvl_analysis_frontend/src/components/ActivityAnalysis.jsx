@@ -3,6 +3,7 @@
  * 4-step wizard: Setup → Activities & Allocations → Savings Levers → Impact Report
  */
 import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { createPortal } from "react-dom";
 import Plot from "react-plotly.js";
 import {
   activityListConfigs, activityCreateConfig, activityGetConfig,
@@ -62,9 +63,9 @@ function Btn({ children, onClick, variant = "primary", disabled, small, classNam
     secondary: "bg-[#eaf3ff] text-[#0a3f86] border border-[#dbeafe] hover:bg-[#dbeafe] shadow-sm",
     danger:    "bg-red-50 text-red-600 border border-red-200 hover:bg-red-100/70",
     ghost:     "bg-transparent text-slate-600 border border-slate-200 hover:bg-slate-50",
-    success:   "bg-[#ecfdf5] text-[#16b867] border border-[rgba(22,184,103,0.3)] hover:bg-[#ecfdf5]/80",
+    export:    "bg-[#eaf3ff] text-[#0a3f86] border border-brand-200 hover:bg-brand-100 hover:border-brand-300 shadow-sm",
   };
-  const sizeClass = small ? "px-2.5 py-1 text-xs" : "px-4.5 py-2 text-xs sm:text-sm";
+  const sizeClass = small ? "px-3 py-1 text-xs" : "px-6 py-2 text-xs sm:text-sm";
   return (
     <button
       onClick={disabled ? undefined : onClick}
@@ -118,9 +119,137 @@ function UploadIcon() {
   );
 }
 
+const TOOLTIP_W = 288;
+const TOOLTIP_GAP = 8;
+
+function UploadHelpTooltip({ title, children, placement = "below-start" }) {
+  const [open, setOpen] = useState(false);
+  const btnRef = useRef(null);
+  const [pos, setPos] = useState({ top: 0, left: 0 });
+
+  const updatePos = useCallback(() => {
+    const el = btnRef.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    let top;
+    let left;
+    if (placement === "right") {
+      top = r.top;
+      left = r.right + TOOLTIP_GAP;
+    } else if (placement === "below-end") {
+      top = r.bottom + TOOLTIP_GAP;
+      left = r.right - TOOLTIP_W;
+    } else {
+      top = r.bottom + TOOLTIP_GAP;
+      left = r.left;
+    }
+    left = Math.max(TOOLTIP_GAP, Math.min(left, window.innerWidth - TOOLTIP_W - TOOLTIP_GAP));
+    top = Math.max(TOOLTIP_GAP, Math.min(top, window.innerHeight - TOOLTIP_GAP));
+    setPos({ top, left });
+  }, [placement]);
+
+  useEffect(() => {
+    if (!open) return;
+    updatePos();
+    const onScrollOrResize = () => updatePos();
+    window.addEventListener("scroll", onScrollOrResize, true);
+    window.addEventListener("resize", onScrollOrResize);
+    return () => {
+      window.removeEventListener("scroll", onScrollOrResize, true);
+      window.removeEventListener("resize", onScrollOrResize);
+    };
+  }, [open, updatePos]);
+
+  const show = () => { updatePos(); setOpen(true); };
+  const hide = () => setOpen(false);
+
+  const tooltip = open ? (
+    <div
+      role="tooltip"
+      style={{ position: "fixed", top: pos.top, left: pos.left, width: TOOLTIP_W, zIndex: 9999 }}
+      className="pointer-events-none"
+      onMouseEnter={show}
+      onMouseLeave={hide}
+    >
+      <div className="bg-white border border-slate-200 rounded-lg shadow-xl p-3.5 text-left ring-1 ring-black/5">
+        <div className="text-[11px] font-bold text-brand-800 mb-2">{title}</div>
+        <div className="text-[10px] text-slate-600 leading-relaxed space-y-2">{children}</div>
+      </div>
+    </div>
+  ) : null;
+
+  return (
+    <>
+      <button
+        ref={btnRef}
+        type="button"
+        aria-label={title}
+        aria-expanded={open}
+        onMouseEnter={show}
+        onMouseLeave={hide}
+        onFocus={show}
+        onBlur={hide}
+        className="w-6 h-6 rounded-full border border-slate-200 bg-white text-slate-400 hover:text-brand-600 hover:border-brand-200 hover:bg-brand-50 flex items-center justify-center text-[11px] font-bold transition cursor-default flex-shrink-0"
+      >
+        ?
+      </button>
+      {typeof document !== "undefined" && tooltip ? createPortal(tooltip, document.body) : null}
+    </>
+  );
+}
+
+const UPLOAD_HELP = {
+  activities: {
+    title: "How to upload activities",
+    content: (
+      <>
+        <p><strong>File types:</strong> .xlsx, .xls, or .csv</p>
+        <p><strong>Required column:</strong> <span className="font-mono text-brand-700">Activity</span> (or <span className="font-mono">Name</span>) — one row per activity</p>
+        <p><strong>Optional columns:</strong></p>
+        <ul className="list-disc pl-4 space-y-0.5">
+          <li><span className="font-mono">Process</span> — groups activities (e.g. Finance, HR)</li>
+          <li><span className="font-mono">Description</span> — free-text notes</li>
+        </ul>
+        <p className="text-slate-500">Upload replaces the activity list. Define activities before uploading the allocation matrix.</p>
+      </>
+    ),
+  },
+  allocations: {
+    title: "How to upload allocation matrix",
+    content: (
+      <>
+        <p><strong>File types:</strong> .xlsx or .xls</p>
+        <p><strong>Layout:</strong> roles as rows, activities as columns</p>
+        <ul className="list-disc pl-4 space-y-0.5">
+          <li><strong>Column 1:</strong> role name (must match values from your grouping column in Step 1)</li>
+          <li><strong>Other columns:</strong> activity names (must match Step 2 exactly)</li>
+          <li><strong>Cells:</strong> time % per role per activity (0–100, or 0.0–1.0)</li>
+        </ul>
+        <p className="text-slate-500">Each role row should sum to ~100%. Upload activities first — unknown activity columns are skipped.</p>
+      </>
+    ),
+  },
+  levers: {
+    title: "How to upload savings levers",
+    content: (
+      <>
+        <p><strong>File types:</strong> .xlsx or .xls</p>
+        <p><strong>Required columns:</strong></p>
+        <ul className="list-disc pl-4 space-y-0.5">
+          <li><span className="font-mono">Activity</span> — must match an activity from Step 2</li>
+          <li><span className="font-mono">Lever Type</span> — one of: <span className="font-mono">automation</span>, <span className="font-mono">ai</span>, <span className="font-mono">stop_work</span>, <span className="font-mono">bpo</span></li>
+          <li><span className="font-mono">Reduction %</span> — 0–100 (or decimal, e.g. 0.25 = 25%)</li>
+          <li><span className="font-mono">Effective Date</span> — when savings start (YYYY-MM-DD)</li>
+        </ul>
+        <p className="text-slate-500">One row per lever entry. Multiple rows per activity are allowed (e.g. phased rollouts).</p>
+      </>
+    ),
+  },
+};
+
 function StatusPill({ status }) {
   const map = {
-    complete: { label: "100%", bg: C.successL, color: C.success },
+    complete: { label: "100%", bg: C.blueL, color: C.navyL },
     partial:  { label: "~", bg: C.warnL, color: C.warn },
     low:      { label: "Low", bg: C.dangerL, color: C.danger },
     empty:    { label: "Empty", bg: "#f3f4f6", color: C.textMuted },
@@ -145,17 +274,17 @@ function StepHeader({ currentStep, onStepClick }) {
             onClick={() => done && onStepClick(s.id)}
             className={`relative p-3.5 rounded-xl border text-left transition-all duration-300 flex flex-col justify-between h-20 ${
               active
-                ? "bg-[#01244a] border-[#01244a] text-white shadow-md shadow-brand-900/10"
+                ? "bg-brand-600 border-brand-700 text-white shadow-md shadow-brand-900/10"
                 : done
                 ? "bg-brand-50/70 border-brand-100 hover:bg-brand-100/50 hover:border-brand-200 text-brand-800 cursor-pointer"
                 : "bg-white border-slate-100 text-slate-400 cursor-not-allowed"
             }`}
           >
             {active && (
-              <div className="absolute bottom-0 left-0 right-0 h-1 bg-[#c5a84a] rounded-b-xl" />
+              <div className="absolute bottom-0 left-0 right-0 h-1 bg-brand-300 rounded-b-xl" />
             )}
             <div className="flex items-center justify-between w-full">
-              <span className={`text-[10px] font-bold uppercase tracking-wider ${active ? "text-brand-200" : "text-brand-400"}`}>
+              <span className={`text-[10px] font-bold uppercase tracking-wider ${active ? "text-brand-100" : "text-brand-500"}`}>
                 Step {s.id}
               </span>
               {done && (
@@ -243,12 +372,12 @@ function Step1Setup({ datasetId, onCreated, existingConfigs, onSelect }) {
 
   return (
     <div style={{ maxWidth: 800 }}>
-      {/* Existing configs */}
-      {existingConfigs.length > 0 && (
-        <Card className="p-5 mb-5">
-          <div className="text-xs font-bold text-brand-400 uppercase tracking-wider mb-3.5" style={{ fontFamily: "Manrope, Inter, sans-serif" }}>
-            Existing Analyses
-          </div>
+      {/* Saved reviews — always visible on setup */}
+      <Card className="p-5 mb-5">
+        <div className="text-xs font-bold text-brand-400 uppercase tracking-wider mb-3.5" style={{ fontFamily: "Manrope, Inter, sans-serif" }}>
+          Saved Reviews
+        </div>
+        {existingConfigs.length > 0 ? (
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
             {existingConfigs.map(cfg => (
               <button
@@ -263,8 +392,12 @@ function Step1Setup({ datasetId, onCreated, existingConfigs, onSelect }) {
               </button>
             ))}
           </div>
-        </Card>
-      )}
+        ) : (
+          <p className="text-xs text-slate-400 m-0">
+            No saved reviews for this dataset yet. Create one below — activities, allocations, and levers are saved automatically.
+          </p>
+        )}
+      </Card>
 
       {/* Create new */}
       <Card className="p-6">
@@ -380,7 +513,7 @@ function Step2Activities({ config, roles, onNext }) {
   };
 
   const cellColor = (total) => {
-    if (total >= 98 && total <= 102) return { bg: C.successL, color: C.success };
+    if (total >= 98 && total <= 102) return { bg: C.blueL, color: C.navyL };
     if (total > 0) return { bg: C.blueL, color: C.navy };
     return { bg: "transparent", color: C.textMuted };
   };
@@ -411,8 +544,10 @@ function Step2Activities({ config, roles, onNext }) {
     }
   };
 
+  const [saveStatus, setSaveStatus] = useState("");
+
   const handleSaveAllocs = async () => {
-    setSaving(true); setErr("");
+    setSaving(true); setErr(""); setSaveStatus("Validating allocations…");
     try {
       const flat = [];
       for (const [rv, actMap] of Object.entries(allocs)) {
@@ -420,12 +555,15 @@ function Step2Activities({ config, roles, onNext }) {
           if (pct > 0) flat.push({ role_value: rv, activity_id: Number(actId), time_pct: Number(pct) / 100 });
         }
       }
+      setSaveStatus("Saving allocation matrix…");
       await activityUpsertAllocations(config.id, flat);
+      setSaveStatus("Done! Moving to next step…");
+      await new Promise(r => setTimeout(r, 400));
       onNext();
     } catch (e) {
       setErr(e?.response?.data?.detail || e.message);
     } finally {
-      setSaving(false);
+      setSaving(false); setSaveStatus("");
     }
   };
 
@@ -478,12 +616,12 @@ function Step2Activities({ config, roles, onNext }) {
     <div>
       <div className="flex gap-5 flex-wrap mb-5">
         {/* Activities panel */}
-        <Card className="flex-[0_0_280px] p-5 max-h-[600px] overflow-auto">
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+        <Card className="flex-[0_0_280px] p-5 max-h-[600px] flex flex-col">
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, flexShrink: 0 }}>
             <div className="text-xs font-bold text-brand-800 uppercase tracking-wider font-display">
               Activities ({activities.length})
             </div>
-            <div style={{ display: "flex", gap: 6 }}>
+            <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
               <input type="file" ref={actFileRef} accept=".xlsx,.xls,.csv" style={{ display: "none" }}
                 onChange={e => { if (e.target.files[0]) handleActUpload(e.target.files[0]); e.target.value = ""; }}
               />
@@ -494,12 +632,16 @@ function Step2Activities({ config, roles, onNext }) {
               >
                 {uploading === "activities" ? <Spinner /> : <UploadIcon />}
               </button>
+              <UploadHelpTooltip title={UPLOAD_HELP.activities.title} placement="right">
+                {UPLOAD_HELP.activities.content}
+              </UploadHelpTooltip>
               <Btn small variant="secondary" onClick={() => setEditingActs(!editingActs)}>
                 {editingActs ? "Cancel" : "+ Add"}
               </Btn>
             </div>
           </div>
 
+          <div className="flex-1 min-h-0 overflow-auto">
           {Object.entries(processGroups).map(([proc, acts]) => (
             <div key={proc} style={{ marginBottom: 14 }}>
               <div className="text-[10px] font-bold text-brand-400 uppercase tracking-wider mb-2 font-display">
@@ -545,6 +687,7 @@ function Step2Activities({ config, roles, onNext }) {
           <div className="mt-4 p-3 bg-brand-50/20 border border-brand-100/40 rounded-lg text-[10px] text-brand-600 leading-normal">
             <strong>Tip:</strong> Upload an Excel with columns: <span className="font-mono font-bold">Activity</span>, <span className="font-mono font-bold">Process</span>, <span className="font-mono font-bold">Description</span>.
           </div>
+          </div>
         </Card>
 
         {/* Allocation matrix */}
@@ -563,6 +706,9 @@ function Step2Activities({ config, roles, onNext }) {
               >
                 {uploading === "allocs" ? <><Spinner /> Uploading…</> : <><UploadIcon /> Upload Matrix</>}
               </button>
+              <UploadHelpTooltip title={UPLOAD_HELP.allocations.title} placement="below-start">
+                {UPLOAD_HELP.allocations.content}
+              </UploadHelpTooltip>
             </div>
           </div>
 
@@ -639,7 +785,7 @@ function Step2Activities({ config, roles, onNext }) {
           <div style={{ marginTop: 12, fontSize: 11, color: C.textSec, display: "flex", alignItems: "center", gap: 16 }}>
             <span>Enter % per cell (0–100). Aim for each row to sum to 100%.</span>
             <span style={{ display: "flex", gap: 8 }}>
-              <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-semibold bg-green-50 text-green-700 border border-green-200/50">
+              <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-semibold bg-brand-50 text-brand-700 border border-brand-200/50">
                 ■ 100%
               </span>
               <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-semibold bg-brand-50 text-brand-800 border border-brand-200/50">
@@ -653,11 +799,110 @@ function Step2Activities({ config, roles, onNext }) {
 
       {err && <div style={{ color: C.danger, fontSize: 12, marginBottom: 8 }}>{err}</div>}
 
-      <div style={{ display: "flex", gap: 8 }}>
+      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
         <Btn onClick={handleSaveAllocs} disabled={saving || activities.length === 0}>
-          {saving ? "Saving…" : "Save & Continue →"}
+          {saving ? <><Spinner /> Saving…</> : "Save & Continue →"}
         </Btn>
         <Btn variant="ghost" onClick={onNext}>Skip for now</Btn>
+        {saving && saveStatus && (
+          <span className="text-xs font-medium text-brand-600 animate-pulse ml-2">{saveStatus}</span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Step 3 — Savings Levers helpers
+// ---------------------------------------------------------------------------
+
+function getActivitySavingsSummary(actId, pendingLevers) {
+  const actLevers = pendingLevers[actId] || {};
+  let totalSavingsPct = 0;
+  const leverParts = [];
+  for (const [lt, rows] of Object.entries(actLevers)) {
+    const pct = (rows || []).reduce((s, r) => s + (Number(r.reduction_pct) || 0), 0);
+    if (pct > 0) {
+      leverParts.push(`${LEVER_META[lt]?.label || lt} ${pct}%`);
+      totalSavingsPct += pct;
+    }
+  }
+  return { totalSavingsPct, leverParts, hasSavings: totalSavingsPct > 0 };
+}
+
+function LeverActivityEditor({ act, pendingLevers, updateLever, addLeverRow, removeLeverRow }) {
+  const actLevers = pendingLevers[act.id] || {};
+  const { totalSavingsPct, leverParts, hasSavings } = getActivitySavingsSummary(act.id, pendingLevers);
+  const dotColor = hasSavings ? C.blue : C.textMuted;
+  const pillBg = hasSavings ? "bg-brand-50 text-brand-800 border-brand-200/50" : "bg-slate-50 text-slate-500 border-slate-100";
+
+  return (
+    <div className="relative">
+      <div className="flex items-start justify-between gap-4 mb-5 pb-4 border-b border-brand-100">
+        <div className="flex items-start gap-3 min-w-0">
+          <div style={{ width: 10, height: 10, borderRadius: "50%", background: dotColor, flexShrink: 0, marginTop: 5 }} />
+          <div className="min-w-0">
+            <h4 className="text-base font-extrabold text-[#01244a] m-0" style={{ fontFamily: "Manrope, Inter, sans-serif" }}>
+              {act.name}
+            </h4>
+          </div>
+        </div>
+        <div className="flex flex-col items-end gap-1 flex-shrink-0">
+          {leverParts.length > 0 && (
+            <span className="text-xs text-slate-500 font-medium text-right">{leverParts.join(" · ")}</span>
+          )}
+          {totalSavingsPct > 0 && (
+            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold border ${pillBg}`}>
+              {totalSavingsPct}% Saved
+            </span>
+          )}
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
+        {Object.entries(LEVER_META).map(([lt, meta]) => {
+          const rows = actLevers[lt] || [];
+          return (
+            <div key={lt} className="border border-[#dce4ee] rounded-lg overflow-hidden bg-white shadow-sm transition-all hover:border-[#74a9e7]/30">
+              <div style={{ background: meta.bg, padding: "7px 10px", display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: `1px solid ${C.borderL}` }}>
+                <span style={{ fontSize: 11, fontWeight: 800, color: meta.color, fontFamily: "Manrope, Inter, sans-serif" }}>{meta.label}</span>
+                <button type="button" onClick={() => addLeverRow(act.id, lt)} style={{
+                  fontSize: 16, fontWeight: 700, color: meta.color, background: "none",
+                  border: "none", cursor: "pointer", lineHeight: 1,
+                }} className="hover:scale-110 transition-transform">+</button>
+              </div>
+              <div style={{ padding: "8px 10px" }} className="space-y-1.5">
+                {(rows.length === 0 ? [{ lever_type: lt, reduction_pct: "", effective_date: "" }] : rows).map((row, idx) => (
+                  <div key={idx} style={{ display: "flex", gap: 4, alignItems: "center" }}>
+                    <input
+                      type="number" min="0" max="100" placeholder="0%"
+                      value={row.reduction_pct === "" ? "" : row.reduction_pct}
+                      onChange={e => updateLever(act.id, lt, "reduction_pct", e.target.value, idx)}
+                      className="w-11 px-1 py-1 border border-slate-200 rounded-md text-xs text-center focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 outline-none transition-all"
+                    />
+                    <span style={{ fontSize: 10, color: C.textMuted }}>%</span>
+                    <input
+                      type="date"
+                      value={row.effective_date || ""}
+                      onChange={e => updateLever(act.id, lt, "effective_date", e.target.value, idx)}
+                      className="flex-1 px-1.5 py-0.5 border border-slate-200 rounded-md text-[10px] focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 outline-none text-slate-700 transition-all"
+                    />
+                    {rows.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => removeLeverRow(act.id, lt, idx)}
+                        className="text-red-500 hover:text-red-700 cursor-pointer font-bold px-1 transition-colors"
+                        style={{ background: "none", border: "none", fontSize: 13 }}
+                      >
+                        ×
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -670,6 +915,10 @@ function Step3Levers({ config, onNext }) {
   const [activities, setActivities] = useState(config.activities || []);
   const [levers, setLevers] = useState([]);
   const [pendingLevers, setPendingLevers] = useState({});  // actId → [{lever_type, reduction_pct, effective_date}]
+  const [selectedProcess, setSelectedProcess] = useState(null);
+  const [selectedActId, setSelectedActId] = useState(null);
+  const [sidebarFilter, setSidebarFilter] = useState("");
+  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [err, setErr] = useState("");
@@ -677,11 +926,16 @@ function Step3Levers({ config, onNext }) {
 
   useEffect(() => {
     if (!config.id) return;
-    activityGetLevers(config.id)
-      .then(res => {
-        const lvrs = res.levers || [];
+    setLoading(true);
+    // Always fetch fresh config — parent activeConfig is not updated after Step 2 uploads
+    Promise.all([
+      activityGetConfig(config.id),
+      activityGetLevers(config.id),
+    ])
+      .then(([cfgRes, leversRes]) => {
+        if (cfgRes?.config?.activities?.length > 0) setActivities(cfgRes.config.activities);
+        const lvrs = leversRes.levers || [];
         setLevers(lvrs);
-        // Build pendingLevers from existing
         const pending = {};
         for (const lv of lvrs) {
           const aid = lv.activity_id;
@@ -691,7 +945,8 @@ function Step3Levers({ config, onNext }) {
         }
         setPendingLevers(pending);
       })
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => setLoading(false));
   }, [config.id]);
 
   const updateLever = (actId, leverType, field, value, idx = 0) => {
@@ -724,8 +979,10 @@ function Step3Levers({ config, onNext }) {
     });
   };
 
+  const [saveStatus, setSaveStatus] = useState("");
+
   const handleSave = async () => {
-    setSaving(true); setErr("");
+    setSaving(true); setErr(""); setSaveStatus("Preparing lever data…");
     try {
       const flat = [];
       for (const [actId, leverMap] of Object.entries(pendingLevers)) {
@@ -744,12 +1001,15 @@ function Step3Levers({ config, onNext }) {
           }
         }
       }
+      setSaveStatus("Saving levers & computing impact…");
       await activityUpsertLevers(config.id, flat);
+      setSaveStatus("Done! Preparing impact report…");
+      await new Promise(r => setTimeout(r, 400));
       onNext();
     } catch (e) {
       setErr(e?.response?.data?.detail || e.message);
     } finally {
-      setSaving(false);
+      setSaving(false); setSaveStatus("");
     }
   };
 
@@ -783,6 +1043,70 @@ function Step3Levers({ config, onNext }) {
     return groups;
   }, [activities]);
 
+  const flatActivities = useMemo(() => activities, [activities]);
+
+  const processList = useMemo(
+    () => Object.entries(processGroups).map(([name, acts]) => ({ name, acts })),
+    [processGroups]
+  );
+
+  const filteredProcesses = useMemo(() => {
+    const q = sidebarFilter.trim().toLowerCase();
+    if (!q) return processList;
+    return processList.filter(
+      ({ name, acts }) =>
+        name.toLowerCase().includes(q) ||
+        acts.some((a) => a.name.toLowerCase().includes(q))
+    );
+  }, [processList, sidebarFilter]);
+
+  const categoryActivities = useMemo(() => {
+    if (!selectedProcess) return [];
+    return processGroups[selectedProcess] || [];
+  }, [processGroups, selectedProcess]);
+
+  const selectedAct = categoryActivities.find((a) => a.id === selectedActId) || categoryActivities[0] || null;
+  const selectedIndex = selectedAct ? categoryActivities.findIndex((a) => a.id === selectedAct.id) : -1;
+
+  useEffect(() => {
+    if (processList.length === 0) {
+      setSelectedProcess(null);
+      setSelectedActId(null);
+      return;
+    }
+    if (!selectedProcess || !processGroups[selectedProcess]) {
+      setSelectedProcess(processList[0].name);
+    }
+  }, [processList, processGroups, selectedProcess]);
+
+  useEffect(() => {
+    if (categoryActivities.length === 0) {
+      setSelectedActId(null);
+      return;
+    }
+    if (!selectedActId || !categoryActivities.some((a) => a.id === selectedActId)) {
+      setSelectedActId(categoryActivities[0].id);
+    }
+  }, [categoryActivities, selectedActId]);
+
+  const configuredCount = useMemo(
+    () => flatActivities.filter((a) => getActivitySavingsSummary(a.id, pendingLevers).hasSavings).length,
+    [flatActivities, pendingLevers]
+  );
+
+  const getCategorySummary = (acts) => {
+    const configured = acts.filter((a) => getActivitySavingsSummary(a.id, pendingLevers).hasSavings).length;
+    return { configured, total: acts.length };
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center gap-2 p-10 text-slate-400">
+        <Spinner /> Loading activities…
+      </div>
+    );
+  }
+
   if (activities.length === 0) {
     return (
       <Card className="p-10 text-center text-slate-400">
@@ -807,102 +1131,145 @@ function Step3Levers({ config, onNext }) {
           >
             {uploading ? <Spinner /> : <UploadIcon />} Upload Excel
           </button>
+          <UploadHelpTooltip title={UPLOAD_HELP.levers.title} placement="below-end">
+            {UPLOAD_HELP.levers.content}
+          </UploadHelpTooltip>
         </div>
       </div>
 
-      {Object.entries(processGroups).map(([proc, acts]) => (
-        <div key={proc} style={{ marginBottom: 24 }}>
-          {proc !== "General" && (
-            <div className="text-[10px] font-bold text-brand-400 uppercase tracking-wider mb-3 pb-1 border-b border-brand-100/50 font-display">
-              {proc}
+      {/* Category sidebar + activity panel */}
+      <div className="flex border border-[#dce4ee] rounded-xl overflow-hidden bg-white shadow-sm min-h-[460px] mb-4">
+        {/* Process / category sidebar */}
+        <aside className="w-[220px] flex-shrink-0 border-r border-[#dce4ee] bg-brand-50/25 flex flex-col">
+          <div className="px-3 py-3 border-b border-brand-100/80 bg-white/60">
+            <div className="text-[10px] font-bold text-brand-500 uppercase tracking-wider mb-2 font-display">
+              Categories ({processList.length})
             </div>
-          )}
-          {acts.map(act => {
-            const actLevers = pendingLevers[act.id] || {};
-            // Build savings summary
-            const leverParts = [];
-            let totalSavingsPct = 0;
-            for (const [lt, rows] of Object.entries(actLevers)) {
-              const pct = rows.reduce((s, r) => s + (Number(r.reduction_pct) || 0), 0);
-              if (pct > 0) {
-                leverParts.push(`${LEVER_META[lt]?.label || lt} ${pct}%`);
-                totalSavingsPct += pct;
-              }
-            }
-            const activeSavings = totalSavingsPct > 0;
-            const dotColor = activeSavings ? C.blue : C.textMuted;
-            const pillBg = activeSavings ? "bg-brand-50 text-brand-800 border-brand-200/50" : "bg-slate-50 text-slate-500 border-slate-100";
-            return (
-              <Card key={act.id} className="p-[18px] mb-3.5 relative overflow-hidden">
-                <div className="absolute inset-0 bg-gradient-to-br from-brand-500/5 to-transparent pointer-events-none" />
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <div style={{ width: 8, height: 8, borderRadius: "50%", background: dotColor, flexShrink: 0 }} />
-                    <div className="text-sm font-extrabold text-[#01244a]" style={{ fontFamily: "Manrope, Inter, sans-serif" }}>{act.name}</div>
-                    {act.process_name && (
-                      <span className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider font-display">{act.process_name}</span>
-                    )}
-                  </div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    {leverParts.length > 0 && (
-                      <span className="text-xs text-slate-500 font-medium">{leverParts.join(" · ")}</span>
-                    )}
-                    {totalSavingsPct > 0 && (
-                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold border ${pillBg}`}>
-                        {totalSavingsPct}% Saved
-                      </span>
-                    )}
-                  </div>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                  {Object.entries(LEVER_META).map(([lt, meta]) => {
-                    const rows = actLevers[lt] || [];
+            <input
+              type="search"
+              placeholder="Filter…"
+              value={sidebarFilter}
+              onChange={(e) => setSidebarFilter(e.target.value)}
+              className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg text-xs bg-white focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 outline-none"
+            />
+            <p className="text-[10px] text-slate-400 mt-2 mb-0">
+              {configuredCount} of {flatActivities.length} activities configured
+            </p>
+          </div>
+          <nav className="flex-1 overflow-y-auto py-2 px-1.5">
+            {filteredProcesses.length === 0 ? (
+              <p className="px-3 py-4 text-xs text-slate-400 text-center">No matches</p>
+            ) : (
+              filteredProcesses.map(({ name, acts }) => {
+                const isActive = selectedProcess === name;
+                const { configured, total } = getCategorySummary(acts);
+                const allDone = configured === total && total > 0;
+                return (
+                  <button
+                    key={name}
+                    type="button"
+                    onClick={() => setSelectedProcess(name)}
+                    className={`w-full text-left px-3 py-3 mb-1 rounded-lg transition-all duration-150 ${
+                      isActive
+                        ? "bg-brand-600 text-white shadow-sm"
+                        : "text-slate-700 hover:bg-brand-100/60"
+                    }`}
+                  >
+                    <span className={`block text-[11px] font-bold uppercase tracking-wide leading-snug font-display ${isActive ? "text-white" : "text-brand-700"}`}>
+                      {name}
+                    </span>
+                    <span className={`flex items-center gap-1.5 mt-1.5 text-[10px] font-medium ${isActive ? "text-brand-100" : "text-slate-500"}`}>
+                      <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${allDone ? (isActive ? "bg-brand-200" : "bg-brand-500") : configured > 0 ? (isActive ? "bg-brand-200" : "bg-brand-400") : (isActive ? "bg-white/40" : "bg-slate-300")}`} />
+                      {configured}/{total} activities · {total} total
+                    </span>
+                  </button>
+                );
+              })
+            )}
+          </nav>
+        </aside>
+
+        {/* Activities + lever editor */}
+        <main className="flex-1 min-w-0 flex flex-col">
+          {selectedProcess && categoryActivities.length > 0 ? (
+            <>
+              {/* Activity tabs for selected category */}
+              <div className="border-b border-brand-100 bg-brand-50/20 px-4 py-3">
+                <p className="text-[10px] font-bold text-brand-400 uppercase tracking-wider mb-2 font-display">
+                  Activities in {selectedProcess}
+                </p>
+                <div className="flex flex-wrap gap-1.5">
+                  {categoryActivities.map((act) => {
+                    const isActive = selectedAct?.id === act.id;
+                    const { hasSavings, totalSavingsPct } = getActivitySavingsSummary(act.id, pendingLevers);
                     return (
-                      <div key={lt} className="border border-[#dce4ee] rounded-lg overflow-hidden bg-white/80 shadow-sm transition-all hover:border-[#74a9e7]/30">
-                        <div style={{ background: meta.bg, padding: "7px 10px", display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: `1px solid ${C.borderL}` }}>
-                          <span style={{ fontSize: 11, fontWeight: 800, color: meta.color, fontFamily: "Manrope, Inter, sans-serif" }}>{meta.label}</span>
-                          <button onClick={() => addLeverRow(act.id, lt)} style={{
-                            fontSize: 16, fontWeight: 700, color: meta.color, background: "none",
-                            border: "none", cursor: "pointer", lineHeight: 1,
-                          }} className="hover:scale-110 transition-transform">+</button>
-                        </div>
-                        <div style={{ padding: "8px 10px" }} className="space-y-1.5">
-                          {(rows.length === 0 ? [{ lever_type: lt, reduction_pct: "", effective_date: "" }] : rows).map((row, idx) => (
-                            <div key={idx} style={{ display: "flex", gap: 4, alignItems: "center" }}>
-                              <input
-                                type="number" min="0" max="100" placeholder="0%"
-                                value={row.reduction_pct === "" ? "" : row.reduction_pct}
-                                onChange={e => updateLever(act.id, lt, "reduction_pct", e.target.value, idx)}
-                                className="w-11 px-1 py-1 border border-slate-200 rounded-md text-xs text-center focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 outline-none transition-all"
-                              />
-                              <span style={{ fontSize: 10, color: C.textMuted }}>%</span>
-                              <input
-                                type="date"
-                                value={row.effective_date || ""}
-                                onChange={e => updateLever(act.id, lt, "effective_date", e.target.value, idx)}
-                                className="flex-1 px-1.5 py-0.5 border border-slate-200 rounded-md text-[10px] focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 outline-none text-slate-700 transition-all"
-                              />
-                              {rows.length > 0 && (
-                                <button
-                                  onClick={() => removeLeverRow(act.id, lt, idx)}
-                                  className="text-red-500 hover:text-red-700 cursor-pointer font-bold px-1 transition-colors"
-                                  style={{ background: "none", border: "none", fontSize: 13 }}
-                                >
-                                  ×
-                                </button>
-                              )}
-                            </div>
-                          ))}
-                        </div>
-                      </div>
+                      <button
+                        key={act.id}
+                        type="button"
+                        onClick={() => setSelectedActId(act.id)}
+                        className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all border ${
+                          isActive
+                            ? "bg-brand-600 text-white border-brand-700 shadow-sm"
+                            : "bg-white text-slate-700 border-slate-200 hover:border-brand-200 hover:bg-brand-50/50"
+                        }`}
+                      >
+                        <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${hasSavings ? (isActive ? "bg-brand-200" : "bg-brand-500") : (isActive ? "bg-white/50" : "bg-slate-300")}`} />
+                        <span className="truncate max-w-[180px]">{act.name}</span>
+                        {hasSavings && (
+                          <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${isActive ? "bg-white/20 text-white" : "bg-brand-100 text-brand-700"}`}>
+                            {totalSavingsPct}%
+                          </span>
+                        )}
+                      </button>
                     );
                   })}
                 </div>
-              </Card>
-            );
-          })}
-        </div>
-      ))}
+              </div>
+
+              {selectedAct ? (
+                <>
+                  <div className="flex-1 p-5 overflow-y-auto">
+                    <LeverActivityEditor
+                      act={selectedAct}
+                      pendingLevers={pendingLevers}
+                      updateLever={updateLever}
+                      addLeverRow={addLeverRow}
+                      removeLeverRow={removeLeverRow}
+                    />
+                  </div>
+                  {categoryActivities.length > 1 && (
+                    <div className="px-5 py-3 border-t border-brand-100 bg-gray-50/80 flex items-center justify-between gap-3">
+                      <button
+                        type="button"
+                        disabled={selectedIndex <= 0}
+                        onClick={() => setSelectedActId(categoryActivities[selectedIndex - 1].id)}
+                        className="text-xs font-semibold text-brand-700 hover:text-brand-900 disabled:opacity-40 disabled:cursor-not-allowed px-3 py-1.5 rounded-lg hover:bg-brand-50 transition"
+                      >
+                        ← Previous
+                      </button>
+                      <span className="text-[10px] text-slate-400 font-medium tabular-nums">
+                        {selectedIndex + 1} / {categoryActivities.length} in category
+                      </span>
+                      <button
+                        type="button"
+                        disabled={selectedIndex >= categoryActivities.length - 1}
+                        onClick={() => setSelectedActId(categoryActivities[selectedIndex + 1].id)}
+                        className="text-xs font-semibold text-brand-700 hover:text-brand-900 disabled:opacity-40 disabled:cursor-not-allowed px-3 py-1.5 rounded-lg hover:bg-brand-50 transition"
+                      >
+                        Next →
+                      </button>
+                    </div>
+                  )}
+                </>
+              ) : null}
+            </>
+          ) : (
+            <div className="flex-1 flex items-center justify-center text-sm text-slate-400 p-8">
+              Select a category from the sidebar
+            </div>
+          )}
+        </main>
+      </div>
 
       <div style={{ marginTop: 8, padding: 12, background: C.blueL, borderRadius: 6, fontSize: 11, color: C.navy, marginBottom: 16 }}>
         <strong>Template columns:</strong> Activity, Lever Type (automation / ai / stop_work / bpo), Reduction %, Effective Date
@@ -910,11 +1277,14 @@ function Step3Levers({ config, onNext }) {
 
       {err && <div style={{ color: C.danger, fontSize: 12, marginBottom: 8 }}>{err}</div>}
 
-      <div style={{ display: "flex", gap: 8 }}>
+      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
         <Btn onClick={handleSave} disabled={saving}>
-          {saving ? "Saving…" : "Save & Compute →"}
+          {saving ? <><Spinner /> Saving…</> : "Save & Compute →"}
         </Btn>
         <Btn variant="ghost" onClick={onNext}>Skip & Compute</Btn>
+        {saving && saveStatus && (
+          <span className="text-xs font-medium text-brand-600 animate-pulse ml-2">{saveStatus}</span>
+        )}
       </div>
     </div>
   );
@@ -1007,7 +1377,7 @@ function Step4Impact({ config, datasetId }) {
           )}
         </div>
         {impact && (
-          <Btn variant="success" onClick={handleExport} disabled={exporting}>
+          <Btn variant="export" onClick={handleExport} disabled={exporting}>
             {exporting ? "Exporting…" : "↓ Export to Excel"}
           </Btn>
         )}
@@ -1028,42 +1398,42 @@ function Step4Impact({ config, datasetId }) {
           {/* Summary metrics */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
             {[
-              { label: "Baseline FTE", value: fmt(impact.baseline_fte), unit: "FTE", green: false, accent: C.navy, gradient: "from-brand-500/5 to-transparent" },
-              { label: "Total Savings (FTE)", value: fmt(impact.total_savings_fte), unit: "FTE", green: true, accent: C.success, gradient: "from-green-500/5 to-transparent" },
-              { label: "Baseline Cost", value: fmtCurr(impact.baseline_cost), unit: "", green: false, accent: C.navy, gradient: "from-brand-500/5 to-transparent" },
-              { label: "Total Savings", value: fmtCurr(impact.total_savings_cost), unit: "", green: true, accent: C.success, gradient: "from-green-500/5 to-transparent" },
+              { label: "Baseline FTE", value: fmt(impact.baseline_fte), unit: "FTE", highlight: false, accent: C.navy, gradient: "from-brand-500/5 to-transparent" },
+              { label: "Total Savings (FTE)", value: fmt(impact.total_savings_fte), unit: "FTE", highlight: true, accent: C.navyL, gradient: "from-brand-500/8 to-transparent" },
+              { label: "Baseline Cost", value: fmtCurr(impact.baseline_cost), unit: "", highlight: false, accent: C.navy, gradient: "from-brand-500/5 to-transparent" },
+              { label: "Total Savings", value: fmtCurr(impact.total_savings_cost), unit: "", highlight: true, accent: C.navyL, gradient: "from-brand-500/8 to-transparent" },
             ].map(m => (
               <div key={m.label} className="relative overflow-hidden bg-white/90 backdrop-blur-sm border border-brand-100 rounded-xl p-4 shadow-card hover:shadow-panel hover:-translate-y-0.5 transition-all duration-300">
                 <div className={`absolute inset-0 bg-gradient-to-br ${m.gradient} pointer-events-none`} />
                 <div style={{ position: "absolute", top: 0, left: 0, bottom: 0, width: 3.5, background: m.accent }} />
                 <div className="pl-2">
                   <div className="text-[10px] font-bold text-brand-400 uppercase tracking-wider leading-none mb-2" style={{ fontFamily: "Manrope, Inter, sans-serif" }}>{m.label}</div>
-                  <div className="text-2xl font-extrabold leading-none mt-1.5" style={{ fontFamily: "Manrope, Inter, sans-serif", color: m.green ? C.success : C.navy }}>{m.value}</div>
+                  <div className="text-2xl font-extrabold leading-none mt-1.5" style={{ fontFamily: "Manrope, Inter, sans-serif", color: m.highlight ? C.navyL : C.navy }}>{m.value}</div>
                   {m.unit && <div className="text-[10px] text-slate-400 font-bold tracking-wider mt-1.5 uppercase">{m.unit}</div>}
                 </div>
               </div>
             ))}
           </div>
 
-          {/* Tabs */}
-          <div className="flex flex-wrap gap-1.5 border-b border-brand-100 mb-6 bg-slate-50/50 p-1 rounded-xl">
+          {/* Tabs — palette matches app header / sidebar active module */}
+          <div className="flex flex-wrap gap-1.5 border border-brand-100 mb-6 bg-brand-50 p-1 rounded-xl">
             {TABS.map(t => {
               const isActive = activeTab === t.id;
               return (
                 <button
                   key={t.id}
                   onClick={() => setActiveTab(t.id)}
-                  className={`px-4 py-2 rounded-lg text-xs font-bold transition-all duration-200 cursor-pointer outline-none border-none ${
+                  className={`px-4 py-2 rounded-lg text-xs font-bold transition-all duration-200 cursor-pointer outline-none ${
                     isActive
-                      ? "bg-white text-[#01244a] shadow-sm border border-brand-100"
-                      : "text-slate-500 hover:text-slate-800 hover:bg-slate-100/50"
+                      ? "bg-brand-600 text-white shadow-sm border border-brand-700"
+                      : "text-brand-700 border border-transparent hover:text-brand-800 hover:bg-brand-100/80"
                   }`}
                   style={{ fontFamily: "Manrope, Inter, sans-serif" }}
                 >
                   <span className="flex items-center gap-1.5">
                     {t.label}
                     {t.isNew && (
-                      <span className="px-1.5 py-0.5 text-[8px] font-extrabold text-white bg-[#c5a84a] rounded tracking-wider">
+                      <span className="px-1.5 py-0.5 text-[8px] font-extrabold text-brand-800 bg-brand-200 rounded tracking-wider">
                         NEW
                       </span>
                     )}
@@ -1124,7 +1494,7 @@ function TrendChart({ title, accentColor, accentBg, values, displayMonths, chang
         <div style={{ width: 3.5, height: 20, borderRadius: 2, background: accentColor }} />
         <div className="text-sm font-extrabold text-brand-800" style={{ fontFamily: "Manrope, Inter, sans-serif" }}>{title}</div>
         {lastSavingsIdx >= 0 && (
-          <span className="ml-auto text-[10px] font-bold text-green-700 bg-green-50 px-2 py-0.5 rounded-full border border-green-200/50">
+          <span className="ml-auto text-[10px] font-bold text-brand-700 bg-brand-50 px-2 py-0.5 rounded-full border border-brand-200/70">
             {pctChanges[lastSavingsIdx] != null ? `${Math.abs(pctChanges.filter(v => v != null).reduce((s, v) => s + v, 0)).toFixed(1)}% total reduction` : ""}
           </span>
         )}
@@ -1168,7 +1538,7 @@ function TrendChart({ title, accentColor, accentBg, values, displayMonths, chang
             <tr style={{ background: "#f8fbff" }} className="border-b border-brand-100/30">
               <td className="px-3.5 py-2 font-bold text-slate-700 text-[11px]">Change</td>
               {changes.map((v, i) => (
-                <td key={i} className={`px-3 py-2 text-right font-mono text-[11px] font-semibold ${v < 0 ? 'text-green-600' : v > 0 ? 'text-red-500' : 'text-slate-400'}`}>
+                <td key={i} className={`px-3 py-2 text-right font-mono text-[11px] font-semibold ${v < 0 ? 'text-brand-600' : v > 0 ? 'text-red-500' : 'text-slate-400'}`}>
                   {v === null ? "—" : (v >= 0 ? "+" : "") + (yAxisPrefix ? `${yAxisPrefix}${Math.abs(v) >= 1_000_000 ? (v / 1_000_000).toFixed(1) + "M" : Math.abs(v) >= 1_000 ? (v / 1_000).toFixed(0) + "K" : v.toFixed(1)}` : v.toFixed(1))}
                 </td>
               ))}
@@ -1176,7 +1546,7 @@ function TrendChart({ title, accentColor, accentBg, values, displayMonths, chang
             <tr>
               <td className="px-3.5 py-2 font-bold text-slate-700 text-[11px]">Change %</td>
               {pctChanges.map((v, i) => (
-                <td key={i} className={`px-3 py-2 text-right font-mono text-[11px] font-semibold ${v < 0 ? 'text-green-600' : v > 0 ? 'text-red-500' : 'text-slate-400'}`}>
+                <td key={i} className={`px-3 py-2 text-right font-mono text-[11px] font-semibold ${v < 0 ? 'text-brand-600' : v > 0 ? 'text-red-500' : 'text-slate-400'}`}>
                   {v === null ? "—" : `${v >= 0 ? "+" : ""}${v.toFixed(1)}%`}
                 </td>
               ))}
@@ -1212,8 +1582,8 @@ function TrendTab({ impact }) {
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
       <TrendChart
         title="FTE Remaining Over Time"
-        accentColor={C.gold}
-        accentBg="rgba(197,168,74,0.08)"
+        accentColor={C.navyL}
+        accentBg="rgba(10, 63, 134, 0.08)"
         values={fteValues}
         displayMonths={displayMonths}
         changes={fteChanges}
@@ -1297,7 +1667,7 @@ function ActivityTab({ impact }) {
               <td className="px-4 py-2.5 font-bold text-slate-800">{r.activity}</td>
               <td className="px-4 py-2.5 text-slate-500 font-medium">{r.process || "—"}</td>
               <td className="px-4 py-2.5 text-right font-mono text-slate-700 font-semibold">{fmtPct(r.savings_fte)}</td>
-              <td className="px-4 py-2.5 text-right font-bold text-[#16b867] font-mono">{fmtCurr(r.savings_cost)}</td>
+              <td className="px-4 py-2.5 text-right font-bold text-brand-600 font-mono">{fmtCurr(r.savings_cost)}</td>
             </tr>
           ))}
           {rows.length === 0 && (
@@ -1334,10 +1704,10 @@ function RoleTab({ impact }) {
               <td className="px-4 py-2.5 font-bold text-slate-800">{r.role_value}</td>
               <td className="px-4 py-2.5 text-right font-mono text-slate-600 font-semibold">{fmt(r.baseline_fte)}</td>
               <td className="px-4 py-2.5 text-right font-mono text-slate-600">{fmtCurr(r.baseline_cost)}</td>
-              <td className="px-4 py-2.5 text-right font-mono text-[#16b867] font-semibold">{fmt(r.savings_fte)}</td>
-              <td className="px-4 py-2.5 text-right font-bold text-[#16b867] font-mono">{fmtCurr(r.savings_cost)}</td>
+              <td className="px-4 py-2.5 text-right font-mono text-brand-600 font-semibold">{fmt(r.savings_fte)}</td>
+              <td className="px-4 py-2.5 text-right font-bold text-brand-600 font-mono">{fmtCurr(r.savings_cost)}</td>
               <td className="px-4 py-2.5 text-right">
-                <span className={`inline-flex px-2 py-0.5 rounded text-[10px] font-bold ${r.pct_saved > 10 ? 'bg-green-50 text-green-700 border border-green-200/50' : 'bg-brand-50 text-brand-800 border border-brand-100'}`}>
+                <span className={`inline-flex px-2 py-0.5 rounded text-[10px] font-bold ${r.pct_saved > 10 ? 'bg-brand-100 text-brand-800 border border-brand-200/70' : 'bg-brand-50 text-brand-800 border border-brand-100'}`}>
                   {fmtPct(r.pct_saved)}
                 </span>
               </td>
@@ -1390,12 +1760,12 @@ function IndividualTab({ impact }) {
                 <td className="px-4 py-2.5 font-mono text-[11px] font-semibold text-slate-800">{r.emp_id || "—"}</td>
                 <td className="px-4 py-2.5 text-slate-500 font-medium">{r.role_value}</td>
                 <td className="px-4 py-2.5 text-right font-mono text-slate-600">{fmtCurr(r.baseline_cost)}</td>
-                <td className={`px-4 py-2.5 text-right font-bold font-mono ${r.savings_cost > 0 ? "text-[#16b867]" : "text-slate-400"}`}>
+                <td className={`px-4 py-2.5 text-right font-bold font-mono ${r.savings_cost > 0 ? "text-brand-600" : "text-slate-400"}`}>
                   {r.savings_cost > 0 ? fmtCurr(r.savings_cost) : "—"}
                 </td>
                 <td className="px-4 py-2.5 text-right">
                   {r.pct_saved > 0 ? (
-                    <span className="inline-flex px-1.5 py-0.5 rounded text-[10px] font-bold bg-green-50 text-green-700 border border-green-200/50">
+                    <span className="inline-flex px-1.5 py-0.5 rounded text-[10px] font-bold bg-brand-50 text-brand-700 border border-brand-200/70">
                       {fmtPct(r.pct_saved)}
                     </span>
                   ) : "—"}
@@ -1467,20 +1837,20 @@ function FunctionTab({ impact }) {
             <td className="px-4 py-2.5 font-extrabold text-[#01244a]">Total</td>
             <td className="px-4 py-2.5 text-right font-bold text-slate-800">{totals.baseline_fte.toFixed(1)}</td>
             <td className="px-4 py-2.5 text-right font-bold text-slate-800">{totals.post_impact_fte.toFixed(1)}</td>
-            <td className="px-4 py-2.5 text-right font-bold text-[#16b867]">{totals.delta_fte.toFixed(1)}</td>
+            <td className="px-4 py-2.5 text-right font-bold text-brand-600">{totals.delta_fte.toFixed(1)}</td>
             <td className="px-4 py-2.5 text-right font-bold font-mono text-slate-800">{fmtCurr(totals.baseline_cost)}</td>
             <td className="px-4 py-2.5 text-right font-bold font-mono text-slate-800">{fmtCurr(totals.post_impact_cost)}</td>
-            <td className="px-4 py-2.5 text-right font-bold font-mono text-[#16b867]">{fmtCurr(totals.delta_cost)}</td>
+            <td className="px-4 py-2.5 text-right font-bold font-mono text-brand-600">{fmtCurr(totals.delta_cost)}</td>
           </tr>
           {rows.map((r, i) => (
             <tr key={r.function} className={`border-b border-[#dce4ee]/50 hover:bg-[#eaf3ff]/15 transition-colors ${i % 2 === 0 ? "bg-white" : "bg-slate-50/40"}`}>
               <td className="px-4 py-2.5 font-bold text-slate-800">{r.function}</td>
               <td className="px-4 py-2.5 text-right font-mono text-slate-600 font-semibold">{r.baseline_fte.toFixed(1)}</td>
               <td className="px-4 py-2.5 text-right font-mono text-slate-600">{r.post_impact_fte.toFixed(1)}</td>
-              <td className={`px-4 py-2.5 text-right font-mono font-semibold ${r.delta_fte > 0 ? "text-[#16b867]" : "text-slate-400"}`}>{r.delta_fte.toFixed(1)}</td>
+              <td className={`px-4 py-2.5 text-right font-mono font-semibold ${r.delta_fte > 0 ? "text-brand-600" : "text-slate-400"}`}>{r.delta_fte.toFixed(1)}</td>
               <td className="px-4 py-2.5 text-right font-mono text-slate-600">{fmtCurr(r.baseline_cost)}</td>
               <td className="px-4 py-2.5 text-right font-mono text-slate-600">{fmtCurr(r.post_impact_cost)}</td>
-              <td className={`px-4 py-2.5 text-right font-mono font-semibold ${r.delta_cost > 0 ? "text-[#16b867]" : "text-slate-400"}`}>{fmtCurr(r.delta_cost)}</td>
+              <td className={`px-4 py-2.5 text-right font-mono font-semibold ${r.delta_cost > 0 ? "text-brand-600" : "text-slate-400"}`}>{fmtCurr(r.delta_cost)}</td>
             </tr>
           ))}
         </tbody>
@@ -1613,13 +1983,18 @@ export default function ActivityAnalysis({ datasetId }) {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
 
+  const refreshConfigs = useCallback(() => {
+    if (!datasetId) return Promise.resolve();
+    return activityListConfigs(datasetId)
+      .then(res => setConfigs(res.configs || []))
+      .catch(() => {});
+  }, [datasetId]);
+
   useEffect(() => {
     if (!datasetId) { setLoading(false); return; }
-    activityListConfigs(datasetId)
-      .then(res => setConfigs(res.configs || []))
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }, [datasetId]);
+    setLoading(true);
+    refreshConfigs().finally(() => setLoading(false));
+  }, [datasetId, refreshConfigs]);
 
   const handleConfigCreated = (cfg, rolesList) => {
     setActiveConfig(cfg);
@@ -1660,8 +2035,27 @@ export default function ActivityAnalysis({ datasetId }) {
 
   if (loading) {
     return (
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: 200, gap: 10, color: C.textSec }}>
-        <Spinner /> Loading…
+      <div className="flex flex-col items-center justify-center min-h-[400px] gap-5">
+        <style>{`
+          @keyframes loaderPulse { 0%, 100% { transform: scale(1); opacity: 0.7; } 50% { transform: scale(1.12); opacity: 1; } }
+          @keyframes loaderBar { 0% { width: 0%; } 50% { width: 70%; } 100% { width: 100%; } }
+        `}</style>
+        <div className="relative flex items-center justify-center" style={{ animation: "loaderPulse 2s ease-in-out infinite" }}>
+          <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-[#01244a] to-[#0a3f86] flex items-center justify-center shadow-lg">
+            <svg width="28" height="28" fill="none" stroke="#ffffff" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+            </svg>
+          </div>
+        </div>
+        <div className="text-center">
+          <p className="text-sm font-bold text-[#01244a] mb-1" style={{ fontFamily: "Manrope, Inter, sans-serif" }}>
+            Loading Activity Analysis
+          </p>
+          <p className="text-xs text-slate-500">Fetching configurations and preparing workspace…</p>
+        </div>
+        <div className="w-48 h-1.5 bg-brand-100 rounded-full overflow-hidden">
+          <div className="h-full bg-gradient-to-r from-[#01244a] to-[#155bb2] rounded-full" style={{ animation: "loaderBar 1.8s ease-in-out infinite" }} />
+        </div>
       </div>
     );
   }
@@ -1673,23 +2067,28 @@ export default function ActivityAnalysis({ datasetId }) {
       {/* Page header */}
       <div style={{ marginBottom: 24 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
-          <div style={{ width: 32, height: 32, borderRadius: 8, background: C.navy, display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <svg width="16" height="16" fill="none" stroke={C.gold} viewBox="0 0 24 24">
+          <div style={{ width: 32, height: 32, borderRadius: 8, background: "#01244a", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 1px 3px rgba(1,36,74,0.2)" }}>
+            <svg width="16" height="16" fill="none" stroke="#ffffff" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
             </svg>
           </div>
           <div>
-            <h2 style={{ margin: 0, fontSize: 18, fontWeight: 800, color: C.navy }}>Activity Analysis</h2>
-            <div style={{ fontSize: 11, color: C.textMuted, marginTop: 1 }}>Model cost takeout from automation, AI, and process change</div>
+            <h2 style={{ margin: 0, fontSize: 18, fontWeight: 800, color: "#01244a" }}>Activity Analysis</h2>
+            <div style={{ fontSize: 11, color: C.textSec, marginTop: 1 }}>Model cost takeout from automation, AI, and process change</div>
           </div>
           {activeConfig && (
             <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
               <Tag>{activeConfig.name}</Tag>
               <button
-                onClick={() => { setActiveConfig(null); setRoles([]); setStep(1); }}
+                onClick={() => {
+                  setActiveConfig(null);
+                  setRoles([]);
+                  setStep(1);
+                  refreshConfigs();
+                }}
                 className="text-xs text-slate-500 hover:text-slate-800 transition-colors font-semibold cursor-pointer border-none bg-transparent"
               >
-                ← Back to configs
+                ← Back to setup
               </button>
             </div>
           )}
@@ -1716,7 +2115,7 @@ export default function ActivityAnalysis({ datasetId }) {
               {step === 1 && (
                 <Step1Setup
                   datasetId={datasetId}
-                  existingConfigs={[]}
+                  existingConfigs={configs}
                   onCreated={handleConfigCreated}
                   onSelect={handleSelectExisting}
                 />

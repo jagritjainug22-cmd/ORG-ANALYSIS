@@ -59,8 +59,12 @@ export default function DataSourceSelector({
   setColumns,
   setUploadedFileName,
   renderUploadSlot,
+  view: controlledView,
+  onViewChange,
 }) {
-  const [view, setView] = useState("upload");
+  const [internalView, setInternalView] = useState("upload");
+  const view = controlledView ?? internalView;
+  const setView = onViewChange ?? setInternalView;
   const [datasets, setDatasets] = useState(null);
   const [listError, setListError] = useState(null);
   const [error, setError] = useState(null);

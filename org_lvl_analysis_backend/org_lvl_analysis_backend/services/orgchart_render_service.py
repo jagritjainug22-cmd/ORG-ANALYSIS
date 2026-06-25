@@ -364,14 +364,18 @@ def render_scenario_svg(
             f'stroke-width="2" opacity="{0.55 if flagged else 1}"/>'
         )
 
-        # Header stripe (clip-rect technique: solid rect for the stripe, no rounded corners issue since it's clipped by the card border anyway)
+        # Define clip path for the rounded corners of this card
+        clip_id = f"clip-{nid}"
+        parts.append(
+            f'<clipPath id="{clip_id}">'
+            f'<rect x="{x:.1f}" y="{y:.1f}" width="{CARD_W}" height="{CARD_H}" rx="10" ry="10" />'
+            f'</clipPath>'
+        )
+
+        # Header stripe (clipped to card rounded corners)
         parts.append(
             f'<rect x="{x:.1f}" y="{y:.1f}" width="{CARD_W}" height="28" '
-            f'fill="{header_bg}" opacity="{0.55 if flagged else 1}"/>'
-        )
-        parts.append(
-            f'<rect x="{x:.1f}" y="{y + 28 - 10:.1f}" width="{CARD_W}" height="10" '
-            f'fill="{WHITE}"/>'  # mask any rounded-corner overflow on the bottom of header
+            f'fill="{header_bg}" clip-path="url(#{clip_id})" opacity="{0.55 if flagged else 1}"/>'
         )
         # Re-draw card border on top so it's not partially covered
         parts.append(
@@ -385,16 +389,16 @@ def render_scenario_svg(
             f'<circle cx="{x + 16:.1f}" cy="{y + 14:.1f}" r="3" fill="{dot_color}"/>'
         )
         parts.append(
-            f'<text x="{x + 24:.1f}" y="{y + 18:.1f}" font-size="11" font-weight="600" '
-            f'fill="{WHITE}" letter-spacing="0.4">'
+            f'<text x="{x + 24:.1f}" y="{y + 14:.1f}" font-size="11" font-weight="600" '
+            f'fill="{WHITE}" letter-spacing="0.4" dominant-baseline="central">'
             f'{escape(_header_label(rec, level))}</text>'
         )
         if flagged:
             parts.append(
                 f'<rect x="{x + CARD_W - 60:.1f}" y="{y + 6:.1f}" width="50" height="14" '
                 f'rx="3" fill="{WHITE}"/>'
-                f'<text x="{x + CARD_W - 35:.1f}" y="{y + 16:.1f}" font-size="9" '
-                f'font-weight="700" fill="{DANGER}" text-anchor="middle">FLAGGED</text>'
+                f'<text x="{x + CARD_W - 35:.1f}" y="{y + 13:.1f}" font-size="9" '
+                f'font-weight="700" fill="{DANGER}" text-anchor="middle" dominant-baseline="central">FLAGGED</text>'
             )
 
         # Job title (truncated)
@@ -429,8 +433,8 @@ def render_scenario_svg(
         parts.append(
             f'<rect x="{x + 12:.1f}" y="{pill_y:.1f}" width="{pill_w}" height="16" '
             f'rx="4" fill="{NAVY}"/>'
-            f'<text x="{x + 12 + pill_w/2:.1f}" y="{pill_y + 11:.1f}" font-size="10" '
-            f'font-weight="600" fill="{WHITE}" text-anchor="middle" '
+            f'<text x="{x + 12 + pill_w/2:.1f}" y="{pill_y + 8:.1f}" font-size="10" '
+            f'font-weight="600" fill="{WHITE}" text-anchor="middle" dominant-baseline="central" '
             f'font-family="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace">{pill_text}</text>'
         )
         # gold pill (cost)
@@ -441,8 +445,8 @@ def render_scenario_svg(
             parts.append(
                 f'<rect x="{cx2:.1f}" y="{pill_y:.1f}" width="{cw}" height="16" '
                 f'rx="4" fill="{GOLD}"/>'
-                f'<text x="{cx2 + cw/2:.1f}" y="{pill_y + 11:.1f}" font-size="10" '
-                f'font-weight="700" fill="{NAVY}" text-anchor="middle" '
+                f'<text x="{cx2 + cw/2:.1f}" y="{pill_y + 8:.1f}" font-size="10" '
+                f'font-weight="700" fill="{NAVY}" text-anchor="middle" dominant-baseline="central" '
                 f'font-family="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace">{cost_text}</text>'
             )
 

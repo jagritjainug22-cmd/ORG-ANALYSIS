@@ -1277,6 +1277,22 @@ export default function OrgChart({
     return () => window.removeEventListener("keydown", onKey);
   }, [inDbMode, activeScenarioId]);
 
+  // Fit-to-view: scale + pan to show the entire tree at once.
+  const fitToView = useCallback(() => {
+    if (!viewportRef.current || !layout.width || !layout.height) return;
+    const vw = viewportRef.current.clientWidth;
+    const vh = viewportRef.current.clientHeight || 600;
+    const z = Math.min((vw - 60) / layout.width, (vh - 60) / layout.height, 1);
+    const newZoom = Math.max(0.05, z);
+    zoomRef.current = newZoom;
+    panRef.current = {
+      x: (vw - layout.width * newZoom) / 2,
+      y: 20,
+    };
+    setZoomLabel(newZoom);
+    applyTransform();
+  }, [layout, applyTransform]);
+
   // Keyboard shortcuts for pan (Shift+Arrow) and zoom (Z / Shift+Z / X).
   // Skipped when focus is inside any text input so typing isn't intercepted.
   useEffect(() => {
@@ -1321,22 +1337,6 @@ export default function OrgChart({
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [panBy, setZoomAt, fitToView]);
-
-  // Fit-to-view: scale + pan to show the entire tree at once.
-  const fitToView = useCallback(() => {
-    if (!viewportRef.current || !layout.width || !layout.height) return;
-    const vw = viewportRef.current.clientWidth;
-    const vh = viewportRef.current.clientHeight || 600;
-    const z = Math.min((vw - 60) / layout.width, (vh - 60) / layout.height, 1);
-    const newZoom = Math.max(0.05, z);
-    zoomRef.current = newZoom;
-    panRef.current = {
-      x: (vw - layout.width * newZoom) / 2,
-      y: 20,
-    };
-    setZoomLabel(newZoom);
-    applyTransform();
-  }, [layout, applyTransform]);
 
   // --------------------------------------------------------------------
   // Scenario actions (Phase 5)

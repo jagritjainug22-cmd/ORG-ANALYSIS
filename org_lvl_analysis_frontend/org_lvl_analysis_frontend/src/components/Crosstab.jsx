@@ -695,7 +695,7 @@ export default function Crosstab({ df, fteCol, flcCol, formulas = [], datasetId 
                         key={j}
                         className={`border-r border-gray-200 px-3 py-2 text-sm ${
                           j === 0
-                            ? "font-semibold text-white text-left sticky left-0 bg-inherit z-10 shadow-sm"
+                            ? "font-semibold text-gray-900 text-left sticky left-0 bg-inherit z-10 shadow-sm"
                             : "text-center text-gray-700 tabular-nums"
                         }`}
                       >

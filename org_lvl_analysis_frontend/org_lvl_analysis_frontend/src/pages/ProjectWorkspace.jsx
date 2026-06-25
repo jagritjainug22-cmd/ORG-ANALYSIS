@@ -10,6 +10,13 @@ import WorkspaceLoader from "../components/WorkspaceLoader";
 
 import UploadAndPrepare from "../components/UploadAndPrepare";
 import Rationalise from "../components/Rationalise";
+import {
+  computeColumnReadiness,
+  columnStateFromWorkspace,
+  columnStateFromMappings,
+  columnStateFromDataset,
+  applyReadinessToState,
+} from "../utils/columnReadiness";
 import Hierarchy from "../components/Hierarchy";
 import SpansLayers from "../components/SpansLayers";
 import Crosstab from "../components/Crosstab";
@@ -98,9 +105,14 @@ export default function ProjectWorkspace() {
   const [columnMappingMessage, setColumnMappingMessage] = useState(null);
   const [columnMappingRequiresAttention, setColumnMappingRequiresAttention] = useState(false);
   const [columnMappingSummary, setColumnMappingSummary] = useState(null);
+  const [columnReadiness, setColumnReadiness] = useState(null);
   const [preprocessingSummary, setPreprocessingSummary] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [uploadStep, setUploadStep] = useState("");
+  const [dataSource, setDataSource] = useState(null); // 'upload' | 'saved' | null
+
+  // --- Activity Analysis: remount on sidebar navigate to reset to setup screen ---
+  const [activityNavKey, setActivityNavKey] = useState(0);
 
   // --- UI STATE ---
   const [activeModule, setActiveModule] = useState("Upload");
@@ -371,18 +383,33 @@ export default function ProjectWorkspace() {
     setStatusCol(dataset.status_col || "");
   }, []);
 
+  const refreshColumnReadiness = useCallback((cols) => {
+    const readiness = computeColumnReadiness(cols);
+    applyReadinessToState(readiness, {
+      setColumnMappingMessage,
+      setColumnMappingRequiresAttention,
+      setColumnMappingSummary,
+      setColumnReadiness,
+    });
+    return readiness;
+  }, []);
+
+  const refreshColumnReadinessFromWorkspace = useCallback(() => {
+    return refreshColumnReadiness(columnStateFromWorkspace({
+      empCol, mgrCol, fteCol, flcCol, countryCol, jobTitleCol, funcCol, subfuncCol,
+    }));
+  }, [empCol, mgrCol, fteCol, flcCol, countryCol, jobTitleCol, funcCol, subfuncCol, refreshColumnReadiness]);
+
   const fillMissingColumnsFromAutoMap = useCallback(async (dataset, cols, records) => {
     const optionalDbFields = [
       "func_col", "subfunc_col", "grade_col", "division_col", "entity_col",
       "start_date_col", "basic_pay_col", "contract_type_col", "status_col",
     ];
     const needsAutoMap = optionalDbFields.some((f) => !dataset[f]);
-    if (!needsAutoMap || !cols?.length || !records?.length) return;
+    if (!needsAutoMap || !cols?.length || !records?.length) return columnStateFromDataset(dataset);
     try {
       const mapRes = await autoMapColumnsWithFeedback(cols, records.slice(0, 10));
       setColumnMappings(mapRes.mappings);
-      setColumnMappingMessage(mapRes.message);
-      setColumnMappingRequiresAttention(mapRes.requires_attention);
       setColumnMappingSummary(mapRes.mapping_summary || null);
       const get = (key) => (mapRes.mappings[key] || {}).source_column || "";
       if (!dataset.func_col && get("function")) setFuncCol(get("function"));
@@ -394,10 +421,15 @@ export default function ProjectWorkspace() {
       if (!dataset.basic_pay_col && get("basic_pay")) setBasicPayCol(get("basic_pay"));
       if (!dataset.contract_type_col && get("contract_type")) setContractTypeCol(get("contract_type"));
       if (!dataset.status_col && get("status")) setStatusCol(get("status"));
+      const mergedDataset = {
+        ...dataset,
+        func_col: dataset.func_col || get("function") || null,
+        subfunc_col: dataset.subfunc_col || get("subfunction") || null,
+      };
       if (dataset.id) {
         await dbUpdateColumnConfig(dataset.id, {
-          func_col: dataset.func_col || get("function") || null,
-          subfunc_col: dataset.subfunc_col || get("subfunction") || null,
+          func_col: mergedDataset.func_col,
+          subfunc_col: mergedDataset.subfunc_col,
           grade_col: dataset.grade_col || get("grade") || null,
           division_col: dataset.division_col || get("division") || null,
           entity_col: dataset.entity_col || get("entity") || null,
@@ -407,8 +439,10 @@ export default function ProjectWorkspace() {
           status_col: dataset.status_col || get("status") || null,
         });
       }
+      return columnStateFromDataset(mergedDataset);
     } catch (err) {
       console.warn("Auto-map fallback for saved dataset failed:", err);
+      return columnStateFromDataset(dataset);
     }
   }, []);
 
@@ -448,8 +482,10 @@ export default function ProjectWorkspace() {
     setColumnMappings(null);
     setColumnMappingMessage(null);
     setColumnMappingRequiresAttention(false);
+    setColumnReadiness(null);
     setValidatedDf(null);
     setFilteredRowCount(null);
+    setDataSource(null);
     
     // Clear previous column configurations immediately on new upload
     setEmpCol("");
@@ -477,15 +513,15 @@ export default function ProjectWorkspace() {
       setUploadStep("map");
       const mapRes = await autoMapColumnsWithFeedback(readRes.columns, readRes.records.slice(0, 10));
       setColumnMappings(mapRes.mappings);
-      setColumnMappingMessage(mapRes.message);
-      setColumnMappingRequiresAttention(mapRes.requires_attention);
       setColumnMappingSummary(mapRes.mapping_summary || null);
       hydrateColumnSelections(mapRes.mappings);
+      refreshColumnReadiness(columnStateFromMappings(mapRes.mappings));
       setColConfigCollapsed(false);
 
       setUploadedFileName(file.name);
       setActiveDatasetLabel(file.name);
       setActiveDatasetName(file.name);
+      setDataSource("upload");
     } catch (err) {
       console.error("Smart upload error:", err);
       alert(err.response?.data?.detail || "Failed to upload file. Please try again.");
@@ -493,7 +529,7 @@ export default function ProjectWorkspace() {
       setUploading(false);
       setUploadStep("");
     }
-  }, [hydrateColumnSelections]);
+  }, [hydrateColumnSelections, refreshColumnReadiness]);
 
   const doLogout = (e) => {
     confirmLogout(e);
@@ -569,28 +605,13 @@ export default function ProjectWorkspace() {
         rationalise: dataset.last_rationalise_at || null,
       });
       setColConfigCollapsed(false);
-      await fillMissingColumnsFromAutoMap(dataset, columnsOut, rec);
+      const autoMapCols = await fillMissingColumnsFromAutoMap(dataset, columnsOut, rec);
+      refreshColumnReadiness(autoMapCols || columnStateFromDataset(dataset));
       setFilteredRowCount(null);
       const scenarioName = scenarios.find((s) => s.id === scenarioId)?.name || "Baseline";
       setActiveDatasetLabel(dataset.name + " — " + scenarioName);
       setActiveDatasetName(dataset.name);
-      
-      // Perform core check on saved dataset
-      const missingCore = [];
-      if (!dataset.emp_col) missingCore.push("Employee ID");
-      if (!dataset.mgr_col) missingCore.push("Manager ID");
-      if (!dataset.fte_col) missingCore.push("FTE");
-      if (!dataset.flc_col) missingCore.push("Fully Loaded Cost (FLC)");
-      if (!dataset.country_col) missingCore.push("Country");
-      if (!dataset.job_title_col) missingCore.push("Job Title");
-
-      if (missingCore.length > 0) {
-        setColumnMappingMessage(`Necessary column(s) [${missingCore.join(", ")}] are not mapped in this dataset. Please set them in the Column Configuration below.`);
-        setColumnMappingRequiresAttention(true);
-      } else {
-        setColumnMappingMessage("All necessary columns mapped successfully.");
-        setColumnMappingRequiresAttention(false);
-      }
+      setDataSource("saved");
 
       dbListFormulas(dataset.id)
         .then((data) => setFormulas(data?.formulas || []))
@@ -667,6 +688,7 @@ export default function ProjectWorkspace() {
             columnMappingMessage={columnMappingMessage}
             columnMappingRequiresAttention={columnMappingRequiresAttention}
             columnMappingSummary={columnMappingSummary}
+            columnReadiness={columnReadiness}
             datasetId={datasetId}
             onDatasetPicked={({ dataset, scenarios: scs, activeScenarioId: sid }) =>
               activateDataset(dataset, scs, sid)
@@ -678,6 +700,12 @@ export default function ProjectWorkspace() {
                 validate: new Date().toISOString(),
               }))
             }
+            dataSource={dataSource}
+            pipelineStatus={pipelineStatus}
+            activeDatasetLabel={activeDatasetLabel}
+            activeScenarioId={activeScenarioId}
+            scenarios={scenarios}
+            datasetSwitching={datasetSwitching}
           />
         );
       case "Rationalise":
@@ -772,7 +800,7 @@ export default function ProjectWorkspace() {
           />
         );
       case "Activity Analysis":
-        return <ActivityAnalysis datasetId={datasetId} />;
+        return <ActivityAnalysis key={activityNavKey} datasetId={datasetId} />;
       case "Ask OrgSight":
         return (
           <AskOrgSight
@@ -790,7 +818,10 @@ export default function ProjectWorkspace() {
                 upload: "Upload",
               };
               const tab = tabMap[target];
-              if (tab) setActiveModule(tab);
+              if (tab) {
+                if (tab === "Activity Analysis") setActivityNavKey((k) => k + 1);
+                setActiveModule(tab);
+              }
             }}
           />
         );
@@ -1023,6 +1054,7 @@ export default function ProjectWorkspace() {
                               division_col: divisionCol || null, entity_col: entityCol || null, start_date_col: startDateCol || null,
                               basic_pay_col: basicPayCol || null, contract_type_col: contractTypeCol || null, status_col: statusCol || null,
                             });
+                            refreshColumnReadinessFromWorkspace();
                             setConfigSaved(true);
                             setTimeout(() => { setConfigSaved(false); setColConfigCollapsed(true); }, 1500);
                           } catch (e) { console.error("Save config failed:", e); }
@@ -1061,7 +1093,11 @@ export default function ProjectWorkspace() {
               return (
                 <button
                   key={m.id}
-                  onClick={() => !isMenuDisabled && setActiveModule(m.id)}
+                  onClick={() => {
+                    if (isMenuDisabled) return;
+                    if (m.id === "Activity Analysis") setActivityNavKey((k) => k + 1);
+                    setActiveModule(m.id);
+                  }}
                   disabled={isMenuDisabled}
                   title={isMenuDisabled ? `Please run Hierarchy first to enable ${m.label}` : ""}
                   className={`group flex items-center gap-3 w-full text-left px-4 py-2.5 rounded-md font-medium text-sm transition ${
@@ -1116,7 +1152,7 @@ export default function ProjectWorkspace() {
         {/* RIGHT PANE */}
         <aside
           className="w-72 bg-white border-l border-gray-200 shadow-sm"
-          style={{ display: (activeModule === "Org Chart" || activeModule === "Activity Analysis" || activeModule === "Spans & Layers" || activeModule === "Rationalise" || activeModule === "Ask OrgSight") ? "none" : "block" }}
+          style={{ display: (activeModule === "Org Chart" || activeModule === "Activity Analysis" || activeModule === "Spans & Layers" || activeModule === "Rationalise" || activeModule === "Ask OrgSight" || activeModule === "Crosstab") ? "none" : "block" }}
         >
           <div className="p-4 border-b border-gray-200">
             <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Export & Stats</h3>

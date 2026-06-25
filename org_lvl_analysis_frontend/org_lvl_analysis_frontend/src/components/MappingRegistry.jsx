@@ -1,5 +1,8 @@
 import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { getLearnedTaxonomy, patchLearnedMapping } from "../api/backend";
+import Paginator from "./Paginator";
+
+const PAGE_SIZE = 20;
 
 const TYPE_LABELS = {
   function: "Function",
@@ -23,6 +26,7 @@ export default function MappingRegistry() {
   const [funcFilter, setFuncFilter] = useState("all");
   const [search, setSearch] = useState("");
   const [showDisabled, setShowDisabled] = useState(true);
+  const [page, setPage] = useState(1);
 
   const [edits, setEdits] = useState({});
   const [applyMatching, setApplyMatching] = useState({});
@@ -51,14 +55,22 @@ export default function MappingRegistry() {
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return entries.filter(e => {
+    const result = entries.filter(e => {
       if (typeFilter !== "all" && e.type !== typeFilter) return false;
       if (funcFilter !== "all" && e.function !== funcFilter) return false;
       if (!showDisabled && e.disabled) return false;
       if (q && !e.input.toLowerCase().includes(q) && !e.resolved.toLowerCase().includes(q)) return false;
       return true;
     });
+    // Reset to page 1 whenever filters change (we do this as a side-effect via useEffect below)
+    return result;
   }, [entries, typeFilter, funcFilter, search, showDisabled]);
+
+  // Reset page when filter changes
+  useEffect(() => { setPage(1); }, [typeFilter, funcFilter, search, showDisabled]);
+
+  const totalPages = Math.ceil(filtered.length / PAGE_SIZE);
+  const paged = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
   const matchingCount = useCallback((entry) => {
     return entries.filter(e =>
@@ -238,7 +250,7 @@ export default function MappingRegistry() {
         <p className="text-sm text-slate-400 italic text-center py-10">No mappings match your filters</p>
       ) : (
         <div className="bg-white border border-brand-100 rounded-lg shadow-sm overflow-hidden">
-          <div className="overflow-x-auto max-h-[520px] overflow-y-auto">
+          <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="sticky top-0 z-10">
                 <tr className="bg-brand-50 text-brand-700 text-xs uppercase tracking-wide">
@@ -251,7 +263,7 @@ export default function MappingRegistry() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {filtered.map(entry => {
+                {paged.map(entry => {
                   const edited = edits[entry.id] ?? entry.resolved;
                   const isDirty = edited !== entry.resolved;
                   const matchN = matchingCount(entry);
@@ -324,6 +336,15 @@ export default function MappingRegistry() {
                 })}
               </tbody>
             </table>
+          </div>
+          <div className="px-4 border-t border-gray-100">
+            <Paginator
+              page={page}
+              totalPages={totalPages}
+              totalItems={filtered.length}
+              pageSize={PAGE_SIZE}
+              onChange={setPage}
+            />
           </div>
         </div>
       )}

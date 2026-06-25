@@ -1,0 +1,9 @@
+# OrgSight (Org Level Analysis) — Python dependencies
+# Install from repo root:
+#   python -m venv .venv
+#   .venv\Scripts\Activate.ps1   # Windows
+#   pip install -r requirements.txt
+#
+# Canonical path: org_lvl_analysis_backend/org_lvl_analysis_backend/requirements.txt
+
+-r org_lvl_analysis_backend/org_lvl_analysis_backend/requirements.txt

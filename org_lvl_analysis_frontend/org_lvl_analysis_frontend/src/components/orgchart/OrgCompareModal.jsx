@@ -21,7 +21,7 @@ export default function OrgCompareModal({ open, onClose, comparison }) {
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        fontFamily: "'IBM Plex Sans', sans-serif",
+        fontFamily: "Inter, system-ui, sans-serif",
       }}
     >
       <div
@@ -173,7 +173,7 @@ function Td({ children, right, mono, style }) {
       style={{
         padding: "10px 14px",
         textAlign: right ? "right" : "left",
-        fontFamily: mono ? "'IBM Plex Mono', monospace" : "inherit",
+        fontFamily: mono ? "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace" : "inherit",
         color: AM.textPrimary,
         ...style,
       }}

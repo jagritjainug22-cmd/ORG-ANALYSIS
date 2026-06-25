@@ -76,7 +76,7 @@ export default function OrgMoveConfirmModal({
           maxWidth: 440,
           width: "90%",
           boxShadow: "0 20px 60px rgba(0,0,0,0.2)",
-          fontFamily: "'IBM Plex Sans', system-ui, sans-serif",
+          fontFamily: "Inter, system-ui, sans-serif",
         }}
       >
         <h3

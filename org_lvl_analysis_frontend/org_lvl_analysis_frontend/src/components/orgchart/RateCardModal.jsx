@@ -159,7 +159,7 @@ export default function RateCardModal({
       style={{
         position: "fixed", inset: 0, background: "rgba(1,36,74,0.55)",
         zIndex: 60, display: "flex", alignItems: "center", justifyContent: "center",
-        fontFamily: "'IBM Plex Sans', sans-serif",
+        fontFamily: "Inter, system-ui, sans-serif",
       }}
     >
       <div
@@ -375,7 +375,7 @@ export default function RateCardModal({
                                     style={{
                                       width: 130, border: `1px solid ${hasManual ? AM.success : AM.warning}`,
                                       borderRadius: 5, padding: "5px 8px", fontSize: 12,
-                                      fontFamily: "'IBM Plex Mono', monospace",
+                                      fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
                                       outline: "none", textAlign: "right",
                                       background: hasManual ? "rgba(0,160,80,0.06)" : AM.white,
                                       color: AM.textPrimary,
@@ -388,7 +388,7 @@ export default function RateCardModal({
                                   )}
                                 </div>
                               ) : (
-                                <span style={{ fontFamily: "'IBM Plex Mono', monospace", color: AM.textPrimary }}>
+                                <span style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace", color: AM.textPrimary }}>
                                   {fmtCell(row.p50)}
                                 </span>
                               )}
@@ -559,7 +559,7 @@ function inputStyle() {
   return {
     width: "100%", marginTop: 4, border: `1px solid ${AM.border}`,
     borderRadius: 6, padding: "7px 10px", fontSize: 12, outline: "none",
-    boxSizing: "border-box", fontFamily: "'IBM Plex Sans', sans-serif",
+    boxSizing: "border-box", fontFamily: "Inter, system-ui, sans-serif",
   };
 }
 
@@ -595,7 +595,7 @@ function Td({ children, right, mono, muted }) {
   return (
     <td style={{
       padding: "8px 12px", textAlign: right ? "right" : "left",
-      fontFamily: mono ? "'IBM Plex Mono', monospace" : "inherit",
+      fontFamily: mono ? "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace" : "inherit",
       color: muted ? AM.textMuted : AM.textPrimary, verticalAlign: "middle",
     }}>
       {children}

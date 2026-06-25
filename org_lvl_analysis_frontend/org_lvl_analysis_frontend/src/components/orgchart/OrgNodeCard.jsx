@@ -9,6 +9,7 @@ import {
   fmtNumber,
   isDownwardDrop,
 } from "./orgChartLayout";
+import { FOCUSED_CARD_SCALE } from "./orgChartFocus";
 
 /**
  * Option D card: navy header stripe + white body. Hover-reveal toolbar.
@@ -30,6 +31,7 @@ function OrgNodeCardImpl({
   position,
   stats,
   selected,
+  focused,
   isMultiSelected,
   issues,
   editMode,
@@ -93,7 +95,7 @@ function OrgNodeCardImpl({
   const subtreeCost = stats ? stats.cost : cost || 0;
   const reportsLabel = stats?.headcount > 1 ? `${stats.headcount - 1} reports` : "0 reports";
 
-  const borderColor = selected
+  const borderColor = focused || selected
     ? AM.gold
     : isMultiSelected
     ? "#2563eb"
@@ -149,8 +151,11 @@ function OrgNodeCardImpl({
           : editMode && !flagged
           ? isDragging ? "grabbing" : "grab"
           : "pointer",
-        fontFamily: "'IBM Plex Sans', system-ui, sans-serif",
-        transition: "opacity 0.15s ease-out",
+        fontFamily: "Inter, system-ui, sans-serif",
+        transition: "opacity 0.15s ease-out, transform 0.2s ease-out",
+        transform: focused ? `scale(${FOCUSED_CARD_SCALE})` : undefined,
+        transformOrigin: "50% 50%",
+        zIndex: focused ? 30 : selected ? 10 : 1,
         userSelect: "none",
       }}
     >
@@ -191,7 +196,7 @@ function OrgNodeCardImpl({
             zIndex: 5,
             pointerEvents: "none",
             boxShadow: "0 1px 3px rgba(0,0,0,0.25)",
-            fontFamily: "'IBM Plex Sans', sans-serif",
+            fontFamily: "Inter, system-ui, sans-serif",
           }}
         >
           {issueCount}
@@ -234,7 +239,9 @@ function OrgNodeCardImpl({
           background: AM.cardBg,
           borderRadius: 10,
           border: `2px ${borderStyle} ${borderColor}`,
-          boxShadow: selected
+          boxShadow: focused
+            ? `0 0 0 4px ${AM.gold}55, 0 8px 28px rgba(197,168,74,0.35), 0 4px 16px rgba(1,36,74,0.2)`
+            : selected
             ? `0 0 0 3px ${AM.gold}33, 0 4px 14px rgba(1,36,74,0.15)`
             : isMultiSelected
             ? "0 0 0 3px #2563eb33, 0 4px 14px rgba(37,99,235,0.15)"
@@ -319,7 +326,7 @@ function OrgNodeCardImpl({
 
         <div
           style={{
-            fontFamily: "'IBM Plex Mono', monospace",
+            fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
             fontSize: 11.5,
             color: AM.textSecondary,
             fontWeight: 500,
@@ -338,7 +345,7 @@ function OrgNodeCardImpl({
               fontWeight: 600,
               padding: "2px 8px",
               borderRadius: 4,
-              fontFamily: "'IBM Plex Mono', monospace",
+              fontFamily: "Inter, system-ui, sans-serif",
             }}
           >
             {reportsLabel}
@@ -352,7 +359,7 @@ function OrgNodeCardImpl({
                 fontWeight: 700,
                 padding: "2px 8px",
                 borderRadius: 4,
-                fontFamily: "'IBM Plex Mono', monospace",
+                fontFamily: "Inter, system-ui, sans-serif",
               }}
             >
               {fmtCompactCurrency(subtreeCost)}
@@ -500,6 +507,7 @@ const OrgNodeCard = React.memo(OrgNodeCardImpl, (prev, next) => {
   if (prev.position.x !== next.position.x || prev.position.y !== next.position.y) return false;
   if (prev.stats !== next.stats) return false;
   if (prev.selected !== next.selected) return false;
+  if (prev.focused !== next.focused) return false;
   if (prev.isMultiSelected !== next.isMultiSelected) return false;
   if (prev.issues !== next.issues) return false;
   if (prev.editMode !== next.editMode) return false;

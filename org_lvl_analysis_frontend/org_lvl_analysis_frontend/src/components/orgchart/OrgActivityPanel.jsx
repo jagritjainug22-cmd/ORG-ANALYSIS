@@ -56,7 +56,7 @@ export default function OrgActivityPanel({
         display: "flex",
         flexDirection: "column",
         zIndex: 11,
-        fontFamily: "'IBM Plex Sans', system-ui, sans-serif",
+        fontFamily: "Inter, system-ui, sans-serif",
       }}
     >
       {/* Header */}
@@ -271,7 +271,7 @@ function ChangeRow({ change, nameOf, highlight }) {
           <span style={{ fontSize: 12, fontWeight: 700, color: AM.textPrimary }}>
             {change.username || "Unknown"}
           </span>
-          <span style={{ fontSize: 10, color: AM.textMuted, fontFamily: "'IBM Plex Mono', monospace", flexShrink: 0 }}>
+          <span style={{ fontSize: 10, color: AM.textMuted, fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace", flexShrink: 0 }}>
             {formatRelative(change.timestamp)}
           </span>
         </div>

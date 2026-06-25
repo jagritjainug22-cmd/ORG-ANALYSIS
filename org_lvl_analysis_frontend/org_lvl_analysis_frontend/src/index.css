@@ -50,3 +50,58 @@ body {
 .org-toolbar-scroll::-webkit-scrollbar-thumb:hover {
   background: rgba(255, 255, 255, 0.4);
 }
+
+/* ------------------ Premium Chat Loader Animations ------------------ */
+@keyframes spin-clockwise {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+@keyframes spin-counterclockwise {
+  0% { transform: rotate(360deg); }
+  100% { transform: rotate(0deg); }
+}
+
+@keyframes pulse-ring {
+  0%, 100% { transform: scale(0.95); opacity: 0.2; }
+  50% { transform: scale(1.05); opacity: 0.4; }
+}
+
+@keyframes pulse-glow {
+  0%, 100% { box-shadow: 0 0 15px rgba(10, 63, 134, 0.4); }
+  50% { box-shadow: 0 0 30px rgba(10, 63, 134, 0.8), 0 0 10px rgba(116, 169, 231, 0.4); }
+}
+
+@keyframes float-particle {
+  0%, 100% { transform: translateY(0) scale(1); opacity: 0.3; }
+  50% { transform: translateY(-8px) scale(1.2); opacity: 0.9; }
+}
+
+.animate-spin-slow {
+  animation: spin-clockwise 10s linear infinite;
+}
+
+.animate-spin-reverse-slow {
+  animation: spin-counterclockwise 7s linear infinite;
+}
+
+.animate-pulse-ring-slow {
+  animation: pulse-ring 3s ease-in-out infinite;
+}
+
+.animate-pulse-glow {
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+
+.animate-float-1 {
+  animation: float-particle 2.5s ease-in-out infinite;
+}
+
+.animate-float-2 {
+  animation: float-particle 3s ease-in-out infinite 0.5s;
+}
+
+.animate-float-3 {
+  animation: float-particle 2s ease-in-out infinite 1s;
+}
+

@@ -125,121 +125,237 @@ export default function OrgDetailPanel({
     ([k]) => !k.startsWith("__") && !["is_flagged_removed", "is_added"].includes(k)
   );
 
+  const jobTitle = record[jobTitleCol] || record["Job Title"] || empId;
+  const initials = getInitials(jobTitle);
+  const fteVal = fteCol ? Number(record[fteCol] || 0) : null;
+  const costVal = flcCol ? Number(record[flcCol] || 0) : null;
+  const countryVal = countryCol ? record[countryCol] : null;
+  const mgmtLevel = record["Management Level"] || record["managementLevel"] || null;
+
+  const pills = [];
+  if (flagged) pills.push({ label: "Flagged", bg: AM.danger, color: "#fff" });
+  if (mutationState?.added) pills.push({ label: mutationState?.cloned ? "Cloned" : "Added", bg: AM.success, color: "#fff" });
+  else if (mutationState?.cloned) pills.push({ label: "Cloned", bg: AM.success, color: "#fff" });
+  if (mutationState?.moved) pills.push({ label: "Moved", bg: "#2563eb", color: "#fff" });
+  if (mutationState?.edited) pills.push({ label: "Edited", bg: "#d97706", color: "#fff" });
+
   return (
     <aside
       style={{
-        width: 340,
-        background: AM.white,
+        width: 360,
+        background: "#f8fafd",
         borderLeft: `1px solid ${AM.border}`,
         display: "flex",
         flexDirection: "column",
         flexShrink: 0,
-        fontFamily: "'IBM Plex Sans', system-ui, sans-serif",
-        // Float over the canvas so it never squeezes the chart at narrow widths.
+        fontFamily: "Inter, system-ui, sans-serif",
         position: "absolute",
         top: 0,
         right: 0,
         bottom: 0,
         zIndex: 10,
-        boxShadow: "-8px 0 24px rgba(11, 35, 75, 0.12)",
+        boxShadow: "-4px 0 32px rgba(11, 35, 75, 0.10)",
       }}
     >
+      {/* ── Top bar ── */}
       <div
         style={{
-          padding: "14px 16px",
+          padding: "0 16px",
+          height: 46,
           borderBottom: `1px solid ${AM.border}`,
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
-          background: AM.navy,
-          color: AM.white,
+          background: AM.white,
+          flexShrink: 0,
         }}
       >
-        <span style={{ fontWeight: 700, fontSize: 13, letterSpacing: "0.3px" }}>
-          Employee Details
-        </span>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <span
+            style={{
+              width: 8,
+              height: 8,
+              borderRadius: "50%",
+              background: AM.gold,
+              display: "inline-block",
+              flexShrink: 0,
+            }}
+          />
+          <span style={{ fontWeight: 700, fontSize: 12, color: AM.navy, letterSpacing: "0.3px", textTransform: "uppercase" }}>
+            Employee Details
+          </span>
+        </div>
         <button
           onClick={onClose}
           style={{
             background: "transparent",
-            border: "none",
-            color: AM.white,
-            fontSize: 20,
+            border: `1px solid ${AM.border}`,
+            color: AM.textSecondary,
+            fontSize: 16,
             cursor: "pointer",
             padding: 0,
             lineHeight: 1,
+            width: 28,
+            height: 28,
+            borderRadius: 6,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
           }}
           aria-label="Close detail panel"
+          onMouseEnter={(e) => { e.currentTarget.style.background = AM.borderLight; e.currentTarget.style.color = AM.navy; }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = AM.textSecondary; }}
         >
           ×
         </button>
       </div>
 
-      <div style={{ padding: 16, flex: 1, overflow: "auto" }}>
-        <div
-          style={{
-            background: flagged ? AM.dangerLight : AM.borderLight,
-            border: `1px solid ${flagged ? AM.danger : AM.border}`,
-            borderRadius: 8,
-            padding: "12px 14px",
-            marginBottom: 16,
-          }}
-        >
-          <div style={{ fontSize: 14, fontWeight: 700, color: AM.navy }}>
-            {record[jobTitleCol] || record["Job Title"] || empId}
-          </div>
+      {/* ── Hero card ── */}
+      <div
+        style={{
+          background: flagged
+            ? `linear-gradient(135deg, #8b0000 0%, ${AM.danger} 100%)`
+            : `linear-gradient(135deg, ${AM.navy} 0%, ${AM.navyLight} 100%)`,
+          padding: "20px 20px 18px",
+          flexShrink: 0,
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 14 }}>
+          {/* Avatar */}
           <div
             style={{
-              fontSize: 11,
-              color: AM.textSecondary,
-              marginTop: 4,
-              fontFamily: "'IBM Plex Mono', monospace",
+              width: 44,
+              height: 44,
+              borderRadius: 12,
+              background: "rgba(197,168,74,0.22)",
+              border: "1.5px solid rgba(197,168,74,0.55)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              flexShrink: 0,
+              color: AM.gold,
+              fontSize: 16,
+              fontWeight: 800,
+              letterSpacing: "-0.5px",
             }}
           >
-            ID: {empId}
+            {initials}
           </div>
-          {/* Status pills */}
-          {(() => {
-            const pills = [];
-            if (flagged) {
-              pills.push({ label: "Flagged", bg: AM.danger, color: "#fff" });
-            }
-            if (mutationState?.added) {
-              pills.push({ label: mutationState?.cloned ? "Cloned" : "Added", bg: AM.success, color: "#fff" });
-            } else if (mutationState?.cloned) {
-              pills.push({ label: "Cloned", bg: AM.success, color: "#fff" });
-            }
-            if (mutationState?.moved) {
-              pills.push({ label: "Moved", bg: "#2563eb", color: "#fff" });
-            }
-            if (mutationState?.edited) {
-              pills.push({ label: "Edited", bg: "#d97706", color: "#fff" });
-            }
-            if (!pills.length) return null;
-            return (
-              <div style={{ display: "flex", gap: 5, marginTop: 8, flexWrap: "wrap" }}>
+
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div
+              style={{
+                fontSize: 14,
+                fontWeight: 700,
+                color: AM.white,
+                lineHeight: 1.35,
+                marginBottom: 5,
+                overflow: "hidden",
+                display: "-webkit-box",
+                WebkitLineClamp: 2,
+                WebkitBoxOrient: "vertical",
+              }}
+            >
+              {jobTitle}
+            </div>
+
+            <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+              <span
+                style={{
+                  fontSize: 11,
+                  color: "rgba(255,255,255,0.55)",
+                  fontWeight: 400,
+                }}
+              >
+                ID
+              </span>
+              <span
+                style={{
+                  fontSize: 11,
+                  color: "rgba(255,255,255,0.85)",
+                  fontWeight: 600,
+                  letterSpacing: "0.3px",
+                }}
+              >
+                {empId}
+              </span>
+              {mgmtLevel && (
+                <>
+                  <span style={{ color: "rgba(255,255,255,0.3)", fontSize: 9 }}>·</span>
+                  <span
+                    style={{
+                      fontSize: 10,
+                      color: AM.gold,
+                      fontWeight: 600,
+                      letterSpacing: "0.2px",
+                    }}
+                  >
+                    {mgmtLevel}
+                  </span>
+                </>
+              )}
+            </div>
+
+            {pills.length > 0 && (
+              <div style={{ display: "flex", gap: 5, marginTop: 10, flexWrap: "wrap" }}>
                 {pills.map(({ label, bg, color }) => (
                   <span
                     key={label}
                     style={{
-                      fontSize: 10,
+                      fontSize: 9,
                       fontWeight: 700,
-                      letterSpacing: "0.5px",
+                      letterSpacing: "0.6px",
                       textTransform: "uppercase",
                       background: bg,
                       color,
-                      padding: "2px 8px",
-                      borderRadius: 10,
-                      fontFamily: "'IBM Plex Sans', system-ui, sans-serif",
+                      padding: "3px 8px",
+                      borderRadius: 4,
                     }}
                   >
                     {label}
                   </span>
                 ))}
               </div>
-            );
-          })()}
+            )}
+          </div>
         </div>
+
+        {/* KPI strip */}
+        {(costVal != null || fteVal != null || countryVal) && (
+          <div
+            style={{
+              display: "flex",
+              gap: 8,
+              marginTop: 16,
+            }}
+          >
+            {costVal != null && costVal > 0 && (
+              <KpiChip
+                label="Cost"
+                value={fmtCompactCurrency(costVal)}
+                accent={AM.gold}
+              />
+            )}
+            {fteVal != null && (
+              <KpiChip
+                label="FTE"
+                value={fmtNumber(fteVal)}
+                accent="rgba(255,255,255,0.7)"
+              />
+            )}
+            {countryVal && (
+              <KpiChip
+                label="Country"
+                value={String(countryVal)}
+                accent="rgba(255,255,255,0.7)"
+              />
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* ── Scrollable body ── */}
+      <div style={{ padding: "14px 16px", flex: 1, overflow: "auto" }}>
 
         {/* Validation issues banner */}
         {issues && issues.length > 0 && (
@@ -258,23 +374,16 @@ export default function OrgDetailPanel({
           />
         )}
 
+        {/* Edit mode action buttons */}
         {editMode && (
-          <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
+          <div style={{ marginBottom: 14 }}>
             {!editing && !cloning ? (
-              <>
-                <button
-                  onClick={startEdit}
-                  disabled={flagged}
-                  style={primaryBtn(flagged)}
-                >
-                  Edit fields
+              <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
+                <button onClick={startEdit} disabled={flagged} style={primaryBtn(flagged)}>
+                  <PencilSvg /> Edit fields
                 </button>
-                <button
-                  onClick={startClone}
-                  disabled={flagged}
-                  style={ghostBtn(flagged)}
-                >
-                  Clone position
+                <button onClick={startClone} disabled={flagged} style={ghostBtn(flagged)}>
+                  Clone
                 </button>
                 <button
                   onClick={() => { onFlagToggle?.(empId, !flagged, effectiveDate || null); setEffectiveDate(""); }}
@@ -282,109 +391,68 @@ export default function OrgDetailPanel({
                 >
                   {flagged ? "Restore" : "Flag"}
                 </button>
-              </>
+              </div>
             ) : cloning ? (
-              <>
+              <div style={{ display: "flex", gap: 7 }}>
                 <button onClick={submitClone} style={primaryBtn(false)}>Create clone</button>
-                <button
-                  onClick={() => {
-                    setCloning(false);
-                    setCloneError("");
-                  }}
-                  style={ghostBtn()}
-                >
-                  Cancel
-                </button>
-              </>
+                <button onClick={() => { setCloning(false); setCloneError(""); }} style={ghostBtn()}>Cancel</button>
+              </div>
             ) : (
-              <>
+              <div style={{ display: "flex", gap: 7 }}>
                 <button onClick={save} style={primaryBtn(false)}>Save</button>
                 <button onClick={() => setEditing(false)} style={ghostBtn()}>Cancel</button>
-              </>
+              </div>
             )}
           </div>
         )}
 
+        {/* Clone new ID input */}
         {cloning && (
-          <div style={{ marginBottom: 16 }}>
-            <label
-              style={{
-                display: "block",
-                fontSize: 10,
-                fontWeight: 600,
-                color: AM.textSecondary,
-                textTransform: "uppercase",
-                letterSpacing: "0.6px",
-                marginBottom: 4,
-              }}
-            >
-              New employee ID
-            </label>
+          <div
+            style={{
+              marginBottom: 16,
+              background: AM.white,
+              border: `1px solid ${AM.border}`,
+              borderRadius: 10,
+              padding: "12px 14px",
+            }}
+          >
+            <label style={fieldLabelStyle}>New employee ID</label>
             <input
               value={cloneId}
-              onChange={(e) => {
-                setCloneId(e.target.value);
-                setCloneError("");
-              }}
+              onChange={(e) => { setCloneId(e.target.value); setCloneError(""); }}
               style={{
-                width: "100%",
-                border: `1px solid ${cloneError ? AM.danger : AM.border}`,
-                borderRadius: 6,
-                padding: "6px 10px",
-                fontSize: 12,
-                outline: "none",
-                fontFamily: "'IBM Plex Mono', monospace",
+                ...inputStyle,
+                borderColor: cloneError ? AM.danger : AM.border,
+                fontFamily: "Inter, system-ui, sans-serif",
               }}
             />
             {cloneError && (
-              <div style={{ fontSize: 11, color: AM.danger, marginTop: 6 }}>{cloneError}</div>
+              <div style={{ fontSize: 11, color: AM.danger, marginTop: 5 }}>{cloneError}</div>
             )}
-            <div style={{ fontSize: 11, color: AM.textMuted, marginTop: 8, lineHeight: 1.4 }}>
-              Creates a copy under the same manager with the same role properties.
+            <div style={{ fontSize: 11, color: AM.textMuted, marginTop: 8, lineHeight: 1.5 }}>
+              Creates a copy under the same manager with identical role properties.
             </div>
           </div>
         )}
 
+        {/* Effective date (view mode) */}
         {editMode && !editing && !cloning && (
           <div style={{ marginBottom: 12 }}>
-            <label
-              style={{
-                display: "block",
-                fontSize: 10,
-                fontWeight: 600,
-                color: AM.textSecondary,
-                textTransform: "uppercase",
-                letterSpacing: "0.6px",
-                marginBottom: 4,
-              }}
-            >
-              Effective Date
-            </label>
+            <label style={fieldLabelStyle}>Effective Date</label>
             <input
               type="date"
               value={effectiveDate}
               onChange={(e) => setEffectiveDate(e.target.value)}
-              placeholder="When does this change take effect?"
-              style={{
-                width: "100%",
-                border: `1px solid ${AM.border}`,
-                borderRadius: 6,
-                padding: "6px 10px",
-                fontSize: 12,
-                outline: "none",
-                fontFamily: "'IBM Plex Sans', sans-serif",
-              }}
+              style={{ ...inputStyle, fontFamily: "Inter, system-ui, sans-serif" }}
             />
           </div>
         )}
 
+        {/* Rate card button */}
         {editMode && flcCol && rateCardActive && !editing && !cloning && (
           <div style={{ marginBottom: 12 }}>
-            <button
-              onClick={() => onApplyRateCard?.(empId)}
-              disabled={flagged}
-              style={ghostBtn(flagged)}
-            >
+            <button onClick={() => onApplyRateCard?.(empId)} disabled={flagged} style={ghostBtn(flagged)}>
               Recalculate from rate card
             </button>
             {record.__rate_card_derived && (
@@ -395,117 +463,146 @@ export default function OrgDetailPanel({
           </div>
         )}
 
+        {/* Edit form */}
         {editing && (
-          <div style={{ marginBottom: 16 }}>
+          <div
+            style={{
+              marginBottom: 16,
+              background: AM.white,
+              border: `1px solid ${AM.border}`,
+              borderRadius: 10,
+              padding: "14px",
+            }}
+          >
+            <div
+              style={{
+                fontSize: 10,
+                fontWeight: 700,
+                color: AM.textMuted,
+                textTransform: "uppercase",
+                letterSpacing: "0.8px",
+                marginBottom: 12,
+              }}
+            >
+              Edit fields
+            </div>
             {editableFields.map(([f, label]) => (
               <div key={f} style={{ marginBottom: 10 }}>
-                <label
-                  style={{
-                    display: "block",
-                    fontSize: 10,
-                    fontWeight: 600,
-                    color: AM.textSecondary,
-                    textTransform: "uppercase",
-                    letterSpacing: "0.6px",
-                    marginBottom: 4,
-                  }}
-                >
-                  {label}
-                </label>
+                <label style={fieldLabelStyle}>{label}</label>
                 <input
                   value={draft[f] ?? ""}
-                  onChange={(e) =>
-                    setDraft((p) => ({ ...p, [f]: e.target.value }))
-                  }
-                  style={{
-                    width: "100%",
-                    border: `1px solid ${AM.border}`,
-                    borderRadius: 6,
-                    padding: "6px 10px",
-                    fontSize: 12,
-                    outline: "none",
-                    fontFamily: "'IBM Plex Sans', sans-serif",
-                  }}
+                  onChange={(e) => setDraft((p) => ({ ...p, [f]: e.target.value }))}
+                  style={{ ...inputStyle, fontFamily: "Inter, system-ui, sans-serif" }}
                 />
               </div>
             ))}
-            <div style={{ marginBottom: 10 }}>
-              <label
-                style={{
-                  display: "block",
-                  fontSize: 10,
-                  fontWeight: 600,
-                  color: AM.textSecondary,
-                  textTransform: "uppercase",
-                  letterSpacing: "0.6px",
-                  marginBottom: 4,
-                }}
-              >
-                Effective Date
-              </label>
+            <div style={{ marginBottom: 4 }}>
+              <label style={fieldLabelStyle}>Effective Date</label>
               <input
                 type="date"
                 value={effectiveDate}
                 onChange={(e) => setEffectiveDate(e.target.value)}
-                style={{
-                  width: "100%",
-                  border: `1px solid ${AM.border}`,
-                  borderRadius: 6,
-                  padding: "6px 10px",
-                  fontSize: 12,
-                  outline: "none",
-                  fontFamily: "'IBM Plex Sans', sans-serif",
-                }}
+                style={{ ...inputStyle, fontFamily: "Inter, system-ui, sans-serif" }}
               />
             </div>
           </div>
         )}
 
+        {/* All fields table */}
         <div
           style={{
-            fontSize: 10,
-            fontWeight: 600,
-            color: AM.textMuted,
-            textTransform: "uppercase",
-            letterSpacing: "0.8px",
-            marginBottom: 8,
+            background: AM.white,
+            border: `1px solid ${AM.border}`,
+            borderRadius: 10,
+            overflow: "hidden",
           }}
         >
-          All fields
-        </div>
-        {allFields.map(([k, v]) => (
           <div
-            key={k}
             style={{
-              display: "flex",
-              justifyContent: "space-between",
-              gap: 12,
-              padding: "6px 0",
+              padding: "10px 14px",
               borderBottom: `1px solid ${AM.borderLight}`,
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
             }}
           >
-            <span style={{ fontSize: 11, color: AM.textMuted, flexShrink: 0 }}>{k}</span>
             <span
               style={{
-                fontSize: 11,
-                color: AM.textPrimary,
-                fontFamily: "'IBM Plex Mono', monospace",
-                textAlign: "right",
-                maxWidth: 200,
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                whiteSpace: "nowrap",
+                fontSize: 10,
+                fontWeight: 700,
+                color: AM.textMuted,
+                textTransform: "uppercase",
+                letterSpacing: "0.8px",
               }}
-              title={String(v ?? "")}
             >
-              {formatVal(v)}
+              All fields
+            </span>
+            <span
+              style={{
+                fontSize: 10,
+                color: AM.textMuted,
+                background: AM.borderLight,
+                padding: "1px 6px",
+                borderRadius: 10,
+                fontWeight: 500,
+              }}
+            >
+              {allFields.length}
             </span>
           </div>
-        ))}
 
-        {/* ── Calculated columns (formula-derived) ── */}
+          {allFields.map(([k, v], idx) => (
+            <div
+              key={k}
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                gap: 12,
+                padding: "8px 14px",
+                borderBottom: idx < allFields.length - 1 ? `1px solid ${AM.borderLight}` : "none",
+                transition: "background 0.1s",
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.background = "#f4f7fb"; }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+            >
+              <span
+                style={{
+                  fontSize: 11.5,
+                  color: AM.textMuted,
+                  flexShrink: 0,
+                  fontWeight: 400,
+                  maxWidth: 120,
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                }}
+                title={k}
+              >
+                {k}
+              </span>
+              <span
+                style={{
+                  fontSize: 12,
+                  color: AM.textPrimary,
+                  fontFamily: "Inter, system-ui, sans-serif",
+                  fontWeight: 500,
+                  textAlign: "right",
+                  maxWidth: 190,
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                }}
+                title={String(v ?? "")}
+              >
+                {formatVal(v)}
+              </span>
+            </div>
+          ))}
+        </div>
+
+        {/* Calculated columns (formula-derived) */}
         {formulas.length > 0 && record && (() => {
-          // Evaluate each formula against this record
           const evalFormula = (expression, rec) => {
             try {
               const cols = Object.keys(rec).sort((a, b) => b.length - a.length);
@@ -525,23 +622,38 @@ export default function OrgDetailPanel({
           };
 
           return (
-            <div style={{ marginTop: 12 }}>
+            <div
+              style={{
+                marginTop: 10,
+                background: "rgba(13,107,95,0.04)",
+                border: "1px solid rgba(13,107,95,0.15)",
+                borderRadius: 10,
+                overflow: "hidden",
+              }}
+            >
               <div
                 style={{
-                  fontSize: 10,
-                  fontWeight: 600,
-                  color: "#0D6B5F",
-                  textTransform: "uppercase",
-                  letterSpacing: "0.8px",
-                  marginBottom: 8,
-                  marginTop: 4,
-                  borderTop: "1px solid rgba(13,107,95,0.2)",
-                  paddingTop: 10,
+                  padding: "10px 14px",
+                  borderBottom: "1px solid rgba(13,107,95,0.12)",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
                 }}
               >
-                Calculated
+                <span
+                  style={{
+                    fontSize: 10,
+                    fontWeight: 700,
+                    color: "#0D6B5F",
+                    textTransform: "uppercase",
+                    letterSpacing: "0.8px",
+                  }}
+                >
+                  Calculated
+                </span>
               </div>
-              {formulas.map((formula) => {
+
+              {formulas.map((formula, idx) => {
                 const val = evalFormula(formula.expression, record);
                 return (
                   <div
@@ -549,22 +661,27 @@ export default function OrgDetailPanel({
                     style={{
                       display: "flex",
                       justifyContent: "space-between",
+                      alignItems: "center",
                       gap: 12,
-                      padding: "6px 8px",
-                      marginBottom: 4,
-                      borderRadius: 6,
-                      background: "rgba(13,107,95,0.06)",
-                      border: "1px solid rgba(13,107,95,0.12)",
+                      padding: "8px 14px",
+                      borderBottom: idx < formulas.length - 1 ? "1px solid rgba(13,107,95,0.08)" : "none",
                     }}
                   >
-                    <span style={{ fontSize: 11, color: "#0a5549", fontWeight: 500, flexShrink: 0 }}>
+                    <span
+                      style={{
+                        fontSize: 11.5,
+                        color: "#0a5549",
+                        fontWeight: 500,
+                        flexShrink: 0,
+                      }}
+                    >
                       {formula.col_name}
                     </span>
                     <span
                       style={{
-                        fontSize: 11,
+                        fontSize: 12,
                         color: val !== null ? "#0D6B5F" : AM.textMuted,
-                        fontFamily: "'IBM Plex Mono', monospace",
+                        fontFamily: "Inter, system-ui, sans-serif",
                         fontWeight: 600,
                         textAlign: "right",
                       }}
@@ -577,9 +694,65 @@ export default function OrgDetailPanel({
             </div>
           );
         })()}
+
+        {/* Bottom padding */}
+        <div style={{ height: 16 }} />
       </div>
     </aside>
   );
+}
+
+/* ── KPI chip ── */
+function KpiChip({ label, value, accent }) {
+  return (
+    <div
+      style={{
+        flex: 1,
+        minWidth: 0,
+        background: "rgba(255,255,255,0.09)",
+        border: "1px solid rgba(255,255,255,0.13)",
+        borderRadius: 8,
+        padding: "8px 10px",
+        textAlign: "center",
+      }}
+    >
+      <div
+        style={{
+          fontSize: 13,
+          fontWeight: 700,
+          color: accent,
+          fontFamily: "Inter, system-ui, sans-serif",
+          whiteSpace: "nowrap",
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+        }}
+      >
+        {value}
+      </div>
+      <div
+        style={{
+          fontSize: 9,
+          fontWeight: 600,
+          color: "rgba(255,255,255,0.45)",
+          textTransform: "uppercase",
+          letterSpacing: "0.6px",
+          marginTop: 2,
+        }}
+      >
+        {label}
+      </div>
+    </div>
+  );
+}
+
+function getInitials(title) {
+  const words = String(title || "?")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  if (words.length === 0) return "?";
+  if (words.length === 1) return words[0][0]?.toUpperCase() ?? "?";
+  return (words[0][0] + words[1][0]).toUpperCase();
 }
 
 function makeCloneSuggestion(sourceId, existingEmpIds) {
@@ -599,57 +772,98 @@ function formatVal(v) {
   return String(v);
 }
 
+/* ── Shared style objects ── */
+const fieldLabelStyle = {
+  display: "block",
+  fontSize: 10,
+  fontWeight: 600,
+  color: AM.textSecondary,
+  textTransform: "uppercase",
+  letterSpacing: "0.6px",
+  marginBottom: 4,
+  fontFamily: "Inter, system-ui, sans-serif",
+};
+
+const inputStyle = {
+  width: "100%",
+  border: `1px solid ${AM.border}`,
+  borderRadius: 7,
+  padding: "7px 10px",
+  fontSize: 12,
+  outline: "none",
+  boxSizing: "border-box",
+  color: AM.textPrimary,
+  background: AM.white,
+};
+
 function primaryBtn(disabled) {
   return {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 6,
     flex: 1,
     background: disabled ? AM.borderLight : AM.navy,
     color: disabled ? AM.textMuted : AM.white,
     border: "none",
-    borderRadius: 6,
-    padding: "8px 10px",
+    borderRadius: 7,
+    padding: "8px 12px",
     fontSize: 12,
     fontWeight: 600,
     cursor: disabled ? "not-allowed" : "pointer",
+    fontFamily: "Inter, system-ui, sans-serif",
   };
 }
 function dangerBtn() {
   return {
     flex: 1,
-    background: AM.danger,
-    color: AM.white,
-    border: "none",
-    borderRadius: 6,
-    padding: "8px 10px",
+    background: "#fff0f0",
+    color: AM.danger,
+    border: `1px solid ${AM.danger}`,
+    borderRadius: 7,
+    padding: "8px 12px",
     fontSize: 12,
     fontWeight: 600,
     cursor: "pointer",
+    fontFamily: "Inter, system-ui, sans-serif",
   };
 }
 function successBtn() {
   return {
     flex: 1,
-    background: AM.success,
-    color: AM.white,
-    border: "none",
-    borderRadius: 6,
-    padding: "8px 10px",
+    background: AM.successLight,
+    color: AM.success,
+    border: `1px solid ${AM.success}`,
+    borderRadius: 7,
+    padding: "8px 12px",
     fontSize: 12,
     fontWeight: 600,
     cursor: "pointer",
+    fontFamily: "Inter, system-ui, sans-serif",
   };
 }
 function ghostBtn(disabled = false) {
   return {
     flex: 1,
-    background: disabled ? AM.borderLight : AM.borderLight,
+    background: disabled ? AM.borderLight : AM.white,
     color: disabled ? AM.textMuted : AM.textSecondary,
-    border: "none",
-    borderRadius: 6,
-    padding: "8px 10px",
+    border: `1px solid ${AM.border}`,
+    borderRadius: 7,
+    padding: "8px 12px",
     fontSize: 12,
     fontWeight: 600,
     cursor: disabled ? "not-allowed" : "pointer",
+    fontFamily: "Inter, system-ui, sans-serif",
   };
+}
+
+/* ── Pencil icon for edit button ── */
+function PencilSvg() {
+  return (
+    <svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 20h9" />
+      <path d="M16.5 3.5a2.121 2.121 0 1 1 3 3L7 19l-4 1 1-4Z" />
+    </svg>
+  );
 }
 
 /* --------------------------------------------------------------------------
@@ -683,7 +897,6 @@ function ValidationIssueBanner({
   const border   = hasError ? "#fca5a5" : "#fcd34d";
   const titleClr = hasError ? AM.danger : "#92400e";
 
-  // Collect active manager options (non-flagged, non-self)
   const managerOptions = records
     ? records
         .filter((r) => {
@@ -697,7 +910,6 @@ function ValidationIssueBanner({
         .slice(0, 200)
     : [];
 
-  // Build a label map for cycle chain display
   const labelMap = new Map();
   if (records) {
     for (const r of records) {
@@ -713,14 +925,14 @@ function ValidationIssueBanner({
       style={{
         background: bgColor,
         border: `1px solid ${border}`,
-        borderRadius: 8,
+        borderRadius: 9,
         padding: "10px 12px",
-        marginBottom: 14,
+        marginBottom: 12,
         fontSize: 12,
-        fontFamily: "'IBM Plex Sans', sans-serif",
+        fontFamily: "Inter, system-ui, sans-serif",
       }}
     >
-      <div style={{ fontWeight: 700, color: titleClr, marginBottom: 8, fontSize: 11, textTransform: "uppercase", letterSpacing: "0.5px" }}>
+      <div style={{ fontWeight: 700, color: titleClr, marginBottom: 8, fontSize: 10, textTransform: "uppercase", letterSpacing: "0.5px" }}>
         {issues.length} Validation Issue{issues.length !== 1 ? "s" : ""}
       </div>
       {issues.map((issue, i) => (
@@ -760,7 +972,6 @@ function IssueFixRow({
   const [newMgr, setNewMgr] = useState("");
   const [newId, setNewId] = useState("");
   const [saving, setSaving] = useState(false);
-  // Searchable picker state (for circular_reference / orphaned_position)
   const [mgrQuery, setMgrQuery] = useState("");
   const [mgrDropOpen, setMgrDropOpen] = useState(false);
 
@@ -806,12 +1017,11 @@ function IssueFixRow({
       <div style={{ display: "flex", alignItems: "flex-start", gap: 7, marginBottom: 5 }}>
         <span style={{ width: 6, height: 6, borderRadius: "50%", background: dotColor, flexShrink: 0, marginTop: 5 }} />
         <div>
-          <div style={{ fontWeight: 700, fontSize: 11, color: AM.textPrimary }}>{label}</div>
-          <div style={{ fontSize: 10, color: AM.textSecondary, marginTop: 1 }}>{issue.description}</div>
+          <div style={{ fontWeight: 700, fontSize: 11, color: AM.textPrimary, fontFamily: "Inter, system-ui, sans-serif" }}>{label}</div>
+          <div style={{ fontSize: 10, color: AM.textSecondary, marginTop: 1, fontFamily: "Inter, system-ui, sans-serif" }}>{issue.description}</div>
         </div>
       </div>
 
-      {/* Fix actions per issue type */}
       {issue.type === "missing_change_reason" && (
         <div style={{ display: "flex", gap: 5, marginTop: 4 }}>
           <input
@@ -827,7 +1037,6 @@ function IssueFixRow({
         </div>
       )}
 
-      {/* Circular reference: show full cycle chain + searchable manager picker */}
       {issue.type === "circular_reference" && (() => {
         const myGroup = cycleGroups.find((g) => g.includes(empId));
         const filteredMgrs = managerOptions.filter((o) => {
@@ -837,7 +1046,6 @@ function IssueFixRow({
         }).slice(0, 8);
         return (
           <div style={{ marginTop: 6 }}>
-            {/* Cycle chain visualization */}
             {myGroup && myGroup.length > 0 && (
               <div style={{
                 background: "#fff1f1", border: "1px dashed #fca5a5",
@@ -854,14 +1062,15 @@ function IssueFixRow({
                         color: id === empId ? AM.danger : AM.navy,
                         background: id === empId ? "#fee2e2" : "transparent",
                         borderRadius: 4, padding: id === empId ? "1px 5px" : "0",
+                        fontFamily: "Inter, system-ui, sans-serif",
                       }}>
                         {labelMap.get(id) || id}
                       </span>
-                      <span style={{ fontSize: 9, color: AM.textMuted, fontFamily: "'IBM Plex Mono', monospace" }}>
+                      <span style={{ fontSize: 9, color: AM.textMuted, fontFamily: "Inter, system-ui, sans-serif" }}>
                         {id}
                       </span>
                       {id === empId && (
-                        <span style={{ fontSize: 9, color: AM.danger, fontWeight: 700 }}>← you are here</span>
+                        <span style={{ fontSize: 9, color: AM.danger, fontWeight: 700 }}>← you</span>
                       )}
                     </div>
                     <div style={{ fontSize: 9, color: AM.danger, opacity: 0.6, paddingLeft: 4, margin: "1px 0" }}>
@@ -871,8 +1080,7 @@ function IssueFixRow({
                 ))}
               </div>
             )}
-            {/* Searchable manager picker to break the cycle */}
-            <div style={{ fontSize: 10, color: AM.textSecondary, marginBottom: 4 }}>
+            <div style={{ fontSize: 10, color: AM.textSecondary, marginBottom: 4, fontFamily: "Inter, system-ui, sans-serif" }}>
               Reassign <strong>this position</strong>'s manager to break the cycle:
             </div>
             <div style={{ position: "relative", display: "flex", gap: 5 }}>
@@ -904,13 +1112,13 @@ function IssueFixRow({
                           textAlign: "left", background: "none", border: "none",
                           borderBottom: `1px solid ${AM.borderLight}`,
                           cursor: "pointer", fontSize: 11,
-                          fontFamily: "'IBM Plex Sans', sans-serif",
+                          fontFamily: "Inter, system-ui, sans-serif",
                         }}
                         onMouseEnter={(e) => (e.currentTarget.style.background = AM.borderLight)}
                         onMouseLeave={(e) => (e.currentTarget.style.background = "none")}
                       >
                         <span style={{ fontWeight: 600, color: AM.navy }}>{o.label}</span>
-                        <span style={{ marginLeft: 5, fontSize: 9, color: AM.textMuted, fontFamily: "'IBM Plex Mono', monospace" }}>{o.id}</span>
+                        <span style={{ marginLeft: 5, fontSize: 9, color: AM.textMuted }}>{o.id}</span>
                       </button>
                     ))}
                   </div>
@@ -941,7 +1149,7 @@ function IssueFixRow({
 
       {issue.type === "closed_manager_has_reports" && issue.relatedEmpIds?.length > 0 && (
         <div style={{ marginTop: 4 }}>
-          <div style={{ fontSize: 10, color: AM.textMuted, marginBottom: 4 }}>
+          <div style={{ fontSize: 10, color: AM.textMuted, marginBottom: 4, fontFamily: "Inter, system-ui, sans-serif" }}>
             Reassign {issue.relatedEmpIds.length} report{issue.relatedEmpIds.length !== 1 ? "s" : ""} to:
           </div>
           <div style={{ display: "flex", gap: 5 }}>
@@ -1002,10 +1210,11 @@ function miniInput() {
     borderRadius: 6,
     padding: "4px 8px",
     fontSize: 11,
-    fontFamily: "'IBM Plex Sans', sans-serif",
+    fontFamily: "Inter, system-ui, sans-serif",
     outline: "none",
     minWidth: 0,
     background: AM.white,
+    color: AM.textPrimary,
   };
 }
 
@@ -1021,5 +1230,6 @@ function miniBtn(disabled) {
     cursor: disabled ? "not-allowed" : "pointer",
     whiteSpace: "nowrap",
     flexShrink: 0,
+    fontFamily: "Inter, system-ui, sans-serif",
   };
 }

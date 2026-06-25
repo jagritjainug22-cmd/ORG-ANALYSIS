@@ -37,7 +37,7 @@ export default function ValidationSidebar({ nodeIssuesMap, onJumpToNode }) {
         position: "absolute", top: 16, left: 16, zIndex: 200,
         background: AM.success, color: "#fff", borderRadius: 12,
         padding: "4px 12px", fontSize: 11, fontWeight: 700,
-        fontFamily: "'IBM Plex Sans', sans-serif",
+        fontFamily: "Inter, system-ui, sans-serif",
         boxShadow: "0 2px 8px rgba(22,163,74,0.3)",
         display: "flex", alignItems: "center", gap: 6,
         pointerEvents: "none", opacity: 0.85,
@@ -58,7 +58,7 @@ export default function ValidationSidebar({ nodeIssuesMap, onJumpToNode }) {
           position: "absolute", top: 16, left: 16, zIndex: 200,
           background: badgeColor, color: "#fff", border: "none",
           borderRadius: 12, padding: "5px 12px", fontSize: 11, fontWeight: 800,
-          fontFamily: "'IBM Plex Sans', sans-serif", cursor: "pointer",
+          fontFamily: "Inter, system-ui, sans-serif", cursor: "pointer",
           display: "flex", alignItems: "center", gap: 6,
           boxShadow: "0 2px 10px rgba(0,0,0,0.2)",
         }}
@@ -78,7 +78,7 @@ export default function ValidationSidebar({ nodeIssuesMap, onJumpToNode }) {
       background: AM.white, border: `1px solid ${AM.border}`,
       borderRadius: 12, boxShadow: "0 4px 24px rgba(1,36,74,0.15)",
       display: "flex", flexDirection: "column",
-      fontFamily: "'IBM Plex Sans', sans-serif", overflow: "hidden",
+      fontFamily: "Inter, system-ui, sans-serif", overflow: "hidden",
     }}>
       {/* Header */}
       <div style={{
@@ -158,7 +158,7 @@ function IssueRow({ issue, onJump }) {
         <div style={{ fontSize: 10, color: AM.textSecondary, marginTop: 1, lineHeight: 1.4, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
           {issue.description}
         </div>
-        <div style={{ fontSize: 9, color: AM.textMuted, fontFamily: "'IBM Plex Mono', monospace", marginTop: 2 }}>
+        <div style={{ fontSize: 9, color: AM.textMuted, fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace", marginTop: 2 }}>
           {issue.empId}
         </div>
       </div>

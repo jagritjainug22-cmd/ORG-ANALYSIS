@@ -143,7 +143,7 @@ export default function BulkActionBar({
         borderRadius: 16,
         padding: "8px 16px",
         boxShadow: "0 4px 24px rgba(1,36,74,0.3)",
-        fontFamily: "'IBM Plex Sans', sans-serif",
+        fontFamily: "Inter, system-ui, sans-serif",
         fontSize: 12,
         fontWeight: 600,
         userSelect: "none",
@@ -295,7 +295,7 @@ export default function BulkActionBar({
                       borderBottom: `1px solid ${AM.borderLight}`,
                       cursor: "pointer",
                       fontSize: 12,
-                      fontFamily: "'IBM Plex Sans', sans-serif",
+                      fontFamily: "Inter, system-ui, sans-serif",
                     }}
                     onMouseEnter={(e) => (e.currentTarget.style.background = AM.borderLight)}
                     onMouseLeave={(e) => (e.currentTarget.style.background = "none")}

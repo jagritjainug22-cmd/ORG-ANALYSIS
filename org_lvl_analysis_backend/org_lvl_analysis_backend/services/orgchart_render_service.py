@@ -311,7 +311,7 @@ def render_scenario_svg(
     parts: List[str] = []
     parts.append(
         f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" '
-        f'viewBox="0 0 {width} {height}" font-family="\'IBM Plex Sans\', Arial, sans-serif">'
+        f'viewBox="0 0 {width} {height}" font-family="Inter, Arial, sans-serif">'
     )
 
     # Background
@@ -415,7 +415,7 @@ def render_scenario_svg(
         emp_id = _id_of(rec, emp_col)
         parts.append(
             f'<text x="{x + 12:.1f}" y="{y + 66:.1f}" font-size="10" '
-            f'fill="{TEXT_MUTED}" font-family="\'IBM Plex Mono\', monospace">'
+            f'fill="{TEXT_MUTED}" font-family="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace">'
             f'{escape(emp_id)}</text>'
         )
 
@@ -431,7 +431,7 @@ def render_scenario_svg(
             f'rx="4" fill="{NAVY}"/>'
             f'<text x="{x + 12 + pill_w/2:.1f}" y="{pill_y + 11:.1f}" font-size="10" '
             f'font-weight="600" fill="{WHITE}" text-anchor="middle" '
-            f'font-family="\'IBM Plex Mono\', monospace">{pill_text}</text>'
+            f'font-family="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace">{pill_text}</text>'
         )
         # gold pill (cost)
         if flc_col:
@@ -443,7 +443,7 @@ def render_scenario_svg(
                 f'rx="4" fill="{GOLD}"/>'
                 f'<text x="{cx2 + cw/2:.1f}" y="{pill_y + 11:.1f}" font-size="10" '
                 f'font-weight="700" fill="{NAVY}" text-anchor="middle" '
-                f'font-family="\'IBM Plex Mono\', monospace">{cost_text}</text>'
+                f'font-family="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace">{cost_text}</text>'
             )
 
         # FTE + Country

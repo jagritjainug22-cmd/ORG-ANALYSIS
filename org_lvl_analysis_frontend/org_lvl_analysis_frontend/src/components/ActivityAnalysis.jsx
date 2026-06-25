@@ -1174,7 +1174,7 @@ function TrendChart({ title, accentColor, accentBg, values, displayMonths, chang
               <td style={{ padding: "5px 12px", fontWeight: 700, color: C.textSec, fontSize: 10, whiteSpace: "nowrap" }}>Change</td>
               {changes.map((v, i) => (
                 <td key={i} style={{
-                  padding: "5px 8px", textAlign: "center", fontFamily: "'IBM Plex Mono', monospace", fontSize: 10,
+                  padding: "5px 8px", textAlign: "center", fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace", fontSize: 10,
                   color: v === null ? C.textMuted : v < 0 ? C.success : v > 0 ? C.danger : C.textMuted,
                   fontWeight: v !== null && v !== 0 ? 700 : 400,
                 }}>
@@ -1186,7 +1186,7 @@ function TrendChart({ title, accentColor, accentBg, values, displayMonths, chang
               <td style={{ padding: "5px 12px", fontWeight: 700, color: C.textSec, fontSize: 10, whiteSpace: "nowrap" }}>Change %</td>
               {pctChanges.map((v, i) => (
                 <td key={i} style={{
-                  padding: "5px 8px", textAlign: "center", fontFamily: "'IBM Plex Mono', monospace", fontSize: 10,
+                  padding: "5px 8px", textAlign: "center", fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace", fontSize: 10,
                   color: v === null ? C.textMuted : v < 0 ? C.success : v > 0 ? C.danger : C.textMuted,
                   fontWeight: v !== null && v !== 0 ? 700 : 400,
                 }}>

@@ -12,6 +12,8 @@ export default function OrgScenarioBar({
   scenarios,
   activeScenarioId,
   onSwitch,
+  switching = false,
+  switchingScenarioName = "",
   onCreate,
   onRename,
   onDelete,
@@ -84,9 +86,14 @@ export default function OrgScenarioBar({
         alignItems: "center",
         gap: 8,
         flexWrap: "wrap",
-        fontFamily: "'IBM Plex Sans', sans-serif",
+        fontFamily: "Inter, system-ui, sans-serif",
       }}
     >
+      <style>{`
+        @keyframes orgScenarioSpin {
+          to { transform: rotate(360deg); }
+        }
+      `}</style>
       <span
         style={{
           fontSize: 10,
@@ -103,13 +110,15 @@ export default function OrgScenarioBar({
       {scenarios.map((s) => {
         const isActive = s.id === activeScenarioId;
         const isRenaming = renamingId === s.id;
+        const isSwitchTarget = switching && switchingScenarioName === s.name;
         return (
           <div
             key={s.id}
             role="button"
-            tabIndex={0}
-            aria-label={`Scenario ${s.name}${isActive ? " (active)" : ""}`}
+            tabIndex={switching ? -1 : 0}
+            aria-label={`Scenario ${s.name}${isActive ? " (active)" : ""}${isSwitchTarget ? " (loading)" : ""}`}
             aria-pressed={isActive}
+            aria-disabled={switching}
             style={{
               display: "flex",
               alignItems: "center",
@@ -120,12 +129,14 @@ export default function OrgScenarioBar({
               fontSize: 12,
               fontWeight: 600,
               gap: 6,
-              cursor: "pointer",
+              cursor: switching ? "wait" : "pointer",
+              opacity: switching && !isActive && !isSwitchTarget ? 0.55 : 1,
               border: s.is_promoted ? `1px solid ${AM.gold}` : `1px solid transparent`,
+              pointerEvents: switching ? "none" : "auto",
             }}
-            onClick={() => !isRenaming && onSwitch?.(s.id)}
+            onClick={() => !isRenaming && !switching && onSwitch?.(s.id)}
             onKeyDown={(e) => {
-              if ((e.key === "Enter" || e.key === " ") && !isRenaming) {
+              if ((e.key === "Enter" || e.key === " ") && !isRenaming && !switching) {
                 e.preventDefault();
                 onSwitch?.(s.id);
               }
@@ -159,6 +170,7 @@ export default function OrgScenarioBar({
               />
             ) : (
               <>
+                {isSwitchTarget && <ScenarioSpinner light={isActive} />}
                 {s.is_promoted ? <GoldDot /> : null}
                 <span>{s.name}</span>
                 {isActive && !isBaseline && s.name !== "Baseline" && (
@@ -181,7 +193,7 @@ export default function OrgScenarioBar({
         );
       })}
 
-      <button onClick={() => setCreateOpen(true)} style={ghostPill()} title="New scenario">
+      <button onClick={() => setCreateOpen(true)} style={ghostPill()} title="New scenario" disabled={switching}>
         + New
       </button>
 
@@ -343,6 +355,24 @@ export default function OrgScenarioBar({
       />
 
     </div>
+  );
+}
+
+function ScenarioSpinner({ light }) {
+  return (
+    <span
+      aria-hidden
+      style={{
+        width: 12,
+        height: 12,
+        borderRadius: "50%",
+        border: `2px solid ${light ? "rgba(255,255,255,0.35)" : AM.border}`,
+        borderTopColor: light ? AM.white : AM.blue,
+        display: "inline-block",
+        animation: "orgScenarioSpin 0.7s linear infinite",
+        flexShrink: 0,
+      }}
+    />
   );
 }
 

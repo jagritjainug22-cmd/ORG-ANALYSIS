@@ -167,7 +167,7 @@ export default function OrgAddChildModal({
       style={{
         position: "fixed", inset: 0, background: "rgba(1,36,74,0.55)",
         zIndex: 50, display: "flex", alignItems: "center", justifyContent: "center",
-        fontFamily: "'IBM Plex Sans', sans-serif",
+        fontFamily: "Inter, system-ui, sans-serif",
       }}
     >
       <div
@@ -351,7 +351,7 @@ function inputStyle() {
   return {
     width: "100%", border: `1px solid ${AM.border}`,
     borderRadius: 6, padding: "7px 10px", fontSize: 12,
-    outline: "none", fontFamily: "'IBM Plex Sans', sans-serif",
+    outline: "none", fontFamily: "Inter, system-ui, sans-serif",
     boxSizing: "border-box",
   };
 }

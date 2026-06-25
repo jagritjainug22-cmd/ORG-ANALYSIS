@@ -48,7 +48,7 @@ export default function ValidationPanel({ open, issues, onClose, onJumpToNode })
         zIndex: 500,
         display: "flex",
         flexDirection: "column",
-        fontFamily: "'IBM Plex Sans', sans-serif",
+        fontFamily: "Inter, system-ui, sans-serif",
       }}
     >
       {/* Header */}
@@ -211,7 +211,7 @@ function IssueRow({ issue, onJump }) {
           style={{
             fontSize: 10,
             color: AM.textMuted,
-            fontFamily: "'IBM Plex Mono', monospace",
+            fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
             marginTop: 3,
           }}
         >

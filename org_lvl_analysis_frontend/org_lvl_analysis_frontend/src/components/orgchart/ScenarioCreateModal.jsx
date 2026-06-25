@@ -60,7 +60,7 @@ export default function ScenarioCreateModal({
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          fontFamily: "'IBM Plex Sans', sans-serif",
+          fontFamily: "Inter, system-ui, sans-serif",
         }}
       >
         <div

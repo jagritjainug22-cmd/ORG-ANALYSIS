@@ -157,7 +157,7 @@ export default function PhasingView({ scenarioId, changes = [], onPhasingLoaded 
     bargap: 0.35,
     paper_bgcolor: "transparent",
     plot_bgcolor: "transparent",
-    font: { family: "'IBM Plex Sans', system-ui, sans-serif", size: 11, color: AM.textSecondary },
+    font: { family: "Inter, system-ui, sans-serif", size: 11, color: AM.textSecondary },
     xaxis: {
       title: { text: "Effective Month", font: { size: 10, color: AM.textMuted }, standoff: 8 },
       tickfont: { size: 10, color: AM.textMuted },
@@ -189,7 +189,7 @@ export default function PhasingView({ scenarioId, changes = [], onPhasingLoaded 
     hoverlabel: {
       bgcolor: AM.navy,
       bordercolor: AM.navy,
-      font: { color: AM.white, size: 12, family: "'IBM Plex Sans', system-ui, sans-serif" },
+      font: { color: AM.white, size: 12, family: "Inter, system-ui, sans-serif" },
       namelength: 0,
     },
     shapes: [
@@ -237,7 +237,7 @@ export default function PhasingView({ scenarioId, changes = [], onPhasingLoaded 
   const hasDatedChanges = chartBuckets.length > 0;
 
   return (
-    <div style={{ fontFamily: "'IBM Plex Sans', system-ui, sans-serif", color: AM.textPrimary }}>
+    <div style={{ fontFamily: "Inter, system-ui, sans-serif", color: AM.textPrimary }}>
 
       {/* ── Summary Cards ───────────────────────────────────────────── */}
       <div style={{ display: "flex", gap: 10, marginBottom: 16, flexWrap: "wrap" }}>
@@ -436,7 +436,7 @@ export default function PhasingView({ scenarioId, changes = [], onPhasingLoaded 
                         <Td>
                           <ActionBadge action={c.action} />
                         </Td>
-                        <Td style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, color: AM.textSecondary, fontWeight: 600 }}>
+                        <Td style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace", fontSize: 11, color: AM.textSecondary, fontWeight: 600 }}>
                           {c.emp_id}
                         </Td>
                         <Td style={{ color: AM.textSecondary, maxWidth: 160 }}>
@@ -594,7 +594,7 @@ function SummaryCard({ label, value, tone, note, icon }) {
       </div>
       <div style={{
         fontSize: 24, fontWeight: 700,
-        fontFamily: "'IBM Plex Mono', monospace",
+        fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
         color: p.text, lineHeight: 1, marginBottom: 5,
         letterSpacing: "-0.5px",
       }}>
@@ -680,7 +680,7 @@ function Td({ children, style, onClick }) {
 
 function MonoSpan({ children }) {
   return (
-    <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 10.5, color: AM.textSecondary }}>
+    <span style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace", fontSize: 10.5, color: AM.textSecondary }}>
       {children}
     </span>
   );
@@ -709,7 +709,7 @@ const selectStyle = {
   background: AM.white,
   cursor: "pointer",
   outline: "none",
-  fontFamily: "'IBM Plex Sans', system-ui, sans-serif",
+  fontFamily: "Inter, system-ui, sans-serif",
   fontWeight: 600,
 };
 

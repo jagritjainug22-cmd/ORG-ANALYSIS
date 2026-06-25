@@ -134,7 +134,7 @@ function parseCSV(text) {
 const Badge = ({ label, color, dark }) => (
   <span style={{
     background: color, color: dark ? AM.navy : AM.white, fontSize: 9, fontWeight: 700,
-    padding: "2px 7px", borderRadius: 4, fontFamily: "'IBM Plex Mono', monospace",
+    padding: "2px 7px", borderRadius: 4, fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
     letterSpacing: "0.6px", whiteSpace: "nowrap",
   }}>{label}</span>
 );
@@ -182,29 +182,29 @@ const NodeCard = ({ node, data, depth, state, actions, spotlight }) => {
             {["jobTitle", "functionalL1", "managementLevel"].map(f => (
               <input key={f} value={state.editBuf[f] || ""} onChange={e => actions.setEditBuf({ ...state.editBuf, [f]: e.target.value })}
                 placeholder={f} autoFocus={f === "jobTitle"}
-                style={{ background: dark ? "#ffffff15" : "#f0f4f8", border: `1px solid ${dark ? "#ffffff25" : AM.border}`, borderRadius: 6, padding: "5px 8px", color: dark ? AM.white : AM.textPrimary, fontSize: 12, fontFamily: "'IBM Plex Sans', sans-serif", outline: "none" }} />
+                style={{ background: dark ? "#ffffff15" : "#f0f4f8", border: `1px solid ${dark ? "#ffffff25" : AM.border}`, borderRadius: 6, padding: "5px 8px", color: dark ? AM.white : AM.textPrimary, fontSize: 12, fontFamily: "Inter, system-ui, sans-serif", outline: "none" }} />
             ))}
             <input value={state.editBuf.salary || ""} onChange={e => actions.setEditBuf({ ...state.editBuf, salary: Number(e.target.value) || 0 })}
-              placeholder="Salary" style={{ background: dark ? "#ffffff15" : "#f0f4f8", border: `1px solid ${dark ? "#ffffff25" : AM.border}`, borderRadius: 6, padding: "5px 8px", color: dark ? AM.white : AM.textPrimary, fontSize: 12, fontFamily: "'IBM Plex Mono', monospace", outline: "none" }} />
+              placeholder="Salary" style={{ background: dark ? "#ffffff15" : "#f0f4f8", border: `1px solid ${dark ? "#ffffff25" : AM.border}`, borderRadius: 6, padding: "5px 8px", color: dark ? AM.white : AM.textPrimary, fontSize: 12, fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace", outline: "none" }} />
             <div style={{ display: "flex", gap: 4, marginTop: 2 }}>
-              <button onClick={e => { e.stopPropagation(); actions.saveEdit(node.employeeId); }} style={{ flex: 1, background: AM.blue, border: "none", borderRadius: 6, color: AM.white, fontSize: 11, fontWeight: 600, padding: "6px 0", cursor: "pointer", fontFamily: "'IBM Plex Sans', sans-serif" }}>Save</button>
-              <button onClick={e => { e.stopPropagation(); actions.setEditing(null); }} style={{ flex: 1, background: dark ? "#ffffff15" : "#e8eef5", border: "none", borderRadius: 6, color: dark ? AM.blueLight : AM.textSecondary, fontSize: 11, padding: "6px 0", cursor: "pointer", fontFamily: "'IBM Plex Sans', sans-serif" }}>Cancel</button>
+              <button onClick={e => { e.stopPropagation(); actions.saveEdit(node.employeeId); }} style={{ flex: 1, background: AM.blue, border: "none", borderRadius: 6, color: AM.white, fontSize: 11, fontWeight: 600, padding: "6px 0", cursor: "pointer", fontFamily: "Inter, system-ui, sans-serif" }}>Save</button>
+              <button onClick={e => { e.stopPropagation(); actions.setEditing(null); }} style={{ flex: 1, background: dark ? "#ffffff15" : "#e8eef5", border: "none", borderRadius: 6, color: dark ? AM.blueLight : AM.textSecondary, fontSize: 11, padding: "6px 0", cursor: "pointer", fontFamily: "Inter, system-ui, sans-serif" }}>Cancel</button>
             </div>
           </div>
         ) : (
           <>
-            <div style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontWeight: 700, fontSize: 13, color: dark ? AM.white : AM.textPrimary, lineHeight: 1.35, marginTop: 2 }}>{node.jobTitle}</div>
-            <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 10, color: dark ? "#ffffff55" : AM.textMuted, marginTop: 3 }}>ID: {node.employeeId}</div>
+            <div style={{ fontFamily: "Inter, system-ui, sans-serif", fontWeight: 700, fontSize: 13, color: dark ? AM.white : AM.textPrimary, lineHeight: 1.35, marginTop: 2 }}>{node.jobTitle}</div>
+            <div style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace", fontSize: 10, color: dark ? "#ffffff55" : AM.textMuted, marginTop: 3 }}>ID: {node.employeeId}</div>
             <div style={{ display: "flex", gap: 6, marginTop: 6, alignItems: "center", flexWrap: "wrap" }}>
-              <span style={{ fontSize: 10, color: dark ? AM.blue : AM.blue, fontWeight: 600, fontFamily: "'IBM Plex Sans', sans-serif" }}>{node.functionalL1}</span>
+              <span style={{ fontSize: 10, color: dark ? AM.blue : AM.blue, fontWeight: 600, fontFamily: "Inter, system-ui, sans-serif" }}>{node.functionalL1}</span>
               <span style={{ fontSize: 10, color: dark ? "#ffffff33" : AM.textMuted }}>·</span>
-              <span style={{ fontSize: 10, color: dark ? "#ffffffaa" : AM.textSecondary, fontFamily: "'IBM Plex Mono', monospace" }}>{fmt$(node.salary)}</span>
+              <span style={{ fontSize: 10, color: dark ? "#ffffffaa" : AM.textSecondary, fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace" }}>{fmt$(node.salary)}</span>
             </div>
             {stats && (
               <div style={{ marginTop: 8, padding: "5px 8px", background: dark ? "#ffffff0a" : "#f0f4f8", borderRadius: 6, display: "flex", gap: 10 }}>
-                <span style={{ fontSize: 9, color: dark ? "#ffffff66" : AM.textMuted, fontFamily: "'IBM Plex Mono', monospace" }}>{stats.hc} ppl</span>
-                <span style={{ fontSize: 9, color: dark ? "#ffffff66" : AM.textMuted, fontFamily: "'IBM Plex Mono', monospace" }}>{stats.fte} FTE</span>
-                <span style={{ fontSize: 9, color: dark ? "#ffffff66" : AM.textMuted, fontFamily: "'IBM Plex Mono', monospace" }}>{fmt$(stats.sal)}</span>
+                <span style={{ fontSize: 9, color: dark ? "#ffffff66" : AM.textMuted, fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace" }}>{stats.hc} ppl</span>
+                <span style={{ fontSize: 9, color: dark ? "#ffffff66" : AM.textMuted, fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace" }}>{stats.fte} FTE</span>
+                <span style={{ fontSize: 9, color: dark ? "#ffffff66" : AM.textMuted, fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace" }}>{fmt$(stats.sal)}</span>
               </div>
             )}
             <div style={{ display: "flex", gap: 4, marginTop: 8, justifyContent: "center", flexWrap: "wrap" }}>
@@ -242,7 +242,7 @@ const CardBtn = ({ label, onClick, dark, danger, title }) => (
   <button onClick={onClick} title={title} style={{
     background: danger ? (dark ? "#ff4d4f20" : "#fff0f0") : (dark ? "#ffffff12" : "#f0f4f8"),
     border: "none", borderRadius: 5, color: danger ? AM.danger : (dark ? "#ffffffbb" : AM.textSecondary),
-    fontSize: 10, padding: "3px 8px", cursor: "pointer", fontFamily: "'IBM Plex Sans', sans-serif",
+    fontSize: 10, padding: "3px 8px", cursor: "pointer", fontFamily: "Inter, system-ui, sans-serif",
     transition: "background 0.15s",
   }}>{label}</button>
 );
@@ -272,7 +272,7 @@ const DetailPanel = ({ node, onClose }) => {
       {fields.map(([k, v]) => (
         <div key={k} style={{ display: "flex", justifyContent: "space-between", padding: "7px 0", borderBottom: `1px solid ${AM.borderLight}` }}>
           <span style={{ fontSize: 11, color: AM.textMuted }}>{k}</span>
-          <span style={{ fontSize: 11, color: AM.textPrimary, fontFamily: "'IBM Plex Mono', monospace", textAlign: "right", maxWidth: 160, overflow: "hidden", textOverflow: "ellipsis" }}>{String(v)}</span>
+          <span style={{ fontSize: 11, color: AM.textPrimary, fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace", textAlign: "right", maxWidth: 160, overflow: "hidden", textOverflow: "ellipsis" }}>{String(v)}</span>
         </div>
       ))}
     </div>
@@ -289,10 +289,10 @@ const UploadScreen = ({ onLoad, onDemo }) => {
     reader.readAsText(file);
   };
   return (
-    <div style={{ minHeight: "100vh", background: AM.bg, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'IBM Plex Sans', sans-serif" }}>
+    <div style={{ minHeight: "100vh", background: AM.bg, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "Inter, system-ui, sans-serif" }}>
       <div style={{ textAlign: "center", maxWidth: 520 }}>
         <div style={{ width: 64, height: 64, background: AM.navy, borderRadius: 12, margin: "0 auto 20px", display: "flex", alignItems: "center", justifyContent: "center" }}>
-          <span style={{ color: AM.gold, fontSize: 28, fontWeight: 700, fontFamily: "'IBM Plex Sans', sans-serif" }}>A</span>
+          <span style={{ color: AM.gold, fontSize: 28, fontWeight: 700, fontFamily: "Inter, system-ui, sans-serif" }}>A</span>
         </div>
         <h1 style={{ color: AM.navy, fontSize: 28, fontWeight: 700, margin: "0 0 8px", letterSpacing: "-0.5px" }}>Org Chart Builder</h1>
         <p style={{ color: AM.textSecondary, fontSize: 14, margin: "0 0 32px" }}>Upload your employee data to build an interactive org chart</p>
@@ -317,11 +317,11 @@ const UploadScreen = ({ onLoad, onDemo }) => {
 
         <div style={{ marginTop: 16, padding: "12px 16px", background: AM.white, borderRadius: 10, border: `1px solid ${AM.borderLight}`, textAlign: "left" }}>
           <div style={{ fontSize: 11, fontWeight: 600, color: AM.navy, marginBottom: 6 }}>Required columns:</div>
-          <div style={{ fontSize: 11, color: AM.textSecondary, lineHeight: 1.7, fontFamily: "'IBM Plex Mono', monospace" }}>
+          <div style={{ fontSize: 11, color: AM.textSecondary, lineHeight: 1.7, fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace" }}>
             Employee ID, Manager ID, Job Title
           </div>
           <div style={{ fontSize: 11, fontWeight: 600, color: AM.navy, marginTop: 8, marginBottom: 6 }}>Optional columns:</div>
-          <div style={{ fontSize: 11, color: AM.textSecondary, lineHeight: 1.7, fontFamily: "'IBM Plex Mono', monospace" }}>
+          <div style={{ fontSize: 11, color: AM.textSecondary, lineHeight: 1.7, fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace" }}>
             Functional L1/L2, Management Level, FTE, Salary, Job Code, Badge No, Active Status, Work State, etc.
           </div>
         </div>
@@ -329,7 +329,7 @@ const UploadScreen = ({ onLoad, onDemo }) => {
         <button onClick={onDemo} style={{
           marginTop: 20, background: "none", border: `1px solid ${AM.border}`, borderRadius: 8,
           color: AM.textSecondary, fontSize: 13, padding: "10px 24px", cursor: "pointer",
-          fontFamily: "'IBM Plex Sans', sans-serif",
+          fontFamily: "Inter, system-ui, sans-serif",
         }}>
           or load demo data →
         </button>
@@ -406,8 +406,8 @@ export default function App() {
   const exportCSV = () => { const keys = Object.keys(data[0]); const csv = [keys.join(","), ...data.map(d => keys.map(k => `"${d[k] ?? ""}"`).join(","))].join("\n"); const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" })); a.download = "org-data.csv"; a.click(); };
 
   return (
-    <div style={{ minHeight: "100vh", background: AM.bg, fontFamily: "'IBM Plex Sans', sans-serif", display: "flex", flexDirection: "column" }}>
-      <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet" />
+    <div style={{ minHeight: "100vh", background: AM.bg, fontFamily: "Inter, system-ui, sans-serif", display: "flex", flexDirection: "column" }}>
+      <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
 
       {/* Header */}
       <div style={{ background: AM.navy, padding: "12px 24px", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
@@ -419,7 +419,7 @@ export default function App() {
             <h1 style={{ margin: 0, fontSize: 17, fontWeight: 700, color: AM.white, letterSpacing: "-0.3px" }}>Org Chart</h1>
             <div style={{ display: "flex", gap: 14, marginTop: 2 }}>
               {[["Headcount", totalStats.hc], ["FTE", totalStats.fte], ["Payroll", fmt$(totalStats.sal)]].map(([l, v]) => (
-                <span key={l} style={{ fontSize: 10, color: AM.blueMid, fontFamily: "'IBM Plex Mono', monospace" }}>
+                <span key={l} style={{ fontSize: 10, color: AM.blueMid, fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace" }}>
                   {l}: <span style={{ color: AM.blueLight }}>{typeof v === "number" && l === "Payroll" ? v.toLocaleString() : v}</span>
                 </span>
               ))}
@@ -429,15 +429,15 @@ export default function App() {
 
         <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
           <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search..."
-            style={{ background: "#ffffff12", border: "1px solid #ffffff20", borderRadius: 6, padding: "6px 10px", color: AM.white, fontSize: 12, fontFamily: "'IBM Plex Sans', sans-serif", outline: "none", width: 140 }} />
+            style={{ background: "#ffffff12", border: "1px solid #ffffff20", borderRadius: 6, padding: "6px 10px", color: AM.white, fontSize: 12, fontFamily: "Inter, system-ui, sans-serif", outline: "none", width: 140 }} />
           <select value={filterL1} onChange={e => setFilterL1(e.target.value)}
-            style={{ background: "#ffffff12", border: "1px solid #ffffff20", borderRadius: 6, padding: "6px 8px", color: AM.white, fontSize: 12, outline: "none", fontFamily: "'IBM Plex Sans', sans-serif" }}>
+            style={{ background: "#ffffff12", border: "1px solid #ffffff20", borderRadius: 6, padding: "6px 8px", color: AM.white, fontSize: 12, outline: "none", fontFamily: "Inter, system-ui, sans-serif" }}>
             {allL1s.map(l => <option key={l} value={l} style={{ background: AM.navy }}>{l}</option>)}
           </select>
 
           {/* Collapse by level */}
           <select defaultValue="" onChange={e => { if (e.target.value === "expand") setCollapsed(new Set()); else if (e.target.value) collapseByLevel(e.target.value); e.target.value = ""; }}
-            style={{ background: "#ffffff12", border: "1px solid #ffffff20", borderRadius: 6, padding: "6px 8px", color: AM.blueMid, fontSize: 11, outline: "none", fontFamily: "'IBM Plex Sans', sans-serif" }}>
+            style={{ background: "#ffffff12", border: "1px solid #ffffff20", borderRadius: 6, padding: "6px 8px", color: AM.blueMid, fontSize: 11, outline: "none", fontFamily: "Inter, system-ui, sans-serif" }}>
             <option value="" disabled style={{ background: AM.navy }}>Collapse...</option>
             <option value="VP" style={{ background: AM.navy }}>Below VP</option>
             <option value="Director" style={{ background: AM.navy }}>Below Director</option>
@@ -448,7 +448,7 @@ export default function App() {
           {/* Zoom */}
           <div style={{ display: "flex", background: "#ffffff12", borderRadius: 6, overflow: "hidden", border: "1px solid #ffffff20" }}>
             <button onClick={() => setZoom(z => Math.max(0.3, z - 0.1))} style={{ background: "none", border: "none", color: AM.blueLight, padding: "4px 8px", cursor: "pointer", fontSize: 13 }}>−</button>
-            <span style={{ padding: "4px 4px", fontSize: 10, color: AM.blueMid, fontFamily: "'IBM Plex Mono', monospace", minWidth: 34, textAlign: "center", lineHeight: "22px" }}>{Math.round(zoom * 100)}%</span>
+            <span style={{ padding: "4px 4px", fontSize: 10, color: AM.blueMid, fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace", minWidth: 34, textAlign: "center", lineHeight: "22px" }}>{Math.round(zoom * 100)}%</span>
             <button onClick={() => setZoom(z => Math.min(1.5, z + 0.1))} style={{ background: "none", border: "none", color: AM.blueLight, padding: "4px 8px", cursor: "pointer", fontSize: 13 }}>+</button>
           </div>
 
@@ -494,7 +494,7 @@ export default function App() {
             <div style={{ fontSize: 10, color: AM.textMuted, marginBottom: 12, textTransform: "uppercase", letterSpacing: "1px" }}>Live sync — edits reflect here</div>
             <pre style={{
               background: "#f6f8fb", borderRadius: 8, padding: 14, fontSize: 10,
-              color: AM.textSecondary, fontFamily: "'IBM Plex Mono', monospace", lineHeight: 1.6,
+              color: AM.textSecondary, fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace", lineHeight: 1.6,
               whiteSpace: "pre-wrap", wordBreak: "break-word", border: `1px solid ${AM.borderLight}`, maxHeight: "80vh", overflow: "auto",
             }}>{JSON.stringify(data, null, 2)}</pre>
           </div>
@@ -515,6 +515,6 @@ const HdrBtn = ({ label, onClick, active }) => (
   <button onClick={onClick} style={{
     background: active ? AM.blue : "#ffffff12", border: `1px solid ${active ? AM.blue : "#ffffff20"}`, borderRadius: 6,
     color: active ? AM.white : AM.blueLight, fontSize: 11, fontWeight: 600, padding: "6px 12px",
-    cursor: "pointer", fontFamily: "'IBM Plex Sans', sans-serif", transition: "all 0.15s",
+    cursor: "pointer", fontFamily: "Inter, system-ui, sans-serif", transition: "all 0.15s",
   }}>{label}</button>
 );

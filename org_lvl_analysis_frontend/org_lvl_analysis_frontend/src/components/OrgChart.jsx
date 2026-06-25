@@ -73,6 +73,9 @@ import OrgAddChildModal from "./orgchart/OrgAddChildModal";
 import OrgMoveConfirmModal from "./orgchart/OrgMoveConfirmModal";
 import SavedDatasetPicker from "./orgchart/SavedDatasetPicker";
 import OrgActivityPanel from "./orgchart/OrgActivityPanel";
+import OrgChartLoadingOverlay from "./orgchart/OrgChartLoadingOverlay";
+import { FOCUS_ZOOM, ROOT_ENTRY_ZOOM, computeFocusPan } from "./orgchart/orgChartFocus";
+import { rankSearchMatches } from "./orgchart/orgChartSearch";
 
 /**
  * OrgSight 2.0 -- interactive org chart.
@@ -116,6 +119,8 @@ export default function OrgChart({
   // Working records: the canonical employee list (after DB load OR from prop)
   const [records, setRecords] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [scenarioSwitching, setScenarioSwitching] = useState(false);
+  const [switchingScenarioName, setSwitchingScenarioName] = useState("");
   const [error, setError] = useState(null);
   const [summary, setSummary] = useState(null);
   const [changeLog, setChangeLog] = useState([]);
@@ -139,6 +144,8 @@ export default function OrgChart({
   const [maxDepth, setMaxDepth] = useState(2);
   const [zoomLabel, setZoomLabel] = useState(1);
   const [search, setSearch] = useState("");
+  const [searchFocusIndex, setSearchFocusIndex] = useState(0);
+  const [focusedNodeId, setFocusedNodeId] = useState(null);
   const [departmentFilter, setDepartmentFilter] = useState("");
   const [jobTitleFilter, setJobTitleFilter] = useState("");
 
@@ -169,6 +176,8 @@ export default function OrgChart({
   const stageRef = useRef(null);
   const viewportRef = useRef(null);
   const hasAutoCenteredRef = useRef(false);
+  const pendingFocusRef = useRef(null);
+  const focusHandledRef = useRef(null);
 
   const applyTransform = useCallback(() => {
     if (!stageRef.current) return;
@@ -237,8 +246,33 @@ export default function OrgChart({
       setError(e.message || "Failed to load scenario from database.");
     } finally {
       setLoading(false);
+      setScenarioSwitching(false);
+      setSwitchingScenarioName("");
     }
   }, [inDbMode, activeScenarioId]);
+
+  const handleScenarioSwitch = useCallback(async (scenarioId) => {
+    if (!inDbMode || scenarioId === activeScenarioId) return;
+    const target = (scenarios || []).find((s) => s.id === scenarioId);
+    setSwitchingScenarioName(target?.name || "scenario");
+    setScenarioSwitching(true);
+    hasAutoCenteredRef.current = false;
+    setSelectedId(null);
+    setFocusedNodeId(null);
+    try {
+      if (onSwitchScenario) {
+        await onSwitchScenario(scenarioId);
+      } else {
+        setActiveScenarioId?.(scenarioId);
+      }
+    } catch (e) {
+      setScenarioSwitching(false);
+      setSwitchingScenarioName("");
+      setError(e.message || "Failed to switch scenario.");
+    }
+  }, [inDbMode, activeScenarioId, scenarios, onSwitchScenario, setActiveScenarioId]);
+
+  const isScenarioBusy = loading || scenarioSwitching;
 
   useEffect(() => {
     if (inDbMode) {
@@ -567,10 +601,13 @@ export default function OrgChart({
     return computeSubtreeStats(records, idOf, parentOf, { fteOf, flcOf, flaggedOf });
   }, [records, idOf, parentOf, fteOf, flcOf, flaggedOf]);
 
-  // Hidden ids from search + department + job title filters
-  const hidden = useMemo(() => {
+  // Hidden ids from search + department + job title filters; ranked search matches
+  const { hidden, searchMatches } = useMemo(() => {
     const out = new Set();
-    if (!records || (!search.trim() && !departmentFilter && !jobTitleFilter)) return out;
+    const emptyMatches = [];
+    if (!records || (!search.trim() && !departmentFilter && !jobTitleFilter)) {
+      return { hidden: out, searchMatches: emptyMatches };
+    }
 
     const term = search.trim().toLowerCase();
     const matchesEmp = (r) => {
@@ -598,9 +635,13 @@ export default function OrgChart({
       return true;
     };
 
+    const matched = records.filter(matchesEmp);
+    const rankedMatches = term
+      ? rankSearchMatches(matched, term, { empCol, jobTitleCol, countryCol })
+      : emptyMatches;
+
     // Visible set = matches + ancestors + descendants of matches
     const visible = new Set();
-    const matched = records.filter(matchesEmp);
     matched.forEach((r) => {
       const id = String(idOf(r));
       visible.add(id);
@@ -632,7 +673,7 @@ export default function OrgChart({
       const id = String(idOf(r));
       if (!visible.has(id)) out.add(id);
     });
-    return out;
+    return { hidden: out, searchMatches: rankedMatches };
   }, [records, search, departmentFilter, jobTitleFilter, empCol, jobTitleCol, countryCol, idOf, parentOf, index]);
 
   const layout = useMemo(() => {
@@ -1038,36 +1079,21 @@ export default function OrgChart({
     applyTransform();
   }, [applyTransform]);
 
-  const panToNode = useCallback((empId) => {
-    const pos = layout.nodes.get(String(empId));
-    if (!pos || !viewportRef.current) return;
-    const vw = viewportRef.current.clientWidth || 1200;
-    const vh = viewportRef.current.clientHeight || 800;
-    const z = zoomRef.current;
-    const targetX = vw / 2 - (pos.x + 80) * z;
-    const targetY = vh / 3 - (pos.y + 60) * z;
-    setPan(targetX, targetY);
-    setSelectedId(String(empId));
-  }, [layout, setPan]);
-
-  // Focus a node when navigated from Spans & Layers (Feature 9)
-  const focusHandledRef = useRef(null);
-  useEffect(() => {
-    if (!initialFocusNodeId || !records?.length || !layout.nodes.size) return;
-    const targetId = String(initialFocusNodeId);
-    if (focusHandledRef.current === targetId) return;
-    if (!layout.nodes.has(targetId)) return;
-
-    // Uncollapse all ancestors so the node is visible
-    const parentMap = new Map();
+  const parentMap = useMemo(() => {
+    const map = new Map();
+    if (!records) return map;
     records.forEach((r) => {
       const id = String(r.__emp_id ?? r[empCol] ?? "");
       const pid = r.__mgr_id ?? r[mgrCol];
-      if (id && pid != null && pid !== "") parentMap.set(id, String(pid));
+      if (id && pid != null && pid !== "") map.set(id, String(pid));
     });
+    return map;
+  }, [records, empCol, mgrCol]);
+
+  const uncollapseAncestorsOf = useCallback((targetId) => {
     setCollapsed((prev) => {
       const next = new Set(prev);
-      let curr = targetId;
+      let curr = String(targetId);
       const guard = new Set();
       while (parentMap.has(curr) && !guard.has(curr)) {
         guard.add(curr);
@@ -1077,19 +1103,89 @@ export default function OrgChart({
       }
       return next;
     });
+  }, [parentMap]);
 
-    focusHandledRef.current = targetId;
+  const focusOnNode = useCallback((empId, { zoom = FOCUS_ZOOM, setFocused = true } = {}) => {
+    const pos = layout.nodes.get(String(empId));
+    if (!pos || !viewportRef.current) return false;
+
+    const vw = viewportRef.current.clientWidth || 1200;
+    const vh = viewportRef.current.clientHeight || 800;
+    zoomRef.current = zoom;
+    setZoomLabel(zoom);
+
+    const { panX, panY } = computeFocusPan(pos, { width: vw, height: vh }, zoom);
+    panRef.current = { x: panX, y: panY };
+    applyTransform();
+
+    const id = String(empId);
+    setSelectedId(id);
+    if (setFocused) setFocusedNodeId(id);
+    return true;
+  }, [layout, applyTransform]);
+
+  const navigateToNode = useCallback((empId, { zoom = FOCUS_ZOOM, onComplete } = {}) => {
+    const id = String(empId);
+    pendingFocusRef.current = { id, zoom, onComplete };
+    uncollapseAncestorsOf(id);
+  }, [uncollapseAncestorsOf]);
+
+  // After uncollapse / filter layout settles, pan + zoom to the pending target.
+  useEffect(() => {
+    const pending = pendingFocusRef.current;
+    if (!pending) return;
+    if (!layout.nodes.has(pending.id)) return;
+
+    pendingFocusRef.current = null;
     requestAnimationFrame(() => {
       setTimeout(() => {
-        panToNode(targetId);
-        onFocusHandled?.();
+        focusOnNode(pending.id, { zoom: pending.zoom });
+        pending.onComplete?.();
       }, 150);
     });
-  }, [initialFocusNodeId, records, layout.nodes, empCol, mgrCol, panToNode, onFocusHandled]);
+  }, [layout, collapsed, focusOnNode]);
+
+  // Focus a node when navigated from Spans & Layers ("View in OrgSight")
+  useEffect(() => {
+    if (!initialFocusNodeId || !records?.length) return;
+    const targetId = String(initialFocusNodeId);
+    if (focusHandledRef.current === targetId) return;
+    focusHandledRef.current = targetId;
+    navigateToNode(targetId, { onComplete: onFocusHandled });
+  }, [initialFocusNodeId, records, navigateToNode, onFocusHandled]);
 
   useEffect(() => {
     if (!initialFocusNodeId) focusHandledRef.current = null;
   }, [initialFocusNodeId]);
+
+  // Reset search match index when query or filters change.
+  useEffect(() => {
+    setSearchFocusIndex(0);
+  }, [search, departmentFilter, jobTitleFilter]);
+
+  // Debounced auto-focus on the best search match when the query changes.
+  useEffect(() => {
+    if (!search.trim()) {
+      setFocusedNodeId(null);
+      return;
+    }
+    if (!searchMatches.length) return;
+
+    const timer = setTimeout(() => {
+      setSearchFocusIndex(0);
+      navigateToNode(searchMatches[0].id);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [search, searchMatches, navigateToNode]);
+
+  const cycleSearchMatch = useCallback((direction) => {
+    if (!searchMatches.length) return;
+    const nextIdx = direction < 0
+      ? (searchFocusIndex - 1 + searchMatches.length) % searchMatches.length
+      : (searchFocusIndex + 1) % searchMatches.length;
+    setSearchFocusIndex(nextIdx);
+    navigateToNode(searchMatches[nextIdx].id);
+  }, [searchMatches, searchFocusIndex, navigateToNode]);
 
   const onWheel = (e) => {
     if (!e.ctrlKey && !e.metaKey) return;
@@ -1101,34 +1197,25 @@ export default function OrgChart({
   const centerOnRoot = useCallback(() => {
     const firstRootId = index.roots[0];
     if (!firstRootId) return;
-    const rootPos = layout.nodes.get(firstRootId);
-    if (!rootPos || !viewportRef.current) return;
+    navigateToNode(firstRootId, { zoom: ROOT_ENTRY_ZOOM });
+  }, [index.roots, navigateToNode]);
 
-    const vw = viewportRef.current.clientWidth || 1200;
-    const DEFAULT_ZOOM = 0.75;
-    const widthToFit = Math.max(layout.width, 800);
-    const fitZoom = (vw - 80) / widthToFit;
-    const initialZoom = Math.max(0.3, Math.min(DEFAULT_ZOOM, fitZoom));
-
-    zoomRef.current = initialZoom;
-    panRef.current = {
-      x: vw / 2 - (rootPos.x + CARD_WIDTH / 2 + 40) * initialZoom,
-      y: 20,
-    };
-    setZoomLabel(initialZoom);
-    applyTransform();
-  }, [index.roots, layout, applyTransform]);
-
-  // Auto-center on root whenever layout is computed for a new dataset/scenario.
-  // Uses rAF to ensure the viewport has been painted and clientWidth is accurate.
+  // Auto-focus the top-level root when entering the org chart (zoomed in).
   useEffect(() => {
     if (!records || !records.length || !layout.nodes.size) return;
     if (!viewportRef.current) return;
     if (hasAutoCenteredRef.current) return;
-    hasAutoCenteredRef.current = true;
+    if (initialFocusNodeId) return;
+    if (search.trim()) return;
 
-    requestAnimationFrame(() => centerOnRoot());
-  }, [records, layout, centerOnRoot]);
+    const firstRootId = index.roots[0];
+    if (!firstRootId) return;
+
+    hasAutoCenteredRef.current = true;
+    requestAnimationFrame(() => {
+      focusOnNode(firstRootId, { zoom: ROOT_ENTRY_ZOOM });
+    });
+  }, [records, layout, index.roots, initialFocusNodeId, search, focusOnNode]);
 
   // Reset hasAutoCentered when scenario / dataset changes so the new dataset
   // gets auto-centered too.
@@ -1331,7 +1418,78 @@ export default function OrgChart({
   if (!records) {
     return (
       <div style={emptyStyle()}>
-        <p style={{ fontSize: 14, color: AM.textMuted }}>Loading org chart…</p>
+        <style>{`
+          @keyframes glowPulse {
+            0%, 100% { filter: drop-shadow(0 0 2px rgba(10, 63, 134, 0.4)); opacity: 0.8; }
+            50% { filter: drop-shadow(0 0 8px rgba(1, 36, 74, 0.8)); opacity: 1; }
+          }
+          @keyframes dataFlow {
+            0% { stroke-dashoffset: 24; }
+            100% { stroke-dashoffset: 0; }
+          }
+          @keyframes pulseScale {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.08); }
+          }
+        `}</style>
+        <div className="flex flex-col items-center justify-center space-y-6 max-w-sm mx-auto">
+          {/* Holographic Glowing SVG Org Tree */}
+          <div className="relative w-32 h-28 animate-[pulseScale_3s_ease-in-out_infinite] flex items-center justify-center">
+            {/* Ambient Background Glow */}
+            <div className="absolute inset-0 bg-[#0a3f86]/5 rounded-full blur-xl transform scale-75" />
+            
+            <svg className="w-full h-full relative z-10" viewBox="0 0 100 80" fill="none" xmlns="http://www.w3.org/2000/svg">
+              {/* Glow Filter */}
+              <defs>
+                <filter id="brand-glow" x="-20%" y="-20%" width="140%" height="140%">
+                  <feGaussianBlur stdDeviation="2" result="blur" />
+                  <feMerge>
+                    <feMergeNode in="blur" />
+                    <feMergeNode in="SourceGraphic" />
+                  </feMerge>
+                </filter>
+              </defs>
+
+              {/* Connecting Lines with flow dash animation */}
+              {/* L1 to L2 */}
+              <line x1="50" y1="15" x2="25" y2="45" stroke="#0a3f86" strokeWidth="2.5" strokeLinecap="round" strokeDasharray="6 6" className="animate-[dataFlow_1.2s_linear_infinite]" filter="url(#brand-glow)" />
+              <line x1="50" y1="15" x2="75" y2="45" stroke="#0a3f86" strokeWidth="2.5" strokeLinecap="round" strokeDasharray="6 6" className="animate-[dataFlow_1.2s_linear_infinite]" filter="url(#brand-glow)" />
+              
+              {/* L2 to L3 */}
+              <line x1="25" y1="45" x2="12" y2="70" stroke="#74a9e7" strokeWidth="1.5" strokeLinecap="round" strokeDasharray="4 4" className="animate-[dataFlow_1.8s_linear_infinite]" />
+              <line x1="25" y1="45" x2="38" y2="70" stroke="#74a9e7" strokeWidth="1.5" strokeLinecap="round" strokeDasharray="4 4" className="animate-[dataFlow_1.8s_linear_infinite]" />
+              <line x1="75" y1="45" x2="62" y2="70" stroke="#74a9e7" strokeWidth="1.5" strokeLinecap="round" strokeDasharray="4 4" className="animate-[dataFlow_1.8s_linear_infinite]" />
+              <line x1="75" y1="45" x2="88" y2="70" stroke="#74a9e7" strokeWidth="1.5" strokeLinecap="round" strokeDasharray="4 4" className="animate-[dataFlow_1.8s_linear_infinite]" />
+
+              {/* L1 Root Node (Executive) - Glowing dark navy with gold stroke */}
+              <circle cx="50" cy="15" r="8" fill="#01244a" stroke="#c5a84a" strokeWidth="2" className="animate-[glowPulse_2s_infinite]" filter="url(#brand-glow)" />
+              <circle cx="50" cy="15" r="3" fill="#c5a84a" />
+
+              {/* L2 Branch Nodes (VP/Director) - Glowing sapphire blue with navy stroke */}
+              <circle cx="25" cy="45" r="6.5" fill="#0a3f86" stroke="#01244a" strokeWidth="1.5" className="animate-[glowPulse_2s_infinite]" style={{ animationDelay: "250ms" }} filter="url(#brand-glow)" />
+              <circle cx="25" cy="45" r="2" fill="#dee7f0" />
+              
+              <circle cx="75" cy="45" r="6.5" fill="#0a3f86" stroke="#01244a" strokeWidth="1.5" className="animate-[glowPulse_2s_infinite]" style={{ animationDelay: "250ms" }} filter="url(#brand-glow)" />
+              <circle cx="75" cy="45" r="2" fill="#dee7f0" />
+
+              {/* L3 Leaf Nodes (Manager/Staff) - Soft grey-blue with light blue stroke */}
+              <circle cx="12" cy="70" r="4.5" fill="#dee7f0" stroke="#74a9e7" strokeWidth="1" className="animate-[glowPulse_2s_infinite]" style={{ animationDelay: "500ms" }} />
+              <circle cx="38" cy="70" r="4.5" fill="#dee7f0" stroke="#74a9e7" strokeWidth="1" className="animate-[glowPulse_2s_infinite]" style={{ animationDelay: "500ms" }} />
+              <circle cx="62" cy="70" r="4.5" fill="#dee7f0" stroke="#74a9e7" strokeWidth="1" className="animate-[glowPulse_2s_infinite]" style={{ animationDelay: "500ms" }} />
+              <circle cx="88" cy="70" r="4.5" fill="#dee7f0" stroke="#74a9e7" strokeWidth="1" className="animate-[glowPulse_2s_infinite]" style={{ animationDelay: "500ms" }} />
+            </svg>
+          </div>
+          
+          {/* Typography */}
+          <div className="text-center space-y-1.5">
+            <h3 className="text-sm font-semibold text-[#01244a] tracking-wide animate-pulse">
+              Structuring Organisation Data...
+            </h3>
+            <p className="text-xs text-gray-400">
+              Calibrating reporting lines, levels, and scenario details
+            </p>
+          </div>
+        </div>
       </div>
     );
   }
@@ -1362,7 +1520,7 @@ export default function OrgChart({
         height: "100%",
         minHeight: 600,
         background: AM.bg,
-        fontFamily: "'IBM Plex Sans', system-ui, sans-serif",
+        fontFamily: "Inter, system-ui, sans-serif",
         position: fullscreen ? "fixed" : "relative",
         borderRadius: fullscreen ? 0 : 12,
         overflow: "hidden",
@@ -1555,23 +1713,47 @@ export default function OrgChart({
 
         <div style={{ flex: 1 }} />
 
-        <input
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search…"
-          style={{
-            background: "#0a3366",
-            border: "1px solid #1a4d7a",
-            color: AM.white,
-            borderRadius: 6,
-            padding: "6px 12px",
-            fontSize: 12,
-            outline: "none",
-            width: 160,
-            minWidth: 120,
-            flexShrink: 1,
-          }}
-        />
+        <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 1, minWidth: 0 }}>
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && searchMatches.length) {
+                e.preventDefault();
+                cycleSearchMatch(e.shiftKey ? -1 : 1);
+              }
+            }}
+            placeholder="Search…"
+            title={searchMatches.length > 1 ? "Enter: next match · Shift+Enter: previous" : undefined}
+            style={{
+              background: "#0a3366",
+              border: "1px solid #1a4d7a",
+              color: AM.white,
+              borderRadius: 6,
+              padding: "6px 12px",
+              fontSize: 12,
+              outline: "none",
+              width: 160,
+              minWidth: 100,
+              flexShrink: 1,
+            }}
+          />
+          {search.trim() && searchMatches.length > 0 && (
+            <span
+              style={{
+                fontSize: 10,
+                color: AM.gold,
+                fontFamily: "Inter, system-ui, sans-serif",
+                fontWeight: 600,
+                whiteSpace: "nowrap",
+                flexShrink: 0,
+              }}
+              title="Press Enter to cycle matches"
+            >
+              {searchFocusIndex + 1}/{searchMatches.length}
+            </span>
+          )}
+        </div>
         {departments.length > 0 && (
           <select
             value={departmentFilter}
@@ -1647,14 +1829,14 @@ export default function OrgChart({
 
         <div style={{ display: "flex", alignItems: "center", gap: 4, marginLeft: 6, flexShrink: 0 }}>
           <ZoomBtn onClick={() => setZoom((z) => z / 1.15)} title="Zoom out">−</ZoomBtn>
-          <span style={{ fontSize: 11, color: AM.white, width: 42, textAlign: "center", fontFamily: "'IBM Plex Mono', monospace", whiteSpace: "nowrap" }}>
+          <span style={{ fontSize: 11, color: AM.white, width: 42, textAlign: "center", fontFamily: "Inter, system-ui, sans-serif", fontWeight: 600, whiteSpace: "nowrap" }}>
             {(zoomLabel * 100).toFixed(0)}%
           </span>
           <ZoomBtn onClick={() => setZoom((z) => z * 1.15)} title="Zoom in">+</ZoomBtn>
           <ZoomBtn onClick={fitToView} title="Fit tree to view">⤢</ZoomBtn>
           <ZoomBtn
             onClick={centerOnRoot}
-            title="Center on root (75%)"
+            title="Center on top-level position (zoomed in)"
           >
             ⌂
           </ZoomBtn>
@@ -1848,7 +2030,9 @@ export default function OrgChart({
         <OrgScenarioBar
           scenarios={scenarios || []}
           activeScenarioId={activeScenarioId}
-          onSwitch={onSwitchScenario || setActiveScenarioId}
+          onSwitch={handleScenarioSwitch}
+          switching={isScenarioBusy}
+          switchingScenarioName={switchingScenarioName}
           onCreate={handleCreateScenario}
           onRename={handleRenameScenario}
           onDelete={handleDeleteScenario}
@@ -1900,7 +2084,7 @@ export default function OrgChart({
                 return result;
               }
             : undefined}
-          onJumpToNode={panToNode}
+          onJumpToNode={navigateToNode}
         />
       )}
 
@@ -1941,6 +2125,12 @@ export default function OrgChart({
 
       {/* Body: canvas + detail panel (panel floats so it never squeezes the canvas) */}
       <div style={{ flex: 1, display: "flex", overflow: "hidden", minHeight: 400, position: "relative" }}>
+        {isScenarioBusy && (
+          <OrgChartLoadingOverlay
+            message={switchingScenarioName ? `Switching to ${switchingScenarioName}…` : "Loading scenario…"}
+            submessage="Fetching org structure and scenario changes from the server"
+          />
+        )}
         <div
           ref={viewportRef}
           onMouseDown={onCanvasMouseDown}
@@ -2059,7 +2249,7 @@ export default function OrgChart({
                     fontSize: 11,
                     fontWeight: 700,
                     color: "#dc2626",
-                    fontFamily: "'IBM Plex Sans', sans-serif",
+                    fontFamily: "Inter, system-ui, sans-serif",
                     whiteSpace: "nowrap",
                   }}>
                     ⚠ Circular reference — fix the reporting chain to place these nodes in the tree
@@ -2085,6 +2275,7 @@ export default function OrgChart({
                   position={pos}
                   stats={stats.get(id)}
                   selected={selectedId === id}
+                  focused={focusedNodeId === id}
                   isMultiSelected={multiSelectedIds.has(id)}
                   issues={nodeIssuesMap.get(id) || null}
                   editMode={editMode}
@@ -2164,7 +2355,7 @@ export default function OrgChart({
           {/* Inline validation sidebar — navigation only; fix UI is in the detail panel */}
           <ValidationSidebar
             nodeIssuesMap={nodeIssuesMap}
-            onJumpToNode={panToNode}
+            onJumpToNode={navigateToNode}
           />
 
           {/* Bulk action bar — floats at bottom when multi-select is active */}
@@ -2332,7 +2523,7 @@ function Stat({ label, value }) {
       >
         {label}
       </span>
-      <span style={{ fontSize: 13, fontWeight: 700, fontFamily: "'IBM Plex Mono', monospace" }}>
+      <span style={{ fontSize: 13, fontWeight: 700, fontFamily: "Inter, system-ui, sans-serif" }}>
         {value}
       </span>
     </div>
@@ -2475,7 +2666,7 @@ function emptyStyle() {
     background: AM.bg,
     borderRadius: 12,
     border: `1px solid ${AM.border}`,
-    fontFamily: "'IBM Plex Sans', system-ui, sans-serif",
+    fontFamily: "Inter, system-ui, sans-serif",
     padding: 40,
     textAlign: "center",
   };

@@ -947,7 +947,7 @@ def auto_map_columns_endpoint(
     matching + a single LLM call for unresolved columns."""
     username = user["username"]
     try:
-        mappings, message, requires_attention = auto_map_columns_with_feedback(body.columns, body.sample_rows)
+        mappings, message, requires_attention, mapping_summary = auto_map_columns_with_feedback(body.columns, body.sample_rows)
         write_activity_log(
             username=username, action="process", module="ColumnMapping",
             status="success",
@@ -956,7 +956,8 @@ def auto_map_columns_endpoint(
         return {
             "mappings": mappings,
             "message": message,
-            "requires_attention": requires_attention
+            "requires_attention": requires_attention,
+            "mapping_summary": mapping_summary,
         }
     except Exception as e:
         write_activity_log(
@@ -1122,7 +1123,7 @@ async def process_upload_endpoint(
 
         # 2. Auto-map columns
         sample_rows = records[:10]
-        col_mappings, mapping_msg, mapping_attention = auto_map_columns_with_feedback(columns, sample_rows)
+        col_mappings, mapping_msg, mapping_attention, _ = auto_map_columns_with_feedback(columns, sample_rows)
 
         # Determine mapped columns for downstream steps
         country_col = (col_mappings.get("country") or {}).get("source_column")

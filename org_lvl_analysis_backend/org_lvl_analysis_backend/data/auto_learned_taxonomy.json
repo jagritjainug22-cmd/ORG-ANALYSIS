@@ -1,6 +1,6 @@
 {
   "function_aliases": {
-    "C&P": "Compliance and Legal",
+    "C&P": "Procurement",
     "Commercial": "Sales & Marketing",
     "Engineering": "R&D",
     "Human Resources": "HR",
@@ -8,7 +8,7 @@
     "S&D": "Sales & Marketing",
     "Supply": "Procurement",
     "ERA": "Compliance and Legal",
-    "Lubricants": "Procurement",
+    "Lubricants": "Sales & Marketing",
     "Retail": "Sales & Marketing",
     "Commercial UK": "Sales & Marketing",
     "Executive Office": "Compliance and Legal",
@@ -31,14 +31,138 @@
     "Risk": "Compliance and Legal",
     "Strategy": "Sales & Marketing",
     "Trading": "Sales & Marketing",
-    "Central IBD": "Finance",
-    "Corporate": "Compliance and Legal",
+    "Central IBD": "Sales & Marketing",
+    "Corporate": "Finance",
     "HSSE & Health": "Compliance and Legal",
     "Information Technology": "IT",
-    "Office Services": "Procurement",
-    "Security": "Compliance and Legal"
+    "Office Services": "HR",
+    "Security": "Compliance and Legal",
+    "TRR": "Compliance and Legal"
   },
-  "subfunction_aliases": {},
+  "subfunction_aliases": {
+    "Legal": {
+      "SA Legal - Cosec": "Manage compliance",
+      "SA Legal - Forensics": "Enterprise Risk",
+      "Manager,Legal Services & Advis": "Manage compliance"
+    },
+    "Information Technology": {
+      "CIO": "Information Technology Services"
+    },
+    "HSSE & Health": {
+      "SA HSSE - Commercial": "Manage compliance",
+      "SA HSSE - Risk & Assurance": "Enterprise Risk",
+      "SA HSSE - Strategy & Performance": "Business Resiliency",
+      "SA HSSE - Environment": "Compliance",
+      "SA HSSE - Safety & Product Quality": "Compliance",
+      "SA HSSE - Sustainability": "Compliance",
+      "SA HSSE - Lubricants": "Compliance",
+      "General Manager: HSEQ": "Manage enterprise risk",
+      "Manager,OH & Wellness": "Manage remediation efforts",
+      "Executive Assistant: HSEQ": "Manage enterprise risk"
+    },
+    "Commercial": {
+      "SA Com - Chemicals - Bitumen&Speciality": "Develop marketing plans",
+      "SA Com - Chemicals": "Develop marketing plans",
+      "SA Com - Direct Sales": "Develop sales plans",
+      "SA Com - BPI": "Develop marketing plans",
+      "SA Com - Reseller Sales": "Develop sales plans",
+      "SA Com - Chemicals - Base": "Develop marketing plans",
+      "SA Com - Technical Advisory": "Develop marketing plans",
+      "General Manager: Commercial": "Understand markets, customers, and capabilities",
+      "Executive Assistant: Commercia": "Understand markets, customers, and capabilities",
+      "Manager,Marketing Business Dev": "Develop marketing strategy"
+    },
+    "Finance": {
+      "SA Finance - Optimus": "General",
+      "SA Finance - Treasury": "Treasury Operations",
+      "SA Finance - Tax": "Manage taxes",
+      "SA Finance - Shared Services": "Accounts Payable",
+      "SA Finance - Credit": "Credit",
+      "SA Finance - Planning": "Planning and Management Accounting",
+      "SA Corporate - Strategy": "General",
+      "General Manager: Finance": "Perform general accounting and reporting",
+      "Manager,Fin.Governance,Risk &": "Manage internal controls",
+      "Executive Assistant: Finance": "Perform general accounting and reporting",
+      "Manager,Cost Optimisation": "Perform planning and management accounting",
+      "Head: Data": "Perform planning and management accounting"
+    },
+    "Human Resources": {
+      "SA HR - Comp & Ben": "Reward and Retain Employees",
+      "SA HR - BP - Corporate & Retail": "Manage Employee Relations",
+      "SA HR - BP - Supply Chain, Comm & Lubes": "Manage Employee Relations",
+      "SA HR - T & D": "Develop and Counsel Employees",
+      "SA HR - OD & EE": "Manage Employee Relations",
+      "SA HR - Employee Relations": "Manage employee relations",
+      "SA HR - Technology": "Manage Employee Information and Analytics",
+      "General Manager: Human Resourc": "Develop and manage human resources (HR) planning, policies, and strategies",
+      "Manager, Change Management & C": "Manage employee relations"
+    },
+    "ERA": {
+      "SA ERA - Enterprise Risk": "Manage enterprise risk",
+      "General Manager: ERA": "Manage enterprise risk",
+      "Executive Assistant: ERA": "Manage enterprise risk",
+      "Manager,Audit": "Manage compliance"
+    },
+    "Office Services": {
+      "SA Office Services - Inland": "Manage Employee Relations",
+      "SA Office Services - Coastal": "Office Services",
+      "Asset Management Controller": "Develop and manage human resources (HR) planning, policies, and strategies",
+      "Manager,Facilities Management": "Develop and manage human resources (HR) planning, policies, and strategies"
+    },
+    "Retail": {
+      "SA Ret - BPI": "Marketing Plans",
+      "SA Ret - CR": "Marketing Plans",
+      "SA Ret - HSEQ": "Marketing Plans",
+      "SA Ret - S&O Inland": "Sales Plans",
+      "SA Ret - S&O Coastal": "Sales Plans",
+      "SA Ret - Assets": "Marketing Plans",
+      "General Manager: Retail": "Understand markets, customers, and capabilities"
+    },
+    "Lubricants": {
+      "SA Lubes - Direct Sales": "Sales Plans",
+      "SA Lubes - Ind Sales": "Sales Plans",
+      "SA Lubes - Technical Advisory": "Marketing Plans",
+      "SA Lubes - SSA Distributor Sales": "Sales Plans",
+      "SA Lubes - SC": "Sales Plans",
+      "SA Lubes - S&OP": "Marketing Plans",
+      "SA Lubes - Technical Advisory - Field": "Marketing Plans",
+      "SA Lubes - Growth Enablement": "Marketing Plans",
+      "SA Lubes - BPI": "Marketing Plans",
+      "General Manager: Lubricants": "Understand markets, customers, and capabilities",
+      "Executive Assistant: Lubes": "Understand markets, customers, and capabilities"
+    },
+    "Marketing, Comms & Transformation": {
+      "SA Marketing - Market Intelligence": "Marketing Plans",
+      "Chief Marketing Officer": "Develop marketing strategy",
+      "Manager,Strategic Communicatio": "Develop and manage marketing plans",
+      "Manager,Digital Innovation": "Develop marketing strategy"
+    },
+    "Corporate": {
+      "Managing Director and CEO": "Perform general accounting and reporting",
+      "Executive Assistant": "Perform general accounting and reporting"
+    },
+    "Security": {
+      "Manager,Security": "Manage business resiliency",
+      "Corporate Security Advisor": "Manage compliance",
+      "Cost Centre & Contracts Manage": "Manage remediation efforts",
+      "Travel Risk & Administration M": "Manage enterprise risk",
+      "Security Manager": "Manage business resiliency",
+      "Engen Court Security & Systems": "Manage remediation efforts",
+      "Senior Corporate Security Advi": "Manage compliance"
+    },
+    "S&D": {
+      "General Manager: Supply Chain": "Understand markets, customers, and capabilities"
+    },
+    "TRR": {
+      "Manager, Transition, Repurpose": "Manage remediation efforts"
+    },
+    "Central IBD": {
+      "Manager, International Busines": "Develop sales strategy"
+    },
+    "C&P": {
+      "Chief Procurement Officer": "Procure materials and services"
+    }
+  },
   "title_aliases": {
     "Marketing, Comms & Transformation": {
       "Event Coordinator": "Marketing Specialist",
@@ -47,8 +171,8 @@
       "Educator": "Marketing Specialist",
       "Chief Marketing Officer": "Marketing Specialist",
       "Customer Experience & Market": "Marketing Specialist",
-      "Manager,Strategic Communicatio": "Marketing Specialist",
-      "Manager,Digital Innovation": "Marketing Specialist"
+      "Manager,Strategic Communicatio": "Campaign Manager",
+      "Manager,Digital Innovation": "Campaign Manager"
     },
     "C&P": {
       "Knowledge Mgt& Process Compl": "Compliance Analyst",
@@ -58,16 +182,16 @@
       "TeleAccounts Representative": "Sales Representative",
       "Junior Analyst": "Business Development Executive",
       "Field Sales Specialist": "Sales Executive",
-      "General Manager: Commercial": "Account Manager",
-      "Specialities &Renewable Busi": "Business Development Executive",
-      "Executive Assistant: Commercia": "Sales Executive",
-      "Manager,Marketing Business Dev": "Business Development Executive",
-      "Pricing &New Product Develop": "Marketing Specialist",
-      "Manager,Direct Sales": "Sales Executive",
-      "Head: Finance (Commercial)": "Accountant",
-      "Manager,Reseller Sales": "Sales Executive",
+      "General Manager: Commercial": "General Manager",
+      "Specialities &Renewable Busi": "Specialist",
+      "Executive Assistant: Commercia": "Executive Assistant",
+      "Manager,Marketing Business Dev": "Marketing Manager",
+      "Pricing &New Product Develop": "Business Development Executive",
+      "Manager,Direct Sales": "Sales Manager",
+      "Head: Finance (Commercial)": "Head",
+      "Manager,Reseller Sales": "Sales Manager",
       "Chemicals &Intermediate Busi": "Business Development Executive",
-      "Manager,Technical Advisory": "Marketing Specialist"
+      "Manager,Technical Advisory": "Manager"
     },
     "S&D": {
       "Business Planning & Analysis": "Business Development Executive",
@@ -79,7 +203,7 @@
       "Inventory Analyst": "Business Development Executive",
       "Linear Programming Planner": "Sales Executive",
       "Contract Management Speciali": "Sales Executive",
-      "General Manager: Supply Chain": "Account Manager"
+      "General Manager: Supply Chain": "General Manager"
     },
     "Finance": {
       "Credit Controller": "Specialist",
@@ -234,18 +358,18 @@
       "Senior Manager - International Tax and Structuring": "Finance Manager",
       "Transfer Pricing Senior Manager": "Finance Manager",
       "Category Manager - Fixed Term Contract": "Finance Manager",
-      "General Manager: Finance": "Finance Manager",
+      "General Manager: Finance": "General Manager",
       "Manager,Business Cutover": "Finance Manager",
       "Manager,Treasury": "Finance Manager",
       "Manager,Tax": "Finance Manager",
       "Manager,Financial Shared Ser": "Finance Manager",
       "Manager,Fin.Governance,Risk &": "Finance Manager",
       "Executive Assistant: Finance": "Finance Executive",
-      "Manager,Cost Optimisation": "Cost Accountant",
+      "Manager,Cost Optimisation": "Finance Manager",
       "Manager,Credit": "Finance Manager",
       "Manager,Planning,Performance": "Finance Manager",
       "Manager,Strategy": "Finance Manager",
-      "Head: Data": "Analyst"
+      "Head: Data": "Head"
     },
     "Retail": {
       "Governance & Compliance Mana": "Compliance Manager",
@@ -255,12 +379,12 @@
       "Administrative Assistant": "Sales Representative",
       "Business Technology & Data C": "Business Development Executive",
       "Senior New Site Developer": "Senior Sales Executive",
-      "General Manager: Retail": "Account Manager",
-      "Head: Finance (Retail)": "Accountant",
-      "Manager,Convenience Strategy": "Marketing Specialist",
-      "Manager, HSEQ & Food Complia": "Compliance Manager",
-      "Manager,Sales & Operations-I": "Sales Executive",
-      "Manager,Sales & Operations-C": "Sales Executive",
+      "General Manager: Retail": "General Manager",
+      "Head: Finance (Retail)": "Head",
+      "Manager,Convenience Strategy": "Account Manager",
+      "Manager, HSEQ & Food Complia": "Account Manager",
+      "Manager,Sales & Operations-I": "Account Manager",
+      "Manager,Sales & Operations-C": "Account Manager",
       "Manager,Retail Assets": "Account Manager"
     },
     "Engineering": {
@@ -273,21 +397,21 @@
     "Human Resources": {
       "Learning & SD Coordinator": "L&D Coordinator",
       "HR Director": "Organizational Development Manager",
-      "General Manager: Human Resourc": "HR Business Partner",
-      "Manager,Compensation & Benef": "HR Business Partner",
+      "General Manager: Human Resourc": "General Manager",
+      "Manager,Compensation & Benef": "Organizational Development Manager",
       "Manager,HR Business Partner-": "HR Business Partner",
       "Manager,HR Business Partner(": "HR Business Partner",
-      "HR & Talent Coordinator": "Recruiter",
+      "HR & Talent Coordinator": "L&D Coordinator",
       "Manager, Organisation Design": "Organizational Development Manager",
-      "Manager,Employee Relations": "HR Business Partner",
+      "Manager,Employee Relations": "HR Generalist",
       "Manager, Change Management & C": "Organizational Development Manager",
       "Manager, HR Technology & Con": "HR Business Partner",
       "Manager,Talent Attraction &": "Recruiter"
     },
     "ERA": {
       "Senior Auditor": "Compliance Analyst",
-      "General Manager: ERA": "Compliance Manager",
-      "Executive Assistant: ERA": "Compliance Analyst",
+      "General Manager: ERA": "General Manager",
+      "Executive Assistant: ERA": "Executive Assistant",
       "Manager,Enterprise Risk": "Compliance Manager",
       "Manager,Audit": "Compliance Manager"
     },
@@ -2134,8 +2258,8 @@
       "Group Legal Director - Property": "Corporate Counsel",
       "Legal Counsel / Associate Legal Counsel": "Legal Counsel",
       "Group Company Secretary": "Corporate Counsel",
-      "Manager,Legal Services & Advis": "Legal Advisor",
-      "Assistant Company Secretaria": "Corporate Counsel",
+      "Manager,Legal Services & Advis": "Compliance Manager",
+      "Assistant Company Secretaria": "Paralegal",
       "Forensic Manager": "Compliance Manager"
     },
     "Central": {
@@ -2153,11 +2277,11 @@
       "Strategic Project Manager": "IT Analyst"
     },
     "Corporate": {
-      "Managing Director and CEO": "Compliance Manager",
+      "Managing Director and CEO": "Chief Executive Officer",
       "Executive Assistant": "Compliance Analyst"
     },
     "HSSE & Health": {
-      "General Manager: HSEQ": "Compliance Manager",
+      "General Manager: HSEQ": "General Manager",
       "Manager, HSEQ Compliance & P": "Compliance Manager",
       "Product Quality Specialist": "Specialist",
       "Manager,HSEQ Strategy,Perfor": "Compliance Manager",
@@ -2166,50 +2290,50 @@
       "HSEQ Crisis & Incident Mgt S": "Specialist",
       "Manager,Environment": "Compliance Manager",
       "Manager,OH & Wellness": "Compliance Manager",
-      "Executive Assistant: HSEQ": "Compliance Analyst",
-      "HSEQ, Assurance & Management": "Compliance Manager",
+      "Executive Assistant: HSEQ": "Compliance Officer",
+      "HSEQ, Assurance & Management": "Compliance Analyst",
       "Manager,Operations & Process": "Compliance Manager",
       "Manager,Sustainability": "Compliance Manager"
     },
     "Lubricants": {
-      "General Manager: Lubricants": "Specialist",
-      "Manager,Direct Sales": "Sales Executive",
-      "Manager,Indirect Sales": "Sales Executive",
+      "General Manager: Lubricants": "General Manager",
+      "Manager,Direct Sales": "Account Manager",
+      "Manager,Indirect Sales": "Account Manager",
       "Senior OEM Engineer": "Specialist",
-      "Manager,SSA Distributor Sale": "Sales Executive",
-      "Product Manager Automotive": "Specialist",
-      "Executive Assistant: Lubes": "Specialist",
+      "Manager,SSA Distributor Sale": "Account Manager",
+      "Product Manager Automotive": "Marketing Specialist",
+      "Executive Assistant: Lubes": "Sales Executive",
       "Manager,Supply Chain": "Account Manager",
-      "Manager,Sales & Operations P": "Sales Executive",
-      "Field Technical Manager": "Specialist",
-      "Product Manager Industrial": "Specialist",
-      "Manager, Growth Enablement": "Specialist",
-      "Product Manager - Greases": "Specialist",
-      "Head: Finance (Lubricants)": "Finance Manager"
+      "Manager,Sales & Operations P": "Sales Manager",
+      "Field Technical Manager": "Technical Manager",
+      "Product Manager Industrial": "Product Manager",
+      "Manager, Growth Enablement": "Growth Enablement Manager",
+      "Product Manager - Greases": "Product Manager",
+      "Head: Finance (Lubricants)": "Head of Finance"
     },
     "Security": {
       "Manager,Security": "Compliance Manager",
-      "Corporate Security Advisor": "Compliance Manager",
+      "Corporate Security Advisor": "Specialist",
       "Cost Centre & Contracts Manage": "Compliance Manager",
       "Travel Risk & Administration M": "Compliance Manager",
       "Security Manager": "Compliance Manager",
-      "Engen Court Security & Systems": "Compliance Manager",
-      "Senior Corporate Security Advi": "Compliance Manager"
+      "Engen Court Security & Systems": "Specialist",
+      "Senior Corporate Security Advi": "Specialist"
     },
     "TRR": {
-      "Manager, Transition, Repurpose": "Specialist"
+      "Manager, Transition, Repurpose": "Compliance Manager"
     },
     "Information Technology": {
-      "Chief Information and Chief Procurement": "Information Security Specialist"
+      "Chief Information and Chief Procurement": "Chief Information Officer"
     },
     "Central IBD": {
-      "Manager, International Busines": "Finance Manager"
+      "Manager, International Busines": "Business Development Manager"
     },
     "Office Services": {
       "Asset Management Controller": "Specialist",
-      "Manager,Facilities Management": "Specialist",
-      "Inland Facilities Manager": "Specialist",
-      "Coastal Facilities Manager": "Specialist"
+      "Manager,Facilities Management": "Operations Lead",
+      "Inland Facilities Manager": "Operations Lead",
+      "Coastal Facilities Manager": "Operations Lead"
     }
   }
 }

@@ -316,12 +316,7 @@ export default function AskOrgSight({ projectId, datasetId, scenarioId, onNaviga
 
   // ── Initialising ────────────────────────────────────────────────────────────
   if (initStatus === "loading") {
-    return (
-      <div className="flex flex-col items-center justify-center h-full text-gray-400 p-12">
-        <div className="w-10 h-10 border-4 border-brand-100 border-t-brand-500 rounded-full animate-spin mb-4" />
-        <p className="text-sm font-medium">Initialising data session...</p>
-      </div>
-    );
+    return <InitialisingLoader />;
   }
 
   // ── Init error ──────────────────────────────────────────────────────────────
@@ -410,10 +405,15 @@ export default function AskOrgSight({ projectId, datasetId, scenarioId, onNaviga
               <span className="w-2 h-2 bg-brand-400 rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
               <span className="w-2 h-2 bg-brand-400 rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
             </div>
-            <span className="text-sm text-gray-500 italic">
-              {streamPhase
-                ? <>{streamPhase.icon} {streamPhase.label}</>
-                : "Analysing your data..."}
+            <span className="text-sm text-gray-500 italic flex items-center gap-1.5">
+              {streamPhase ? (
+                <>
+                  {streamPhase.icon}
+                  <span>{streamPhase.label}</span>
+                </>
+              ) : (
+                "Analysing your data..."
+              )}
             </span>
             {/* Abort button */}
             <button
@@ -1071,3 +1071,117 @@ function EmptyState({ onSelect }) {
     </div>
   );
 }
+
+
+// =============================================================================
+// INITIALISING LOADER — premium animated loader for database session init
+// =============================================================================
+
+const LOADING_STEPS = [
+  "Initialising data session...",
+  "Loading organizational structure...",
+  "Preparing secure data sandbox...",
+  "Configuring analytics engine...",
+  "Connecting OrgSight chatbot..."
+];
+
+function InitialisingLoader() {
+  const [stepIndex, setStepIndex] = useState(0);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setStepIndex((prev) => (prev + 1) % LOADING_STEPS.length);
+    }, 2500);
+    return () => clearInterval(interval);
+  }, []);
+
+  return (
+    <div className="flex flex-col items-center justify-center h-full text-center p-12 bg-gradient-to-b from-gray-50/50 to-white select-none">
+      <div className="relative flex items-center justify-center w-36 h-36 mb-6">
+        {/* Ambient background pulsing rings */}
+        <div className="absolute inset-0 bg-brand-500/5 rounded-full animate-pulse-ring-slow" />
+        <div className="absolute inset-4 bg-brand-400/10 rounded-full animate-pulse-ring-slow" style={{ animationDelay: "1s" }} />
+
+        {/* Outer orbital ring (Clockwise) */}
+        <svg className="absolute w-32 h-32 animate-spin-slow" viewBox="0 0 100 100">
+          <circle
+            cx="50"
+            cy="50"
+            r="44"
+            stroke="url(#loaderGlowGrad)"
+            strokeWidth="3"
+            strokeDasharray="25 40 15 20"
+            fill="none"
+            strokeLinecap="round"
+          />
+        </svg>
+
+        {/* Inner orbital ring (Counter-clockwise) */}
+        <svg className="absolute w-28 h-28 animate-spin-reverse-slow" viewBox="0 0 100 100">
+          <circle
+            cx="50"
+            cy="50"
+            r="44"
+            stroke="url(#loaderGoldGrad)"
+            strokeWidth="2"
+            strokeDasharray="15 30 10 45"
+            fill="none"
+            strokeLinecap="round"
+          />
+        </svg>
+
+        {/* Floating background particles */}
+        <div className="absolute top-4 left-8 w-1.5 h-1.5 bg-brand-300 rounded-full animate-float-1 opacity-70" />
+        <div className="absolute bottom-6 right-8 w-2 h-2 bg-amber-400 rounded-full animate-float-2 opacity-60" />
+        <div className="absolute bottom-10 left-6 w-1 h-1 bg-brand-200 rounded-full animate-float-3 opacity-80" />
+
+        {/* Central Hub with pulsing glow */}
+        <div className="absolute flex items-center justify-center w-16 h-16 bg-gradient-to-br from-[#01244a] to-[#0a3f86] rounded-2xl shadow-xl border border-brand-400/30 animate-pulse-glow">
+          {/* Logo / Chatbot symbol with connecting data nodes */}
+          <svg className="w-8 h-8 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+            {/* Pulsing chat bubble frame */}
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+            
+            {/* Connected org graph inside chat bubble */}
+            <circle cx="12" cy="7" r="1.2" fill="currentColor" stroke="none" />
+            <circle cx="9" cy="12" r="1.2" fill="currentColor" stroke="none" />
+            <circle cx="15" cy="12" r="1.2" fill="currentColor" stroke="none" />
+            
+            <line x1="12" y1="7" x2="9" y2="12" stroke="currentColor" strokeWidth="1.2" />
+            <line x1="12" y1="7" x2="15" y2="12" stroke="currentColor" strokeWidth="1.2" />
+          </svg>
+        </div>
+
+        {/* Definitions for SVG Gradients */}
+        <svg className="absolute w-0 h-0">
+          <defs>
+            <linearGradient id="loaderGlowGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stopColor="#74a9e7" />
+              <stop offset="60%" stopColor="#0a3f86" />
+              <stop offset="100%" stopColor="#01244a" />
+            </linearGradient>
+            <linearGradient id="loaderGoldGrad" x1="100%" y1="0%" x2="0%" y2="100%">
+              <stop offset="0%" stopColor="#c5a84a" />
+              <stop offset="50%" stopColor="#74a9e7" stopOpacity="0.6" />
+              <stop offset="100%" stopColor="#0a3f86" />
+            </linearGradient>
+          </defs>
+        </svg>
+      </div>
+
+      {/* Loading message container with key transition to force re-render/animation on change */}
+      <div className="h-8 flex items-center justify-center">
+        <p 
+          key={stepIndex} 
+          className="text-sm font-bold text-brand-600 tracking-wider animate-fadeInUp uppercase text-center animate-pulse"
+        >
+          {LOADING_STEPS[stepIndex]}
+        </p>
+      </div>
+      <p className="text-xs text-gray-400 mt-2 max-w-xs leading-relaxed">
+        This setup ensures optimized processing for large-scale organizational analytics queries.
+      </p>
+    </div>
+  );
+}
+

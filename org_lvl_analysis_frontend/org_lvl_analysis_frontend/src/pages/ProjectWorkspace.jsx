@@ -95,6 +95,7 @@ export default function ProjectWorkspace() {
   const [columnMappings, setColumnMappings] = useState(null);
   const [columnMappingMessage, setColumnMappingMessage] = useState(null);
   const [columnMappingRequiresAttention, setColumnMappingRequiresAttention] = useState(false);
+  const [columnMappingSummary, setColumnMappingSummary] = useState(null);
   const [preprocessingSummary, setPreprocessingSummary] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [uploadStep, setUploadStep] = useState("");
@@ -361,6 +362,7 @@ export default function ProjectWorkspace() {
       setColumnMappings(mapRes.mappings);
       setColumnMappingMessage(mapRes.message);
       setColumnMappingRequiresAttention(mapRes.requires_attention);
+      setColumnMappingSummary(mapRes.mapping_summary || null);
       const get = (key) => (mapRes.mappings[key] || {}).source_column || "";
       if (!dataset.func_col && get("function")) setFuncCol(get("function"));
       if (!dataset.subfunc_col && get("subfunction")) setSubfuncCol(get("subfunction"));
@@ -456,6 +458,7 @@ export default function ProjectWorkspace() {
       setColumnMappings(mapRes.mappings);
       setColumnMappingMessage(mapRes.message);
       setColumnMappingRequiresAttention(mapRes.requires_attention);
+      setColumnMappingSummary(mapRes.mapping_summary || null);
       hydrateColumnSelections(mapRes.mappings);
       setColConfigCollapsed(false);
 
@@ -642,6 +645,7 @@ export default function ProjectWorkspace() {
             columnMappings={columnMappings}
             columnMappingMessage={columnMappingMessage}
             columnMappingRequiresAttention={columnMappingRequiresAttention}
+            columnMappingSummary={columnMappingSummary}
             datasetId={datasetId}
             onDatasetPicked={({ dataset, scenarios: scs, activeScenarioId: sid }) =>
               activateDataset(dataset, scs, sid)
@@ -792,13 +796,31 @@ export default function ProjectWorkspace() {
               </span>
             )}
             {activeDatasetLabel && (
-              <ActiveDatasetDropdown
-                label={activeDatasetLabel}
-                savedDatasets={savedDatasets}
-                activeDatasetId={datasetId}
-                onActivateDataset={activateDataset}
-                hasUnsavedChanges={hasUnsavedChanges()}
-              />
+              <>
+                <ActiveDatasetDropdown
+                  label={activeDatasetName || uploadedFileName || "Dataset"}
+                  savedDatasets={savedDatasets}
+                  activeDatasetId={datasetId}
+                  onActivateDataset={activateDataset}
+                  hasUnsavedChanges={hasUnsavedChanges()}
+                />
+                
+                <svg className="w-3.5 h-3.5 text-white/40 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.2} d="M9 5l7 7-7 7" />
+                </svg>
+
+                <div
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-white/10 text-white border border-white/20 shadow-sm"
+                  title={`Active Scenario: ${scenarios.find((s) => s.id === activeScenarioId)?.name || "Baseline"}`}
+                >
+                  <svg className="w-3 h-3 text-brand-200 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7a3 3 0 100-6 3 3 0 000 6zM8 7V17M8 17a3 3 0 100 6 3 3 0 000-6zM8 12h8a3 3 0 003-3V7a3 3 0 10-6 0v2" />
+                  </svg>
+                  <span className="truncate max-w-[150px]">
+                    {scenarios.find((s) => s.id === activeScenarioId)?.name || "Baseline"}
+                  </span>
+                </div>
+              </>
             )}
           </div>
           <div className="flex items-center gap-2 flex-shrink-0">

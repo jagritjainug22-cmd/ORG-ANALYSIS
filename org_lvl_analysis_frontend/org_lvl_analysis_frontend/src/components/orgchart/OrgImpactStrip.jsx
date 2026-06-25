@@ -113,7 +113,7 @@ export default function OrgImpactStrip({
           borderTop: `1px solid ${AM.border}`,
           boxShadow: "0 -2px 8px rgba(1,36,74,0.05)",
           zIndex: 5,
-          fontFamily: "'IBM Plex Sans', system-ui, sans-serif",
+          fontFamily: "Inter, system-ui, sans-serif",
         }}
       >
         <button
@@ -165,7 +165,7 @@ export default function OrgImpactStrip({
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            fontFamily: "'IBM Plex Sans', system-ui, sans-serif",
+            fontFamily: "Inter, system-ui, sans-serif",
           }}
         >
           {/* Backdrop */}
@@ -539,7 +539,7 @@ function DeltaTd({ value, fmt, decimals = 0, bold }) {
   return (
     <td style={{
       padding: "6px 10px", textAlign: "right",
-      fontFamily: "'IBM Plex Mono', monospace",
+      fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
       color, fontWeight: bold ? 700 : 600, fontSize: 11,
     }}>
       {display}
@@ -573,7 +573,7 @@ function ImpactPill({ icon, label, tone = "neutral" }) {
       display: "inline-flex",
       alignItems: "center",
       gap: 6,
-      fontFamily: "'IBM Plex Mono', monospace",
+      fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
       letterSpacing: "0.1px",
     }}>
       {icon}{label}
@@ -619,7 +619,7 @@ function Row({ label, value, bold, accent, isDelta, cost }) {
       <span style={{ fontSize: 11, color: AM.textMuted }}>{label}</span>
       <span style={{
         fontSize: bold ? 13 : 12,
-        fontFamily: "'IBM Plex Mono', monospace",
+        fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
         fontWeight: bold ? 700 : 500,
         color: valueColor,
         letterSpacing: "-0.3px",
@@ -666,7 +666,7 @@ function Td({ children, mono, bold, right }) {
   return (
     <td style={{
       padding: "6px 10px", color: AM.textPrimary,
-      fontFamily: mono ? "'IBM Plex Mono', monospace" : "inherit",
+      fontFamily: mono ? "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace" : "inherit",
       fontWeight: bold ? 700 : 400,
       textAlign: right ? "right" : "left",
       verticalAlign: "middle",

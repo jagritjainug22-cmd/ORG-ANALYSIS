@@ -908,7 +908,7 @@ export const rationaliseApply = (body) =>
   axios.post(`${getProjectUrl()}/rationalise/apply`, body, { headers: jsonHeaders() }).then(r => r.data);
 
 export const getLearnedTaxonomy = () =>
-  axios.get(`${getProjectUrl()}/learned-taxonomy`).then(r => r.data?.entries ?? []);
+  axios.get(`${getProjectUrl()}/learned-taxonomy`, { headers: getHeaders() }).then(r => r.data?.entries ?? []);
 
 export const patchLearnedMapping = (payload) =>
   axios.patch(`${getProjectUrl()}/learned-taxonomy`, payload, { headers: jsonHeaders() }).then(r => r.data);

@@ -3,8 +3,9 @@ Centralized Azure OpenAI service for all LLM calls in OrgSight.
 
 Provides:
 - Env-based configuration (no hardcoded keys)
+- GPT-4 / GPT-5 parameter compatibility (max_tokens vs max_completion_tokens)
 - Structured JSON output mode (guaranteed valid JSON)
-- Retry with exponential backoff
+- Retry with exponential backoff (transient errors only)
 - Safe JSON extraction from LLM responses
 - Token usage + latency metrics (thread-safe)
 """
@@ -17,11 +18,13 @@ import re
 import threading
 import time
 from dataclasses import dataclass, field
-from typing import Any, AsyncGenerator
+from typing import Any, AsyncGenerator, Literal
 
-from openai import AzureOpenAI
+from openai import APIStatusError, AzureOpenAI
 
 log = logging.getLogger(__name__)
+
+ModelFamily = Literal["legacy", "gpt5_chat", "reasoning"]
 
 # ---------------------------------------------------------------------------
 # Configuration — loaded from environment (.env via python-dotenv in main.py)
@@ -31,8 +34,139 @@ _API_KEY = os.getenv("AZURE_OPENAI_API_KEY", "")
 _ENDPOINT = os.getenv("AZURE_OPENAI_ENDPOINT", "")
 _DEPLOYMENT = os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME", "gpt-4.1-mini")
 _API_VERSION = os.getenv("AZURE_OPENAI_API_VERSION", "2025-03-01-preview")
+_REASONING_BUDGET_MULTIPLIER = float(os.getenv("AZURE_OPENAI_REASONING_BUDGET_MULTIPLIER", "2.5"))
+_REASONING_MIN_OUTPUT_TOKENS = int(os.getenv("AZURE_OPENAI_REASONING_MIN_OUTPUT_TOKENS", "1024"))
 
 _client: AzureOpenAI | None = None
+
+
+class LlmOutputTruncatedError(RuntimeError):
+    """Raised when the model hits its output token cap before finishing."""
+
+
+def _detect_model_family(deployment: str) -> ModelFamily:
+    """Infer parameter profile from deployment name unless overridden by env."""
+    override = os.getenv("AZURE_OPENAI_MODEL_FAMILY", "").strip().lower()
+    if override in ("legacy", "gpt4", "gpt-4"):
+        return "legacy"
+    if override in ("gpt5_chat", "gpt-5-chat", "chat"):
+        return "gpt5_chat"
+    if override in ("reasoning", "gpt5", "gpt-5"):
+        return "reasoning"
+
+    name = deployment.lower()
+    if "gpt-5-chat" in name or name.startswith("gpt5-chat"):
+        return "gpt5_chat"
+    if (
+        name.startswith("gpt-5")
+        or name.startswith("gpt5")
+        or name.startswith("o1")
+        or name.startswith("o3")
+        or name.startswith("o4")
+    ):
+        return "reasoning"
+    return "legacy"
+
+
+def get_llm_profile() -> dict[str, Any]:
+    """Return active deployment settings and inferred compatibility profile."""
+    deployment = os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME", _DEPLOYMENT)
+    family = _detect_model_family(deployment)
+    return {
+        "deployment": deployment,
+        "api_version": os.getenv("AZURE_OPENAI_API_VERSION", _API_VERSION),
+        "model_family": family,
+        "uses_max_completion_tokens": family != "legacy",
+        "supports_temperature": family != "reasoning",
+        "reasoning_budget_multiplier": _REASONING_BUDGET_MULTIPLIER,
+        "reasoning_min_output_tokens": _REASONING_MIN_OUTPUT_TOKENS,
+    }
+
+
+def _scale_output_budget(max_tokens: int, family: ModelFamily) -> int:
+    """Reasoning models spend tokens internally before visible output."""
+    if family == "legacy":
+        return max_tokens
+    scaled = int(max_tokens * _REASONING_BUDGET_MULTIPLIER)
+    return max(scaled, _REASONING_MIN_OUTPUT_TOKENS)
+
+
+def _build_completion_kwargs(
+    *,
+    messages: list[dict],
+    max_tokens: int,
+    temperature: float,
+    family: ModelFamily,
+    json_mode: bool = False,
+    tools: list[dict] | None = None,
+    tool_choice: str | None = None,
+    stream: bool = False,
+) -> dict[str, Any]:
+    """Build Chat Completions kwargs compatible with legacy GPT-4 or GPT-5."""
+    deployment = os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME", _DEPLOYMENT)
+    kwargs: dict[str, Any] = {
+        "model": deployment,
+        "messages": messages,
+    }
+
+    budget = _scale_output_budget(max_tokens, family)
+    if family == "legacy":
+        kwargs["max_tokens"] = budget
+        kwargs["temperature"] = temperature
+    else:
+        kwargs["max_completion_tokens"] = budget
+        if family == "gpt5_chat":
+            kwargs["temperature"] = temperature
+
+    if json_mode:
+        kwargs["response_format"] = {"type": "json_object"}
+    if tools is not None:
+        kwargs["tools"] = tools
+    if tool_choice is not None:
+        kwargs["tool_choice"] = tool_choice
+    if stream:
+        kwargs["stream"] = True
+
+    return kwargs
+
+
+def _usage_dict(usage: Any) -> dict[str, int]:
+    out = {
+        "prompt_tokens": usage.prompt_tokens if usage else 0,
+        "completion_tokens": usage.completion_tokens if usage else 0,
+        "total_tokens": usage.total_tokens if usage else 0,
+        "reasoning_tokens": 0,
+    }
+    details = getattr(usage, "completion_tokens_details", None) if usage else None
+    if details is not None:
+        out["reasoning_tokens"] = getattr(details, "reasoning_tokens", 0) or 0
+    return out
+
+
+def _is_retryable(exc: Exception) -> bool:
+    """Only retry transient/server errors — not client parameter mistakes."""
+    if isinstance(exc, APIStatusError):
+        if exc.status_code == 429:
+            return True
+        if exc.status_code >= 500:
+            return True
+        if 400 <= exc.status_code < 500:
+            return False
+    return True
+
+
+def _check_finish_reason(response: Any, *, json_mode: bool) -> None:
+    """Detect silent truncation before callers parse partial output."""
+    choices = getattr(response, "choices", None) or []
+    if not choices:
+        return
+    finish_reason = getattr(choices[0], "finish_reason", None)
+    if finish_reason != "length":
+        return
+    msg = "LLM output truncated (finish_reason=length). Increase max_tokens budget."
+    if json_mode:
+        raise LlmOutputTruncatedError(msg)
+    log.warning(msg)
 
 
 def _get_client() -> AzureOpenAI:
@@ -176,18 +310,16 @@ def call_llm(
         if prompt:
             messages.append({"role": "user", "content": prompt})
 
-    kwargs: dict[str, Any] = {
-        "model": _DEPLOYMENT,
-        "messages": messages,
-        "temperature": temperature,
-        "max_tokens": max_tokens,
-    }
-    if json_mode:
-        kwargs["response_format"] = {"type": "json_object"}
-    if tools is not None:
-        kwargs["tools"] = tools
-    if tool_choice is not None:
-        kwargs["tool_choice"] = tool_choice
+    family = _detect_model_family(os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME", _DEPLOYMENT))
+    kwargs = _build_completion_kwargs(
+        messages=messages,
+        max_tokens=max_tokens,
+        temperature=temperature,
+        family=family,
+        json_mode=json_mode,
+        tools=tools,
+        tool_choice=tool_choice,
+    )
 
     last_error = None
     for attempt in range(_MAX_RETRIES):
@@ -195,12 +327,8 @@ def call_llm(
             t0 = time.perf_counter()
             response = client.chat.completions.create(**kwargs)
             latency_ms = (time.perf_counter() - t0) * 1000
-            usage = response.usage
-            usage_dict = {
-                "prompt_tokens": usage.prompt_tokens if usage else 0,
-                "completion_tokens": usage.completion_tokens if usage else 0,
-                "total_tokens": usage.total_tokens if usage else 0,
-            }
+            usage_dict = _usage_dict(response.usage)
+            _check_finish_reason(response, json_mode=json_mode)
             msg = response.choices[0].message
             if getattr(msg, "tool_calls", None):
                 return msg, usage_dict, latency_ms
@@ -208,6 +336,8 @@ def call_llm(
             return content, usage_dict, latency_ms
         except Exception as e:
             last_error = e
+            if not _is_retryable(e) or attempt == _MAX_RETRIES - 1:
+                break
             delay = _BASE_DELAY * (2 ** attempt)
             log.warning(
                 "LLM call attempt %d/%d failed: %s — retrying in %.1fs",
@@ -241,13 +371,14 @@ async def call_llm_stream(
         if prompt:
             messages.append({"role": "user", "content": prompt})
 
-    kwargs: dict[str, Any] = {
-        "model": _DEPLOYMENT,
-        "messages": messages,
-        "temperature": temperature,
-        "max_tokens": max_tokens,
-        "stream": True,
-    }
+    family = _detect_model_family(os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME", _DEPLOYMENT))
+    kwargs = _build_completion_kwargs(
+        messages=messages,
+        max_tokens=max_tokens,
+        temperature=temperature,
+        family=family,
+        stream=True,
+    )
 
     # Run the blocking create() call in a thread so we get the stream object
     loop = asyncio.get_event_loop()

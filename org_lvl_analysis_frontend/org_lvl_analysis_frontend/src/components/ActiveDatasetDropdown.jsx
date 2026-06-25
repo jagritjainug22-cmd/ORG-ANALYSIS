@@ -145,7 +145,12 @@ export default function ActiveDatasetDropdown({
           <svg className={`w-3 h-3 flex-shrink-0 text-white`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4" />
           </svg>
-          <span className="truncate max-w-[180px] text-white">{label}</span>
+          <span className="truncate max-w-[160px] text-white">{label}</span>
+          {activeDatasetId && (
+            <span className="font-mono text-[9px] text-white/50 flex-shrink-0 tabular-nums leading-none border border-white/20 rounded px-1 py-0.5 hidden sm:inline">
+              #{activeDatasetId.slice(0, 8)}
+            </span>
+          )}
           <svg
             className={`w-2.5 h-2.5 flex-shrink-0 transition-transform ${open ? "rotate-180" : ""}`}
             fill="none" stroke="currentColor" viewBox="0 0 24 24"
@@ -399,7 +404,14 @@ function ScenarioPickerModal({ dataset, scenarios, onConfirm, onCancel, error })
             </div>
             <div className="flex-1 min-w-0">
               <h3 className="text-sm font-bold text-gray-900 truncate">{dataset.name}</h3>
-              <p className="text-xs text-gray-400 mt-0.5">{fmtRows(dataset.row_count)}</p>
+              <div className="flex items-center gap-2 mt-0.5">
+                <span className="text-xs text-gray-400">{fmtRows(dataset.row_count)}</span>
+                {dataset.id && (
+                  <span className="font-mono text-[9px] text-gray-400 tabular-nums border border-gray-200 rounded px-1 py-0.5">
+                    #{dataset.id.slice(0, 8)}
+                  </span>
+                )}
+              </div>
             </div>
             <button onClick={onCancel} className="text-gray-400 hover:text-gray-600 transition flex-shrink-0">
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -441,6 +453,11 @@ function ScenarioPickerModal({ dataset, scenarios, onConfirm, onCancel, error })
                           <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
                         </svg>
                         Active
+                      </span>
+                    )}
+                    {sc.id && (
+                      <span className="font-mono text-[9px] text-gray-400 tabular-nums border border-gray-200 rounded px-1 py-0.5 ml-auto flex-shrink-0">
+                        #{sc.id.slice(0, 8)}
                       </span>
                     )}
                   </div>

@@ -375,6 +375,71 @@ Users may refer to columns using common business terms. Use these mappings:
 
 
 # ---------------------------------------------------------------------------
+# Conversation history helpers
+# ---------------------------------------------------------------------------
+
+MAX_HISTORY_TURNS = 5  # last 5 user/assistant exchange pairs
+
+def _build_history_block(history: List[Dict[str, Any]]) -> str:
+    """Build a compact text block from the last N conversation turns.
+
+    Each history entry should have:
+      role: "user" | "assistant"
+      content: the message text
+      sql (optional): the SQL that was generated (assistant only)
+      data_summary (optional): compact result shape (assistant only)
+    """
+    if not history:
+        return ""
+
+    recent = history[-(MAX_HISTORY_TURNS * 2):]
+    lines = []
+    for entry in recent:
+        role = entry.get("role", "user").upper()
+        content = entry.get("content", "")
+        sql = entry.get("sql")
+        data_summary = entry.get("data_summary")
+
+        lines.append(f"{role}: {content}")
+        if sql:
+            lines.append(f"  [SQL executed: {sql}]")
+        if data_summary:
+            lines.append(f"  [Result: {data_summary}]")
+
+    return "\n".join(lines)
+
+
+def _build_history_messages(history: List[Dict[str, Any]]) -> List[Dict[str, str]]:
+    """Convert history entries into OpenAI-style message dicts for the messages array.
+
+    Returns a list of {role, content} dicts ready to insert between system
+    and the current user message.
+    """
+    if not history:
+        return []
+
+    recent = history[-(MAX_HISTORY_TURNS * 2):]
+    msgs = []
+    for entry in recent:
+        role = entry.get("role", "user")
+        content = entry.get("content", "")
+        sql = entry.get("sql")
+        data_summary = entry.get("data_summary")
+
+        if role == "assistant":
+            parts = [content]
+            if sql:
+                parts.append(f"\n[SQL: {sql}]")
+            if data_summary:
+                parts.append(f"\n[Result: {data_summary}]")
+            msgs.append({"role": "assistant", "content": "".join(parts)})
+        else:
+            msgs.append({"role": "user", "content": content})
+
+    return msgs
+
+
+# ---------------------------------------------------------------------------
 # Pre-classifier intent registry (pattern-based, no LLM call needed)
 # ---------------------------------------------------------------------------
 
@@ -514,11 +579,18 @@ Route guide:
 """
 
 
-def classify_intent(message: str, schema: Dict[str, Any], dataset_meta: Dict[str, Any]) -> Dict[str, Any]:
+def classify_intent(
+    message: str,
+    schema: Dict[str, Any],
+    dataset_meta: Dict[str, Any],
+    history: List[Dict[str, Any]] | None = None,
+) -> Dict[str, Any]:
     """LLM call #1 — classify intent and pick the right route + tool.
 
     First attempts pattern-based pre-classification (no LLM call).
     Falls through to LLM only if pre-classifier doesn't match.
+    Conversation history is included so the classifier can resolve
+    pronouns and follow-up references (e.g. "break that down by grade").
     """
     # Pre-classifier: fast pattern match for navigation, capabilities, greetings
     pre_result = _pre_classify(message, dataset_meta)
@@ -528,7 +600,15 @@ def classify_intent(message: str, schema: Dict[str, Any], dataset_meta: Dict[str
     col_names = [c["name"] for c in schema.get("columns", [])]
     col_summary = ", ".join(f'"{n}"' for n in col_names[:30])
 
-    prompt = f"""User question: "{message}"
+    history_block = _build_history_block(history or [])
+    history_section = ""
+    if history_block:
+        history_section = f"""## CONVERSATION HISTORY (last {MAX_HISTORY_TURNS} turns)
+{history_block}
+
+"""
+
+    prompt = f"""{history_section}Current user question: "{message}"
 
 Available columns in employees table: {col_summary}
 Dataset emp_col="{dataset_meta.get('emp_col')}", mgr_col="{dataset_meta.get('mgr_col')}", fte_col="{dataset_meta.get('fte_col')}", flc_col="{dataset_meta.get('flc_col')}"
@@ -545,7 +625,9 @@ Named tools available:
 - cost_by_dimension: cost/FTE by any column
 - insight_service: 1:1 managers, thin layers, FTE opportunity
 
-Classify this question and respond with ONLY the JSON object."""
+Classify this question and respond with ONLY the JSON object.
+If this is a follow-up question referencing prior context, resolve the reference
+and classify the RESOLVED intent (e.g. "break that down by grade" → cost_by_dimension with dimension_col="Grade")."""
 
     try:
         result = call_llm_json(
@@ -596,9 +678,17 @@ def validate_intent(intent: Dict[str, Any]) -> Dict[str, Any]:
 # SQL generation for sql_agent route
 # ---------------------------------------------------------------------------
 
-def _generate_sql(message: str, system_prompt: str) -> str:
-    """Ask LLM to generate a DuckDB SQL query for the user's question."""
-    prompt = f"""Write a DuckDB SQL query to answer this question about the employees table.
+def _generate_sql(
+    message: str,
+    system_prompt: str,
+    history: List[Dict[str, Any]] | None = None,
+) -> str:
+    """Ask LLM to generate a DuckDB SQL query for the user's question.
+
+    Conversation history is included so the model can write follow-up SQL
+    that references prior queries (e.g. "now filter that by Germany").
+    """
+    user_prompt = f"""Write a DuckDB SQL query to answer this question about the employees table.
 
 Question: {message}
 
@@ -609,15 +699,18 @@ Rules:
 - Use Level, Span, Total_Reports, L1, L2 for hierarchy (no quotes needed on these)
 - For manager comparisons use a self-join on the manager ID column
 - Always include ORDER BY when returning ranked results
-- Use LIMIT 50 for detail rows; no LIMIT for summary aggregations"""
+- Use LIMIT 50 for detail rows; no LIMIT for summary aggregations
+- If this is a follow-up question, use the conversation history to understand what the user is referring to and build on the previous SQL logic"""
+
+    messages = [{"role": "system", "content": system_prompt}]
+    messages.extend(_build_history_messages(history or []))
+    messages.append({"role": "user", "content": user_prompt})
 
     content, _, _ = call_llm(
-        prompt,
-        system_message=system_prompt,
+        messages=messages,
         max_tokens=800,
         temperature=0.0,
     )
-    # Strip markdown fences and trailing semicolons
     sql = content.strip()
     if sql.startswith("```"):
         lines = sql.split("\n")
@@ -660,6 +753,7 @@ def execute_tool(
     message: str,
     system_prompt: str,
     resolved_columns: Dict[str, str] | None = None,
+    history: List[Dict[str, Any]] | None = None,
 ) -> Dict[str, Any]:
     """Route to the correct tool and return raw results."""
     route = intent.get("route", "sql_agent")
@@ -743,7 +837,10 @@ def execute_tool(
             result = duckdb_manager.query(user_id, sql)
             return {"source": "named_tool", "tool": tool_name, "sql": sql, **result}
         except Exception as e:
-            log.warning("Named tool %s failed, falling back to sql_agent: %s", tool_name, e)
+            log.warning(
+                "Named tool %s failed (sql=%s...), falling back to sql_agent: %s",
+                tool_name, sql[:200], e,
+            )
             route = "sql_agent"  # fallback
 
     # ── Insight service ──────────────────────────────────────────────────────
@@ -800,7 +897,7 @@ def execute_tool(
     try:
         from services.column_resolver import validate_and_correct_columns
 
-        sql = _generate_sql(message, system_prompt)
+        sql = _generate_sql(message, system_prompt, history=history)
 
         # Validate and auto-correct column references in generated SQL
         schema_info = duckdb_manager.get_schema(user_id)
@@ -822,14 +919,38 @@ def execute_tool(
 
         result = duckdb_manager.query(user_id, corrected_sql)
         return {"source": "sql_agent", "sql": corrected_sql, **result}
-    except Exception as e:
-        log.error("sql_agent failed: %s", e)
+    except Exception as first_err:
+        log.warning("sql_agent first attempt failed: %s", first_err)
+        # One-shot retry: send the error back to the LLM so it can self-correct
+        try:
+            from services.column_resolver import validate_and_correct_columns as _vac
+            retry_message = (
+                f"{message}\n\n"
+                f"[RETRY: The previous SQL failed with the error below. "
+                f"Fix the query and try again. Do NOT repeat the same mistake.]\n"
+                f"Error: {first_err}"
+            )
+            retry_sql = _generate_sql(retry_message, system_prompt, history=history)
+            retry_schema_info = duckdb_manager.get_schema(user_id)
+            retry_known_cols = {c["name"] for c in retry_schema_info["columns"]} if retry_schema_info else set()
+            retry_samples = {
+                c["name"]: c.get("sample_values", [])
+                for c in (retry_schema_info or {}).get("columns", [])
+            }
+            corrected_retry, retry_col_error = _vac(retry_sql, retry_known_cols, dataset_meta, retry_samples)
+            if not retry_col_error:
+                retry_result = duckdb_manager.query(user_id, corrected_retry)
+                log.info("sql_agent retry succeeded")
+                return {"source": "sql_agent", "sql": corrected_retry, "retried": True, **retry_result}
+        except Exception as retry_err:
+            log.error("sql_agent retry also failed: %s", retry_err)
+
         return {
             "source": "sql_agent",
             "data": [],
             "columns": [],
             "row_count": 0,
-            "sql_error": str(e),
+            "sql_error": str(first_err),
         }
 
 
@@ -855,8 +976,13 @@ def format_response(
     tool_result: Dict[str, Any],
     intent: Dict[str, Any],
     system_prompt: str,
+    history: List[Dict[str, Any]] | None = None,
 ) -> str:
-    """LLM call #2 — narrate the tool results in business language."""
+    """LLM call #2 — narrate the tool results in business language.
+
+    Conversation history is included so the narrator can reference prior
+    context and maintain a coherent conversational tone across turns.
+    """
     source = tool_result.get("source", "unknown")
 
     # Handle pre-classified intents (no LLM needed)
@@ -884,9 +1010,11 @@ def format_response(
     sql_error = tool_result.get("sql_error")
 
     if sql_error:
+        log.warning("SQL error (hidden from user): %s", sql_error)
         return (
-            f"I encountered an error retrieving that data: {sql_error}. "
-            f"Could you rephrase the question or specify which column you're referring to?"
+            "I wasn't able to retrieve that data. This might be due to a column "
+            "type mismatch or an unsupported query pattern. Could you try rephrasing "
+            "your question, or ask it in a different way?"
         )
 
     # Serialize data compactly (cap at 30 rows for prompt size)
@@ -903,12 +1031,14 @@ def format_response(
 Query returned {row_count} rows{total_note}:
 {data_preview}
 
-Answer this question in clear business language based on the data above."""
+Answer this question in clear business language based on the data above.
+If this is a follow-up question, connect your answer to the prior conversation context."""
 
     messages = [
         {"role": "system", "content": _FORMAT_SYSTEM + "\n\n" + BENCHMARKS},
-        {"role": "user", "content": prompt}
     ]
+    messages.extend(_build_history_messages(history or []))
+    messages.append({"role": "user", "content": prompt})
 
     from services.benchmark_constants import BENCHMARK_TOOL
 
@@ -1054,15 +1184,20 @@ def run_agent_turn(
     system_prompt = build_system_prompt(schema, dataset_meta)
 
     # Step 2: classify intent + validate contracts
-    intent = classify_intent(message, schema, dataset_meta)
+    intent = classify_intent(message, schema, dataset_meta, history=history)
     intent = validate_intent(intent)
     log.info("Intent: %s", json.dumps(intent, default=str))
 
     # Step 3: execute tool
-    tool_result = execute_tool(intent, user_id, dataset_meta, message, system_prompt, resolved_columns)
+    tool_result = execute_tool(
+        intent, user_id, dataset_meta, message, system_prompt,
+        resolved_columns, history=history,
+    )
 
     # Step 4: format response
-    response_text = format_response(message, tool_result, intent, system_prompt)
+    response_text = format_response(
+        message, tool_result, intent, system_prompt, history=history,
+    )
 
     # Step 5: determine chart hint
     chart_hint = _suggest_chart(intent, tool_result)
@@ -1166,7 +1301,7 @@ async def run_agent_turn_stream(
         system_prompt = build_system_prompt(schema, dataset_meta)
 
         intent = await asyncio.to_thread(
-            classify_intent, message, schema, dataset_meta
+            classify_intent, message, schema, dataset_meta, history
         )
         intent = validate_intent(intent)
         log.info("Stream intent: %s", json.dumps(intent, default=str))
@@ -1175,7 +1310,8 @@ async def run_agent_turn_stream(
         yield {"type": "status", "data": {"phase": "query", "message": "Running analysis query..."}}
 
         tool_result = await asyncio.to_thread(
-            execute_tool, intent, user_id, dataset_meta, message, system_prompt, resolved_columns
+            execute_tool, intent, user_id, dataset_meta, message, system_prompt,
+            resolved_columns, history,
         )
 
         # ── Phase 3: Stream LLM narration ────────────────────────────────────
@@ -1218,9 +1354,11 @@ async def run_agent_turn_stream(
             response_text_for_log = static_text
 
         elif sql_error:
+            log.warning("SQL error in stream (hidden from user): %s", sql_error)
             static_text = (
-                f"I encountered an error retrieving that data: {sql_error}. "
-                f"Could you rephrase the question or specify which column you're referring to?"
+                "I wasn't able to retrieve that data. This might be due to a column "
+                "type mismatch or an unsupported query pattern. Could you try rephrasing "
+                "your question, or ask it in a different way?"
             )
             yield {"type": "token", "data": {"text": static_text}}
             response_text_for_log = static_text
@@ -1242,12 +1380,14 @@ async def run_agent_turn_stream(
 Query returned {row_count} rows{total_note}:
 {data_preview}
 
-Answer this question in clear business language based on the data above."""
+Answer this question in clear business language based on the data above.
+If this is a follow-up question, connect your answer to the prior conversation context."""
 
             messages = [
                 {"role": "system", "content": _FORMAT_SYSTEM + "\n\n" + BENCHMARKS},
-                {"role": "user", "content": format_prompt}
             ]
+            messages.extend(_build_history_messages(history))
+            messages.append({"role": "user", "content": format_prompt})
 
             from services.benchmark_constants import BENCHMARK_TOOL
 

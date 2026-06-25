@@ -1,13 +1,15 @@
-﻿import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import { useConfirmLogout } from "../hooks/useConfirmLogout";
 import { fetchProjects, fetchProjectDetail } from "../api/backend";
+import SkeletonTableLoader from "../components/SkeletonTableLoader";
 
 const AVATAR_COLORS = [
   "bg-brand-500", "bg-indigo-500", "bg-rose-500", "bg-accent-500",
   "bg-teal-500", "bg-sky-500", "bg-violet-500", "bg-fuchsia-500",
 ];
+
 
 function initialsOf(displayName, username) {
   const src = (displayName || username || "?").trim();
@@ -366,12 +368,7 @@ export default function ProjectSelector() {
         </div>
 
         {loading ? (
-          <div className="flex items-center justify-center h-64">
-            <div className="flex flex-col items-center gap-3">
-              <div className="w-10 h-10 border-4 border-brand-100 border-t-brand-500 rounded-full animate-spin"></div>
-              <p className="text-gray-500 text-sm">Loading projects...</p>
-            </div>
-          </div>
+          <SkeletonTableLoader />
         ) : error ? (
           <div className="bg-red-50 border border-red-200 rounded-md p-6 text-red-700">
             <p className="font-medium">Error loading projects</p>
@@ -567,24 +564,24 @@ export default function ProjectSelector() {
 function StatCard({ label, value, tone = "indigo", icon, active, onClick }) {
   const palette = {
     indigo: {
-      ring: active ? "ring-2 ring-indigo-400" : "",
-      iconBg: "bg-indigo-50 text-indigo-600",
-      gradient: "from-indigo-500/10 to-indigo-500/0",
+      ring: active ? "ring-2 ring-brand-500 ring-offset-2" : "",
+      iconBg: "bg-brand-50 text-brand-600",
+      gradient: "from-brand-500/5 to-transparent",
     },
     brand: {
-      ring: active ? "ring-2 ring-brand-400" : "",
+      ring: active ? "ring-2 ring-brand-500 ring-offset-2" : "",
       iconBg: "bg-brand-50 text-brand-600",
-      gradient: "from-brand-500/10 to-brand-500/0",
+      gradient: "from-brand-500/5 to-transparent",
     },
     amber: {
-      ring: active ? "ring-2 ring-amber-400" : "",
-      iconBg: "bg-amber-50 text-amber-600",
-      gradient: "from-amber-500/10 to-amber-500/0",
+      ring: active ? "ring-2 ring-brand-500 ring-offset-2" : "",
+      iconBg: "bg-[#fffbeb] text-[#c5a84a]",
+      gradient: "from-[#c5a84a]/5 to-transparent",
     },
     gray: {
-      ring: active ? "ring-2 ring-gray-400" : "",
-      iconBg: "bg-gray-100 text-gray-600",
-      gradient: "from-gray-400/10 to-gray-400/0",
+      ring: active ? "ring-2 ring-slate-400 ring-offset-2" : "",
+      iconBg: "bg-slate-100 text-slate-500",
+      gradient: "from-slate-500/5 to-transparent",
     },
   }[tone];
 
@@ -592,21 +589,24 @@ function StatCard({ label, value, tone = "indigo", icon, active, onClick }) {
     <button
       type="button"
       onClick={onClick}
-      className={`relative overflow-hidden bg-white border border-gray-200 rounded-xl p-4 text-left transition-all hover:shadow-md hover:-translate-y-0.5 ${palette.ring}`}
+      className={`relative overflow-hidden bg-white/90 backdrop-blur-sm border border-brand-100 rounded-xl p-4 text-left transition-all duration-300 hover:shadow-panel hover:-translate-y-0.5 shadow-card ${palette.ring} ${
+        active ? "bg-brand-50/30 border-brand-300" : ""
+      }`}
     >
       <div className={`absolute inset-0 bg-gradient-to-br ${palette.gradient} pointer-events-none`} />
       <div className="relative flex items-start justify-between">
         <div>
-          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">{label}</p>
-          <p className="text-3xl font-bold text-gray-900 mt-1 leading-none">{value}</p>
+          <p className="text-[10px] font-bold text-brand-400 uppercase tracking-wider leading-none" style={{ fontFamily: "Manrope, Inter, sans-serif" }}>{label}</p>
+          <p className="text-3xl font-extrabold text-[#01244a] mt-2 leading-none" style={{ fontFamily: "Manrope, Inter, sans-serif" }}>{value}</p>
         </div>
-        <div className={`w-10 h-10 rounded-lg ${palette.iconBg} flex items-center justify-center flex-shrink-0`}>
+        <div className={`w-10 h-10 rounded-lg ${palette.iconBg} flex items-center justify-center flex-shrink-0 transition-transform duration-300 group-hover:scale-110`}>
           {icon}
         </div>
       </div>
     </button>
   );
 }
+
 
 function DeadlinePill({ deadline, daysLeft, expired, formatDeadline }) {
   if (!deadline) {

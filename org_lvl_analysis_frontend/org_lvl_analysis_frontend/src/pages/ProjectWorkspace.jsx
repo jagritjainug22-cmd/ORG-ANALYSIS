@@ -6,6 +6,7 @@ import { useWorkGuard } from "../contexts/WorkGuardContext";
 import { setCurrentProjectId, fetchProjectDetail, orgchart, acquireLock, lockHeartbeat, releaseLock, dbPromoteScenario, dbResetScenario, releaseDatasetLock, dbListDatasets, dbGetDatasetRecords, dbListFormulas, smartUpload, autoMapColumns, autoMapColumnsWithFeedback, dbUpdateColumnConfig } from "../api/backend";
 import ActiveDatasetDropdown from "../components/ActiveDatasetDropdown";
 import FormulaEditor from "../components/FormulaEditor";
+import WorkspaceLoader from "../components/WorkspaceLoader";
 
 import UploadAndPrepare from "../components/UploadAndPrepare";
 import Rationalise from "../components/Rationalise";
@@ -16,6 +17,7 @@ import OrgChart from "../components/OrgChart";
 import ActivityAnalysis from "../components/ActivityAnalysis";
 import ExportExcel from "../components/ExportExcel";
 import AskOrgSight from "../components/AskOrgSight";
+import RationaliseToast from "../components/RationaliseToast";
 
 const MODULES = [
   {
@@ -104,6 +106,9 @@ export default function ProjectWorkspace() {
   const [activeModule, setActiveModule] = useState("Upload");
   const [filteredRowCount, setFilteredRowCount] = useState(null);
   const [colConfigCollapsed, setColConfigCollapsed] = useState(false);
+  const [showRatToast, setShowRatToast] = useState(false);
+  const [pipelineStatus, setPipelineStatus] = useState({ cleanup: null, validate: null, rationalise: null });
+  const [configSaved, setConfigSaved] = useState(false);
   const [treeData, setTreeData] = useState(null);
   const [errorMsg, setErrorMsg] = useState(null);
 
@@ -123,6 +128,22 @@ export default function ProjectWorkspace() {
 
   // --- Formula columns (Feature 7) ---
   const [formulas, setFormulas] = useState([]);
+
+  // --- Track visited modules for status pills ---
+  const [visitedModules, setVisitedModules] = useState({});
+
+  useEffect(() => {
+    setVisitedModules({});
+  }, [datasetId]);
+
+  useEffect(() => {
+    if (activeModule) {
+      setVisitedModules((prev) => ({
+        ...prev,
+        [activeModule]: true,
+      }));
+    }
+  }, [activeModule]);
 
   // --- Org Chart focus from Spans & Layers (Feature 9) ---
   const [focusNodeId, setFocusNodeId] = useState(null);
@@ -515,14 +536,7 @@ export default function ProjectWorkspace() {
 
   // --- Loading ---
   if (!project) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="flex flex-col items-center gap-3">
-          <div className="w-10 h-10 border-4 border-brand-100 border-t-brand-500 rounded-full animate-spin"></div>
-          <p className="text-gray-500 text-sm">Loading project...</p>
-        </div>
-      </div>
-    );
+    return <WorkspaceLoader text="Loading project..." fullScreen={true} />;
   }
 
   const hasUnsavedChanges = (() => {
@@ -549,6 +563,11 @@ export default function ProjectWorkspace() {
       setScenarios(scenarios);
       setActiveScenarioId(scenarioId);
       hydrateColumnsFromDataset(dataset);
+      setPipelineStatus({
+        cleanup: dataset.last_cleanup_at || null,
+        validate: dataset.last_validate_at || null,
+        rationalise: dataset.last_rationalise_at || null,
+      });
       setColConfigCollapsed(false);
       await fillMissingColumnsFromAutoMap(dataset, columnsOut, rec);
       setFilteredRowCount(null);
@@ -613,12 +632,14 @@ export default function ProjectWorkspace() {
   const renderActiveModule = () => {
     if (!dfRecords && activeModule !== "Upload" && activeModule !== "Org Chart" && activeModule !== "Activity Analysis" && activeModule !== "Ask OrgSight") {
       return (
-        <div className="flex flex-col items-center justify-center h-64 text-gray-400">
-          <svg className="w-16 h-16 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-          </svg>
-          <p className="text-lg font-medium">No Data Loaded</p>
-          <p className="text-sm mt-1">Upload data to begin analysis</p>
+        <div className="flex flex-col items-center justify-center py-20 px-8">
+          <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-brand-500 to-brand-700 flex items-center justify-center mb-6 shadow-lg">
+            <svg className="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+            </svg>
+          </div>
+          <p className="text-xl font-semibold text-brand-700 mb-1">No Data Loaded</p>
+          <p className="text-sm text-brand-400">Upload data to begin analysis</p>
         </div>
       );
     }
@@ -650,6 +671,13 @@ export default function ProjectWorkspace() {
             onDatasetPicked={({ dataset, scenarios: scs, activeScenarioId: sid }) =>
               activateDataset(dataset, scs, sid)
             }
+            onPipelineComplete={() =>
+              setPipelineStatus(prev => ({
+                ...prev,
+                cleanup: new Date().toISOString(),
+                validate: new Date().toISOString(),
+              }))
+            }
           />
         );
       case "Rationalise":
@@ -664,6 +692,10 @@ export default function ProjectWorkspace() {
             columns={columns}
             setColumns={setColumns}
             datasetId={datasetId}
+            onApplySuccess={() => {
+              setShowRatToast(true);
+              setPipelineStatus(prev => ({ ...prev, rationalise: new Date().toISOString() }));
+            }}
           />
         );
       case "Hierarchy":
@@ -811,14 +843,19 @@ export default function ProjectWorkspace() {
 
                 <div
                   className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-white/10 text-white border border-white/20 shadow-sm"
-                  title={`Active Scenario: ${scenarios.find((s) => s.id === activeScenarioId)?.name || "Baseline"}`}
+                  title={`Active Scenario: ${scenarios.find((s) => s.id === activeScenarioId)?.name || "Baseline"}${activeScenarioId ? ` (${activeScenarioId})` : ""}`}
                 >
                   <svg className="w-3 h-3 text-brand-200 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7a3 3 0 100-6 3 3 0 000 6zM8 7V17M8 17a3 3 0 100 6 3 3 0 000-6zM8 12h8a3 3 0 003-3V7a3 3 0 10-6 0v2" />
                   </svg>
-                  <span className="truncate max-w-[150px]">
+                  <span className="truncate max-w-[130px]">
                     {scenarios.find((s) => s.id === activeScenarioId)?.name || "Baseline"}
                   </span>
+                  {activeScenarioId && (
+                    <span className="font-mono text-[9px] text-white/50 flex-shrink-0 tabular-nums leading-none border border-white/20 rounded px-1 py-0.5 hidden sm:inline">
+                      #{String(activeScenarioId).slice(0, 8)}
+                    </span>
+                  )}
                 </div>
               </>
             )}
@@ -974,6 +1011,31 @@ export default function ProjectWorkspace() {
                     <ColSel label="Contract" targetKey="contract_type" value={contractTypeCol} onChange={e => setContractTypeCol(e.target.value)} opt />
                     <ColSel label="Status" targetKey="status" value={statusCol} onChange={e => setStatusCol(e.target.value)} opt />
                   </div>
+                  {datasetId && (
+                    <div className="flex items-center gap-2 mt-3 pt-3 border-t border-gray-100">
+                      <button
+                        onClick={async () => {
+                          try {
+                            await dbUpdateColumnConfig(datasetId, {
+                              emp_col: empCol || null, mgr_col: mgrCol || null, fte_col: fteCol || null,
+                              flc_col: flcCol || null, job_title_col: jobTitleCol || null, country_col: countryCol || null,
+                              func_col: funcCol || null, subfunc_col: subfuncCol || null, grade_col: gradeCol || null,
+                              division_col: divisionCol || null, entity_col: entityCol || null, start_date_col: startDateCol || null,
+                              basic_pay_col: basicPayCol || null, contract_type_col: contractTypeCol || null, status_col: statusCol || null,
+                            });
+                            setConfigSaved(true);
+                            setTimeout(() => { setConfigSaved(false); setColConfigCollapsed(true); }, 1500);
+                          } catch (e) { console.error("Save config failed:", e); }
+                        }}
+                        className="px-3 py-1.5 text-xs font-semibold text-white bg-brand-500 rounded-lg hover:bg-brand-600 transition-colors"
+                      >
+                        {configSaved ? "Saved" : "Save Config"}
+                      </button>
+                      {configSaved && (
+                        <span className="text-xs text-brand-600 font-medium animate-pulse">Configuration saved</span>
+                      )}
+                    </div>
+                  )}
                 </div>
               );
             })() : (
@@ -991,35 +1053,50 @@ export default function ProjectWorkspace() {
             <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Modules</h3>
           </div>
           <nav className="p-3 space-y-1">
-            {MODULES.map((m) => (
-              <button
-                key={m.id}
-                onClick={() => setActiveModule(m.id)}
-                className={`group flex items-center gap-3 w-full text-left px-4 py-2.5 rounded-md font-medium text-sm transition ${
-                  activeModule === m.id
-                    ? "bg-brand-500 text-white shadow-sm"
-                    : "text-gray-700 hover:bg-gray-100 hover:text-gray-900"
-                }`}
-              >
-                {m.icon}
-                <span>{m.label}</span>
-                {activeModule !== m.id && m.id === "Upload" && dfRecords && preprocessingSummary && (
-                  <span className="ml-auto w-5 h-5 bg-green-500 rounded-full flex items-center justify-center flex-shrink-0">
-                    <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>
-                  </span>
-                )}
-                {activeModule !== m.id && m.id === "Rationalise" && dfRecords?.some(r => r["Rationalised Function"] || r["Rationalised Title"]) && (
-                  <span className="ml-auto w-5 h-5 bg-green-500 rounded-full flex items-center justify-center flex-shrink-0">
-                    <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>
-                  </span>
-                )}
-                {activeModule === m.id && (
-                  <svg className="w-4 h-4 ml-auto" fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
-                  </svg>
-                )}
-              </button>
-            ))}
+            {MODULES.map((m) => {
+              const isOrgChart = m.id === "Org Chart";
+              const isAskOrgSight = m.id === "Ask OrgSight";
+              const isMenuDisabled = (isOrgChart || isAskOrgSight) && !datasetId;
+
+              return (
+                <button
+                  key={m.id}
+                  onClick={() => !isMenuDisabled && setActiveModule(m.id)}
+                  disabled={isMenuDisabled}
+                  title={isMenuDisabled ? `Please run Hierarchy first to enable ${m.label}` : ""}
+                  className={`group flex items-center gap-3 w-full text-left px-4 py-2.5 rounded-md font-medium text-sm transition ${
+                    activeModule === m.id
+                      ? "bg-brand-500 text-white shadow-sm"
+                      : isMenuDisabled
+                      ? "opacity-40 cursor-not-allowed text-gray-400 hover:bg-transparent"
+                      : "text-gray-700 hover:bg-gray-100 hover:text-gray-900"
+                  }`}
+                >
+                  {m.icon}
+                  <span>{m.label}</span>
+                  {(isOrgChart || isAskOrgSight) && datasetId && !visitedModules[m.id] && (
+                    <span className={`ml-auto w-2 h-2 rounded-full shadow-sm transition-colors flex-shrink-0 ${
+                      activeModule === m.id ? "bg-white" : "bg-brand-500 border border-brand-400/25"
+                    }`} />
+                  )}
+                  {activeModule !== m.id && m.id === "Upload" && dfRecords && (pipelineStatus.cleanup || pipelineStatus.validate) && (
+                    <span className="ml-auto w-5 h-5 bg-brand-600 rounded-full flex items-center justify-center flex-shrink-0 animate-fadeInUp" title="Cleanup & Validation complete">
+                      <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>
+                    </span>
+                  )}
+                  {activeModule !== m.id && m.id === "Rationalise" && pipelineStatus.rationalise && (
+                    <span className="ml-auto w-5 h-5 bg-brand-600 rounded-full flex items-center justify-center flex-shrink-0 animate-fadeInUp" title="Rationalisation complete">
+                      <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>
+                    </span>
+                  )}
+                  {activeModule === m.id && (!isOrgChart && !isAskOrgSight || visitedModules[m.id]) && (
+                    <svg className="w-4 h-4 ml-auto animate-fadeInUp" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
+                    </svg>
+                  )}
+                </button>
+              );
+            })}
           </nav>
         </aside>
 
@@ -1063,6 +1140,17 @@ export default function ProjectWorkspace() {
           </div>
         </aside>
       </div>
+
+      <RationaliseToast
+        visible={showRatToast}
+        onUpdateConfig={() => {
+          setFuncCol("Rationalised Function");
+          setSubfuncCol("Rationalised Subfunction");
+          setJobTitleCol("Rationalised Title");
+          setColConfigCollapsed(false);
+        }}
+        onDismiss={() => setShowRatToast(false)}
+      />
     </div>
   );
 }

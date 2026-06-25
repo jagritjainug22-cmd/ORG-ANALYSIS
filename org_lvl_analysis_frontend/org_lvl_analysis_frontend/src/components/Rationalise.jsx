@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback } from "react";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { rationalisePropose, rationaliseApply } from "../api/backend";
 import MappingRegistry from "./MappingRegistry";
 import ExportExcel from "./ExportExcel";
@@ -149,6 +149,7 @@ export default function Rationalise({
   columns,
   setColumns,
   datasetId = null,
+  onApplySuccess,
 }) {
   const [viewMode, setViewMode] = useState("run");
   const [activeTab, setActiveTab] = useState("functions");
@@ -171,6 +172,24 @@ export default function Rationalise({
   const [running, setRunning] = useState(false);
   const [runError, setRunError] = useState(null);
   const [rationalisationResult, setRationalisationResult] = useState(null);
+  const [loaderStage, setLoaderStage] = useState(0);
+
+  const LOADER_STAGES = [
+    { at: 0,    msg: "Analysing dataset...",       sub: "Identifying unique values" },
+    { at: 3000, msg: "Resolving functions...",     sub: "Mapping to master taxonomy" },
+    { at: 8000, msg: "Standardising titles...",    sub: "Applying role hierarchy" },
+    { at: 13000, msg: "Mapping subfunctions...",    sub: "Matching process areas" },
+    { at: 18000, msg: "Inferring missing data...",  sub: "Filling gaps from titles" },
+    { at: 25000, msg: "Finalising results...",      sub: "Almost there" },
+  ];
+
+  useEffect(() => {
+    if (!running) { setLoaderStage(0); return; }
+    const timers = LOADER_STAGES.slice(1).map((s, i) =>
+      setTimeout(() => setLoaderStage(i + 1), s.at)
+    );
+    return () => timers.forEach(clearTimeout);
+  }, [running]);
 
   // Apply state
   const [applying, setApplying] = useState(false);
@@ -269,6 +288,7 @@ export default function Rationalise({
         setValidatedDf?.(res.records);
         setColumns(Object.keys(res.records[0] || {}));
         setApplied(true);
+        onApplySuccess?.();
       }
     } catch (err) {
       console.error("Apply error:", err);
@@ -362,10 +382,12 @@ export default function Rationalise({
   // Empty state: no data loaded
   if (!dfRecords) {
     return (
-      <div className="flex flex-col items-center justify-center h-64 text-gray-400">
-        <svg className="w-12 h-12 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" /></svg>
-        <p className="text-base font-medium">No Data Loaded</p>
-        <p className="text-sm mt-1">Upload and prepare data first</p>
+      <div className="flex flex-col items-center justify-center h-64">
+        <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-brand-500 to-brand-700 flex items-center justify-center mb-5 shadow-lg">
+          <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" /></svg>
+        </div>
+        <p className="text-base font-semibold text-brand-700">No Data Loaded</p>
+        <p className="text-sm mt-1 text-brand-400">Upload and prepare data first</p>
       </div>
     );
   }
@@ -427,16 +449,17 @@ export default function Rationalise({
               <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
             </svg>
           </div>
-          <div className="text-center">
-            <p className="text-sm font-semibold text-slate-800">Rationalising Taxonomy...</p>
-            <p className="text-xs text-slate-400 mt-1">Comparing titles and functions against the master database using LLM and exact rules.</p>
+          <div className="text-center" style={{ minHeight: 36 }}>
+            <p className="text-sm font-semibold text-slate-800 transition-opacity duration-300">{LOADER_STAGES[loaderStage].msg}</p>
+            <p className="text-xs text-slate-400 mt-1 transition-opacity duration-300">{LOADER_STAGES[loaderStage].sub}</p>
           </div>
           <div className="w-64 h-1.5 bg-gray-100 rounded-full overflow-hidden">
             <div className="h-full bg-brand-500 rounded-full" style={{
-              width: "100%",
+              width: `${Math.min(100, 15 + loaderStage * 15)}%`,
               backgroundImage: "linear-gradient(90deg, #01244a 0%, #2563eb 50%, #01244a 100%)",
               backgroundSize: "200% 100%",
-              animation: "shimmer 1.5s infinite"
+              animation: "shimmer 1.5s infinite",
+              transition: "width 0.8s ease",
             }} />
           </div>
         </div>

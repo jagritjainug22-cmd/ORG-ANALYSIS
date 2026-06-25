@@ -34,8 +34,8 @@ export default function OrgDetailPanel({
   formulas = [],
   mutationState = null,
 }) {
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState({});
+  const [editingKey, setEditingKey] = useState(null);
+  const [inlineDraft, setInlineDraft] = useState("");
   const [cloning, setCloning] = useState(false);
   const [cloneId, setCloneId] = useState("");
   const [cloneError, setCloneError] = useState("");
@@ -44,8 +44,8 @@ export default function OrgDetailPanel({
   const empId = record ? String(record.__emp_id ?? record[empCol] ?? "") : "";
 
   useEffect(() => {
-    setEditing(false);
-    setDraft({});
+    setEditingKey(null);
+    setInlineDraft("");
     setCloning(false);
     setCloneId("");
     setCloneError("");
@@ -57,7 +57,7 @@ export default function OrgDetailPanel({
     setCloneId(makeCloneSuggestion(empId, existingEmpIds));
     setCloneError("");
     setCloning(true);
-    setEditing(false);
+    setEditingKey(null);
     onAutoCloneConsumed?.();
   }, [autoStartClone, record?.__emp_id, empId, existingEmpIds, onAutoCloneConsumed]);
 
@@ -65,34 +65,32 @@ export default function OrgDetailPanel({
 
   const flagged = !!record.is_flagged_removed;
 
-  const editableFields = [
-    jobTitleCol && [jobTitleCol, "Job Title"],
-    ["Management Level", "Management Level"],
-    fteCol && [fteCol, "FTE"],
-    flcCol && [flcCol, "Cost (FLC)"],
-    countryCol && [countryCol, "Country"],
-    ["Change Reason", "Change Reason"],
-  ].filter(Boolean);
+  const canInlineEdit = editMode && !flagged && !cloning;
 
-  const startEdit = () => {
-    const next = {};
-    editableFields.forEach(([f]) => {
-      next[f] = record[f] ?? "";
-    });
-    setDraft(next);
-    setEditing(true);
+  const startInlineEdit = (key, value) => {
+    if (!canInlineEdit) return;
+    setEditingKey(key);
+    setInlineDraft(value == null ? "" : String(value));
   };
 
-  const save = () => {
-    const updates = {};
-    editableFields.forEach(([f]) => {
-      if (draft[f] !== record[f]) updates[f] = draft[f];
-    });
-    if (Object.keys(updates).length) {
-      onSave?.(empId, updates, effectiveDate || null);
+  const cancelInlineEdit = () => {
+    setEditingKey(null);
+    setInlineDraft("");
+  };
+
+  const saveInlineEdit = (key) => {
+    const newVal = inlineDraft;
+    const oldVal = record[key];
+    if (String(newVal ?? "") === String(oldVal ?? "")) {
+      cancelInlineEdit();
+      return;
     }
-    setEditing(false);
-    setEffectiveDate("");
+    if (mgrCol && key === mgrCol) {
+      onMoveEmployee?.(empId, newVal.trim() || null);
+    } else {
+      onSave?.(empId, { [key]: newVal }, effectiveDate || null);
+    }
+    cancelInlineEdit();
   };
 
   const suggestCloneId = () => makeCloneSuggestion(empId, existingEmpIds);
@@ -101,7 +99,7 @@ export default function OrgDetailPanel({
     setCloneId(suggestCloneId());
     setCloneError("");
     setCloning(true);
-    setEditing(false);
+    setEditingKey(null);
   };
 
   const submitClone = () => {
@@ -377,11 +375,8 @@ export default function OrgDetailPanel({
         {/* Edit mode action buttons */}
         {editMode && (
           <div style={{ marginBottom: 14 }}>
-            {!editing && !cloning ? (
+            {!cloning ? (
               <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
-                <button onClick={startEdit} disabled={flagged} style={primaryBtn(flagged)}>
-                  <PencilSvg /> Edit fields
-                </button>
                 <button onClick={startClone} disabled={flagged} style={ghostBtn(flagged)}>
                   Clone
                 </button>
@@ -392,15 +387,10 @@ export default function OrgDetailPanel({
                   {flagged ? "Restore" : "Flag"}
                 </button>
               </div>
-            ) : cloning ? (
+            ) : (
               <div style={{ display: "flex", gap: 7 }}>
                 <button onClick={submitClone} style={primaryBtn(false)}>Create clone</button>
                 <button onClick={() => { setCloning(false); setCloneError(""); }} style={ghostBtn()}>Cancel</button>
-              </div>
-            ) : (
-              <div style={{ display: "flex", gap: 7 }}>
-                <button onClick={save} style={primaryBtn(false)}>Save</button>
-                <button onClick={() => setEditing(false)} style={ghostBtn()}>Cancel</button>
               </div>
             )}
           </div>
@@ -436,8 +426,8 @@ export default function OrgDetailPanel({
           </div>
         )}
 
-        {/* Effective date (view mode) */}
-        {editMode && !editing && !cloning && (
+        {/* Effective date (edit mode) */}
+        {editMode && !cloning && (
           <div style={{ marginBottom: 12 }}>
             <label style={fieldLabelStyle}>Effective Date</label>
             <input
@@ -450,7 +440,7 @@ export default function OrgDetailPanel({
         )}
 
         {/* Rate card button */}
-        {editMode && flcCol && rateCardActive && !editing && !cloning && (
+        {editMode && flcCol && rateCardActive && !cloning && (
           <div style={{ marginBottom: 12 }}>
             <button onClick={() => onApplyRateCard?.(empId)} disabled={flagged} style={ghostBtn(flagged)}>
               Recalculate from rate card
@@ -460,51 +450,6 @@ export default function OrgDetailPanel({
                 Cost is rate-card derived
               </div>
             )}
-          </div>
-        )}
-
-        {/* Edit form */}
-        {editing && (
-          <div
-            style={{
-              marginBottom: 16,
-              background: AM.white,
-              border: `1px solid ${AM.border}`,
-              borderRadius: 10,
-              padding: "14px",
-            }}
-          >
-            <div
-              style={{
-                fontSize: 10,
-                fontWeight: 700,
-                color: AM.textMuted,
-                textTransform: "uppercase",
-                letterSpacing: "0.8px",
-                marginBottom: 12,
-              }}
-            >
-              Edit fields
-            </div>
-            {editableFields.map(([f, label]) => (
-              <div key={f} style={{ marginBottom: 10 }}>
-                <label style={fieldLabelStyle}>{label}</label>
-                <input
-                  value={draft[f] ?? ""}
-                  onChange={(e) => setDraft((p) => ({ ...p, [f]: e.target.value }))}
-                  style={{ ...inputStyle, fontFamily: "Inter, system-ui, sans-serif" }}
-                />
-              </div>
-            ))}
-            <div style={{ marginBottom: 4 }}>
-              <label style={fieldLabelStyle}>Effective Date</label>
-              <input
-                type="date"
-                value={effectiveDate}
-                onChange={(e) => setEffectiveDate(e.target.value)}
-                style={{ ...inputStyle, fontFamily: "Inter, system-ui, sans-serif" }}
-              />
-            </div>
           </div>
         )}
 
@@ -549,6 +494,11 @@ export default function OrgDetailPanel({
             >
               {allFields.length}
             </span>
+            {canInlineEdit && (
+              <span style={{ fontSize: 10, color: AM.textMuted, marginLeft: "auto" }}>
+                Click a value to edit
+              </span>
+            )}
           </div>
 
           {allFields.map(([k, v], idx) => (
@@ -581,22 +531,54 @@ export default function OrgDetailPanel({
               >
                 {k}
               </span>
-              <span
-                style={{
-                  fontSize: 12,
-                  color: AM.textPrimary,
-                  fontFamily: "Inter, system-ui, sans-serif",
-                  fontWeight: 500,
-                  textAlign: "right",
-                  maxWidth: 190,
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
-                }}
-                title={String(v ?? "")}
-              >
-                {formatVal(v)}
-              </span>
+              {editingKey === k ? (
+                <input
+                  autoFocus
+                  value={inlineDraft}
+                  onChange={(e) => setInlineDraft(e.target.value)}
+                  onBlur={() => saveInlineEdit(k)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") saveInlineEdit(k);
+                    if (e.key === "Escape") cancelInlineEdit();
+                  }}
+                  style={{
+                    ...inputStyle,
+                    flex: 1,
+                    maxWidth: 190,
+                    padding: "4px 8px",
+                    fontSize: 12,
+                    fontFamily: "Inter, system-ui, sans-serif",
+                    textAlign: "right",
+                  }}
+                />
+              ) : (
+                <span
+                  onClick={() => startInlineEdit(k, v)}
+                  style={{
+                    fontSize: 12,
+                    color: AM.textPrimary,
+                    fontFamily: "Inter, system-ui, sans-serif",
+                    fontWeight: 500,
+                    textAlign: "right",
+                    maxWidth: 190,
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                    cursor: canInlineEdit ? "pointer" : "default",
+                    borderRadius: 4,
+                    padding: canInlineEdit ? "2px 4px" : 0,
+                  }}
+                  title={canInlineEdit ? `Click to edit: ${String(v ?? "")}` : String(v ?? "")}
+                  onMouseEnter={(e) => {
+                    if (canInlineEdit) e.currentTarget.style.background = AM.borderLight;
+                  }}
+                  onMouseLeave={(e) => {
+                    if (canInlineEdit) e.currentTarget.style.background = "transparent";
+                  }}
+                >
+                  {formatVal(v)}
+                </span>
+              )}
             </div>
           ))}
         </div>
@@ -856,19 +838,7 @@ function ghostBtn(disabled = false) {
   };
 }
 
-/* ── Pencil icon for edit button ── */
-function PencilSvg() {
-  return (
-    <svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
-      <path d="M12 20h9" />
-      <path d="M16.5 3.5a2.121 2.121 0 1 1 3 3L7 19l-4 1 1-4Z" />
-    </svg>
-  );
-}
-
-/* --------------------------------------------------------------------------
- * Validation issue banner + contextual fix actions
- * -------------------------------------------------------------------------- */
+/* ── Shared style objects ── */
 
 const ISSUE_LABELS = {
   closed_manager_has_reports: "Closed manager has open reports",

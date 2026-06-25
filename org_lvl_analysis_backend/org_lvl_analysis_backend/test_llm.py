@@ -9,10 +9,14 @@ backend = Path(__file__).resolve().parent
 load_dotenv(backend / ".env")
 
 sys.path.insert(0, str(backend))
-from services.llm_service import call_llm, call_llm_json
+from services.llm_service import call_llm, call_llm_json, get_llm_profile
 
+profile = get_llm_profile()
 print("Endpoint:", os.getenv("AZURE_OPENAI_ENDPOINT"))
-print("Deployment:", os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME"))
+print("Deployment:", profile["deployment"])
+print("Model family:", profile["model_family"])
+print("Uses max_completion_tokens:", profile["uses_max_completion_tokens"])
+print("Supports temperature:", profile["supports_temperature"])
 print("API key set:", bool(os.getenv("AZURE_OPENAI_API_KEY")))
 print()
 

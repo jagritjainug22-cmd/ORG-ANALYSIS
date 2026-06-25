@@ -304,12 +304,14 @@ export default function AskOrgSight({ projectId, datasetId, scenarioId, onNaviga
   // ── No dataset ──────────────────────────────────────────────────────────────
   if (!datasetId || !scenarioId) {
     return (
-      <div className="flex flex-col items-center justify-center h-full text-gray-400 p-12">
-        <svg className="w-16 h-16 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
-        </svg>
-        <p className="text-lg font-medium">No Dataset Active</p>
-        <p className="text-sm mt-1">Load a dataset first to start chatting with your org data.</p>
+      <div className="flex flex-col items-center justify-center h-full p-12">
+        <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-brand-500 to-brand-700 flex items-center justify-center mb-6 shadow-lg">
+          <svg className="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+          </svg>
+        </div>
+        <p className="text-lg font-semibold text-brand-700">No Dataset Active</p>
+        <p className="text-sm mt-1 text-brand-400 text-center">Load a dataset first to start chatting with your org data.</p>
       </div>
     );
   }
@@ -1080,10 +1082,10 @@ function EmptyState({ onSelect }) {
 const LOADING_STEPS = [
   "Initialising data session...",
   "Loading organizational structure...",
-  "Preparing secure data sandbox...",
   "Configuring analytics engine...",
   "Connecting OrgSight chatbot..."
 ];
+
 
 function InitialisingLoader() {
   const [stepIndex, setStepIndex] = useState(0);

@@ -17,23 +17,24 @@ import {
 // Design tokens (A&M palette)
 // ---------------------------------------------------------------------------
 const C = {
-  navy: "#01244a", navyL: "#0a3366", blue: "#0085ca", blueL: "#dee7f0",
-  gold: "#c5a84a", goldL: "#f3e9c4",
-  white: "#ffffff", bg: "#f4f6f9", cardBg: "#ffffff",
-  text: "#01244a", textSec: "#4a6a8a", textMuted: "#8a9ab4",
+  navy: "#01244a", navyL: "#0a3f86", blue: "#155bb2", blueL: "#e8eef5",
+  gold: "#c5a84a", goldL: "#fffbeb",
+  white: "#ffffff", bg: "#f8fbff", cardBg: "#ffffff",
+  text: "#0f172a", textSec: "#64748b", textMuted: "#94a3b8",
   border: "#dce4ee", borderL: "#e8eef5",
-  danger: "#d94f4f", dangerL: "#fde7e7",
-  success: "#2e9e6a", successL: "#e3f5ec",
-  warn: "#d4a942", warnL: "#fff3cd",
-  automation: "#3b82f6", ai: "#8b5cf6", stop_work: "#ef4444", bpo: "#f59e0b",
+  danger: "#ec3f4f", dangerL: "#fef2f2",
+  success: "#16b867", successL: "#ecfdf5",
+  warn: "#ed8f12", warnL: "#fffbeb",
+  automation: "#0a3f86", ai: "#8b5cf6", stop_work: "#f97316", bpo: "#c5a84a",
 };
 
 const LEVER_META = {
-  automation: { label: "Automation", color: C.automation, bg: "#eff6ff" },
+  automation: { label: "Automation", color: C.automation, bg: "#e8eef5" },
   ai:         { label: "AI / Augment", color: C.ai, bg: "#f5f3ff" },
-  stop_work:  { label: "Stop Work",   color: C.stop_work, bg: "#fef2f2" },
+  stop_work:  { label: "Stop Work",   color: C.stop_work, bg: "#fdf6f0" },
   bpo:        { label: "BPO / Outsource", color: C.bpo, bg: "#fffbeb" },
 };
+
 
 const STEPS = [
   { id: 1, label: "Setup", short: "People → Roles" },
@@ -55,43 +56,48 @@ const fmtCurr = (n) => {
   return `$${Number(n).toFixed(0)}`;
 };
 
-function Btn({ children, onClick, variant = "primary", disabled, small, style }) {
-  const base = {
-    fontFamily: "inherit", fontWeight: 600, cursor: disabled ? "not-allowed" : "pointer",
-    border: "none", borderRadius: 6, transition: "all .15s",
-    padding: small ? "5px 12px" : "8px 18px",
-    fontSize: small ? 12 : 13,
-    opacity: disabled ? 0.5 : 1,
-    ...style,
-  };
+function Btn({ children, onClick, variant = "primary", disabled, small, className = "", style }) {
   const themes = {
-    primary:  { background: C.navy, color: C.white },
-    secondary:{ background: C.blueL, color: C.navy, border: `1px solid ${C.blue}` },
-    danger:   { background: C.dangerL, color: C.danger, border: `1px solid ${C.danger}` },
-    ghost:    { background: "transparent", color: C.textSec, border: `1px solid ${C.border}` },
-    success:  { background: C.successL, color: C.success, border: `1px solid ${C.success}` },
+    primary:   "bg-[#0a3f86] text-white hover:bg-[#0f2e5c] shadow-sm focus:ring-2 focus:ring-[#155bb2]/20",
+    secondary: "bg-[#eaf3ff] text-[#0a3f86] border border-[#dbeafe] hover:bg-[#dbeafe] shadow-sm",
+    danger:    "bg-red-50 text-red-600 border border-red-200 hover:bg-red-100/70",
+    ghost:     "bg-transparent text-slate-600 border border-slate-200 hover:bg-slate-50",
+    success:   "bg-[#ecfdf5] text-[#16b867] border border-[rgba(22,184,103,0.3)] hover:bg-[#ecfdf5]/80",
   };
+  const sizeClass = small ? "px-2.5 py-1 text-xs" : "px-4.5 py-2 text-xs sm:text-sm";
   return (
-    <button style={{ ...base, ...themes[variant] }} onClick={disabled ? undefined : onClick}>
+    <button
+      onClick={disabled ? undefined : onClick}
+      disabled={disabled}
+      className={`font-semibold rounded-lg transition-all duration-200 ${themes[variant] || themes.primary} ${sizeClass} ${disabled ? "opacity-50 cursor-not-allowed" : "cursor-pointer hover:-translate-y-0.5 active:translate-y-0"} ${className}`}
+      style={style}
+    >
       {children}
     </button>
   );
 }
 
-function Card({ children, style }) {
+function Card({ children, className = "", style }) {
   return (
-    <div style={{ background: C.cardBg, border: `1px solid ${C.border}`, borderRadius: 10, ...style }}>
+    <div
+      className={`bg-white/90 backdrop-blur-sm border border-[#dce4ee] rounded-xl shadow-[0_1px_4px_rgba(15,46,92,0.06)] transition-all duration-300 ${className}`}
+      style={style}
+    >
       {children}
     </div>
   );
 }
 
-function Tag({ children, color, bg }) {
+function Tag({ children, color, bg, className = "", style }) {
   return (
-    <span style={{
-      display: "inline-block", padding: "2px 8px", borderRadius: 20,
-      fontSize: 11, fontWeight: 700, color: color || C.navy, background: bg || C.blueL,
-    }}>
+    <span
+      className={`inline-block px-2.5 py-0.5 rounded-full text-[11px] font-bold ${className}`}
+      style={{
+        color: color || "#0a3f86",
+        background: bg || "#eaf3ff",
+        ...style,
+      }}
+    >
       {children}
     </span>
   );
@@ -99,10 +105,7 @@ function Tag({ children, color, bg }) {
 
 function Spinner() {
   return (
-    <span style={{
-      display: "inline-block", width: 14, height: 14, border: `2px solid ${C.border}`,
-      borderTopColor: C.blue, borderRadius: "50%", animation: "spin 0.7s linear infinite",
-    }} />
+    <span className="inline-block w-3.5 h-3.5 border-2 border-slate-200 border-t-[#155bb2] rounded-full animate-spin" />
   );
 }
 
@@ -131,35 +134,47 @@ function StatusPill({ status }) {
 // ---------------------------------------------------------------------------
 function StepHeader({ currentStep, onStepClick }) {
   return (
-    <div style={{ display: "flex", gap: 0, marginBottom: 24 }}>
+    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
       {STEPS.map((s, i) => {
         const active = s.id === currentStep;
         const done = s.id < currentStep;
         return (
-          <React.Fragment key={s.id}>
-            <button
-              onClick={() => done && onStepClick(s.id)}
-              style={{
-                flex: 1, padding: "12px 8px", border: "none", cursor: done ? "pointer" : "default",
-                background: active ? C.navy : done ? C.blueL : C.bg,
-                color: active ? C.white : done ? C.navy : C.textMuted,
-                fontWeight: active || done ? 700 : 500, fontSize: 12, transition: "all .15s",
-                borderBottom: active ? `3px solid ${C.gold}` : `3px solid transparent`,
-              }}
-            >
-              <div style={{ fontSize: 10, marginBottom: 2, opacity: 0.75 }}>Step {s.id}</div>
-              <div>{s.label}</div>
-              <div style={{ fontSize: 10, marginTop: 2, opacity: 0.6 }}>{s.short}</div>
-            </button>
-            {i < STEPS.length - 1 && (
-              <div style={{ width: 1, background: C.border, alignSelf: "stretch" }} />
+          <button
+            key={s.id}
+            disabled={!done}
+            onClick={() => done && onStepClick(s.id)}
+            className={`relative p-3.5 rounded-xl border text-left transition-all duration-300 flex flex-col justify-between h-20 ${
+              active
+                ? "bg-[#01244a] border-[#01244a] text-white shadow-md shadow-brand-900/10"
+                : done
+                ? "bg-brand-50/70 border-brand-100 hover:bg-brand-100/50 hover:border-brand-200 text-brand-800 cursor-pointer"
+                : "bg-white border-slate-100 text-slate-400 cursor-not-allowed"
+            }`}
+          >
+            {active && (
+              <div className="absolute bottom-0 left-0 right-0 h-1 bg-[#c5a84a] rounded-b-xl" />
             )}
-          </React.Fragment>
+            <div className="flex items-center justify-between w-full">
+              <span className={`text-[10px] font-bold uppercase tracking-wider ${active ? "text-brand-200" : "text-brand-400"}`}>
+                Step {s.id}
+              </span>
+              {done && (
+                <span className="w-4 h-4 rounded-full bg-brand-500 text-white flex items-center justify-center text-[10px] font-bold">
+                  ✓
+                </span>
+              )}
+            </div>
+            <div>
+              <div className="font-extrabold text-xs sm:text-sm tracking-tight leading-tight" style={{ fontFamily: "Manrope, Inter, sans-serif" }}>{s.label}</div>
+              <div className={`text-[9px] mt-0.5 leading-none ${active ? "text-brand-100" : "text-slate-400"}`} style={{ fontFamily: "Manrope, Inter, sans-serif" }}>{s.short}</div>
+            </div>
+          </button>
         );
       })}
     </div>
   );
 }
+
 
 // ---------------------------------------------------------------------------
 // Step 1 — Setup
@@ -230,18 +245,19 @@ function Step1Setup({ datasetId, onCreated, existingConfigs, onSelect }) {
     <div style={{ maxWidth: 800 }}>
       {/* Existing configs */}
       {existingConfigs.length > 0 && (
-        <Card style={{ padding: 16, marginBottom: 20 }}>
-          <div style={{ fontWeight: 700, color: C.navy, marginBottom: 10, fontSize: 13 }}>
+        <Card className="p-5 mb-5">
+          <div className="text-xs font-bold text-brand-400 uppercase tracking-wider mb-3.5" style={{ fontFamily: "Manrope, Inter, sans-serif" }}>
             Existing Analyses
           </div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
             {existingConfigs.map(cfg => (
-              <button key={cfg.id} onClick={() => onSelect(cfg)} style={{
-                padding: "8px 14px", borderRadius: 6, border: `1px solid ${C.border}`,
-                background: C.bg, cursor: "pointer", fontSize: 12, fontWeight: 600, color: C.navy,
-              }}>
-                {cfg.name}
-                <span style={{ marginLeft: 8, color: C.textMuted, fontWeight: 400 }}>
+              <button
+                key={cfg.id}
+                onClick={() => onSelect(cfg)}
+                className="inline-flex items-center gap-2 px-3.5 py-2 rounded-lg border border-brand-100 bg-brand-50/40 text-xs font-semibold text-brand-800 hover:bg-brand-100/60 hover:border-brand-200 hover:-translate-y-0.5 transition-all duration-200 cursor-pointer shadow-sm"
+              >
+                <span>{cfg.name}</span>
+                <span className="px-1.5 py-0.5 rounded bg-brand-100 text-[10px] text-brand-700 font-semibold">
                   {cfg.role_grouping_col}
                 </span>
               </button>
@@ -251,42 +267,32 @@ function Step1Setup({ datasetId, onCreated, existingConfigs, onSelect }) {
       )}
 
       {/* Create new */}
-      <Card style={{ padding: 20 }}>
-        <div style={{ fontWeight: 700, color: C.navy, fontSize: 14, marginBottom: 16 }}>
+      <Card className="p-6">
+        <div className="text-sm font-bold text-brand-800 mb-4" style={{ fontFamily: "Manrope, Inter, sans-serif" }}>
           New Activity Analysis
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
-            <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: C.textSec, marginBottom: 4 }}>
-              ANALYSIS NAME
+            <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5" style={{ fontFamily: "Manrope, Inter, sans-serif" }}>
+              Analysis Name
             </label>
             <input
               value={name}
               onChange={e => setName(e.target.value)}
               placeholder="e.g. Finance Dept Automation Review"
-              style={{
-                width: "100%", padding: "8px 10px", border: `1px solid ${C.border}`,
-                borderRadius: 6, fontSize: 13, color: C.text, outline: "none", boxSizing: "border-box",
-              }}
+              className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 outline-none text-xs bg-white transition-all shadow-sm"
             />
           </div>
 
           <div>
-            <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: C.textSec, marginBottom: 4 }}>
-              ROLE GROUPING COLUMN
-              <span style={{ marginLeft: 6, color: C.textMuted, fontWeight: 400 }}>
-                (groups people into roles)
-              </span>
+            <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5" style={{ fontFamily: "Manrope, Inter, sans-serif" }}>
+              Role Grouping Column <span className="text-[9px] text-slate-400 font-normal normal-case">(groups people into roles)</span>
             </label>
             <select
               value={roleCol}
               onChange={e => { setRoleCol(e.target.value); previewRoles(e.target.value); }}
-              style={{
-                width: "100%", padding: "8px 10px", border: `1px solid ${C.border}`,
-                borderRadius: 6, fontSize: 13, color: C.text, background: C.white,
-                outline: "none", boxSizing: "border-box",
-              }}
+              className="w-full px-3 py-1.5 border border-slate-200 rounded-lg focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 outline-none text-xs bg-white transition-all shadow-sm"
             >
               <option value="">— select a column —</option>
               {(() => {
@@ -316,10 +322,13 @@ function Step1Setup({ datasetId, onCreated, existingConfigs, onSelect }) {
           </div>
         </div>
 
-        {err && <div style={{ marginTop: 12, color: C.danger, fontSize: 12 }}>{err}</div>}
+        {err && <div className="mt-3 text-red-600 text-xs font-semibold">{err}</div>}
 
-        <div style={{ marginTop: 16 }}>
-          <Btn onClick={handleCreate} disabled={creating}>
+        <div style={{ marginTop: 20 }}>
+          <Btn
+            onClick={handleCreate}
+            disabled={creating}
+          >
             {creating ? "Creating…" : "Create & Continue →"}
           </Btn>
         </div>
@@ -327,6 +336,7 @@ function Step1Setup({ datasetId, onCreated, existingConfigs, onSelect }) {
     </div>
   );
 }
+
 
 // ---------------------------------------------------------------------------
 // Step 2 — Activities & Allocation Matrix
@@ -371,10 +381,10 @@ function Step2Activities({ config, roles, onNext }) {
 
   const cellColor = (total) => {
     if (total >= 98 && total <= 102) return { bg: C.successL, color: C.success };
-    if (total >= 50) return { bg: C.warnL, color: C.warn };
-    if (total > 0) return { bg: C.dangerL, color: C.danger };
+    if (total > 0) return { bg: C.blueL, color: C.navy };
     return { bg: "transparent", color: C.textMuted };
   };
+
 
   const handleCellChange = (rv, actId, val) => {
     const num = val === "" ? "" : Math.max(0, Math.min(200, Number(val) || 0));
@@ -466,20 +476,24 @@ function Step2Activities({ config, roles, onNext }) {
 
   return (
     <div>
-      <div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginBottom: 20 }}>
+      <div className="flex gap-5 flex-wrap mb-5">
         {/* Activities panel */}
-        <Card style={{ flex: "0 0 260px", padding: 16, maxHeight: 600, overflow: "auto" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-            <div style={{ fontWeight: 700, color: C.navy, fontSize: 13 }}>
+        <Card className="flex-[0_0_280px] p-5 max-h-[600px] overflow-auto">
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+            <div className="text-xs font-bold text-brand-800 uppercase tracking-wider font-display">
               Activities ({activities.length})
             </div>
             <div style={{ display: "flex", gap: 6 }}>
               <input type="file" ref={actFileRef} accept=".xlsx,.xls,.csv" style={{ display: "none" }}
                 onChange={e => { if (e.target.files[0]) handleActUpload(e.target.files[0]); e.target.value = ""; }}
               />
-              <Btn small variant="ghost" onClick={() => actFileRef.current?.click()}>
+              <button
+                onClick={() => actFileRef.current?.click()}
+                className="w-8 h-8 rounded-lg bg-brand-50 hover:bg-brand-100 text-brand-600 flex items-center justify-center transition cursor-pointer"
+                title="Upload activities"
+              >
                 {uploading === "activities" ? <Spinner /> : <UploadIcon />}
-              </Btn>
+              </button>
               <Btn small variant="secondary" onClick={() => setEditingActs(!editingActs)}>
                 {editingActs ? "Cancel" : "+ Add"}
               </Btn>
@@ -487,15 +501,12 @@ function Step2Activities({ config, roles, onNext }) {
           </div>
 
           {Object.entries(processGroups).map(([proc, acts]) => (
-            <div key={proc} style={{ marginBottom: 12 }}>
-              <div style={{ fontSize: 10, fontWeight: 700, color: C.textMuted, textTransform: "uppercase", marginBottom: 4 }}>
+            <div key={proc} style={{ marginBottom: 14 }}>
+              <div className="text-[10px] font-bold text-brand-400 uppercase tracking-wider mb-2 font-display">
                 {proc}
               </div>
               {acts.map(act => (
-                <div key={act.id} style={{
-                  padding: "5px 8px", borderRadius: 4, background: C.bg,
-                  marginBottom: 3, fontSize: 12, color: C.text,
-                }}>
+                <div key={act.id} className="px-3 py-2 rounded-lg bg-brand-50/40 border border-brand-100/30 text-xs text-slate-800 mb-1.5 font-medium transition hover:bg-brand-50/70">
                   {act.name}
                 </div>
               ))}
@@ -510,17 +521,17 @@ function Step2Activities({ config, roles, onNext }) {
                     placeholder="Activity name *"
                     value={row.name}
                     onChange={e => setNewActRows(prev => prev.map((r, j) => j === i ? { ...r, name: e.target.value } : r))}
-                    style={{ width: "100%", padding: "5px 8px", border: `1px solid ${C.border}`, borderRadius: 4, fontSize: 12, boxSizing: "border-box", marginBottom: 4 }}
+                    className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 outline-none text-xs bg-white transition mb-1.5"
                   />
                   <input
                     placeholder="Process (optional)"
                     value={row.process_name}
                     onChange={e => setNewActRows(prev => prev.map((r, j) => j === i ? { ...r, process_name: e.target.value } : r))}
-                    style={{ width: "100%", padding: "5px 8px", border: `1px solid ${C.border}`, borderRadius: 4, fontSize: 12, boxSizing: "border-box" }}
+                    className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 outline-none text-xs bg-white transition"
                   />
                 </div>
               ))}
-              <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
+              <div style={{ display: "flex", gap: 6, marginTop: 10 }}>
                 <Btn small variant="ghost" onClick={() => setNewActRows(p => [...p, { name: "", process_name: "" }])}>
                   + Row
                 </Btn>
@@ -531,105 +542,114 @@ function Step2Activities({ config, roles, onNext }) {
             </div>
           )}
 
-          <div style={{ marginTop: 12, padding: 10, background: C.blueL, borderRadius: 6, fontSize: 11, color: C.navy }}>
-            <strong>Tip:</strong> Upload an Excel with columns: Activity, Process, Description
+          <div className="mt-4 p-3 bg-brand-50/20 border border-brand-100/40 rounded-lg text-[10px] text-brand-600 leading-normal">
+            <strong>Tip:</strong> Upload an Excel with columns: <span className="font-mono font-bold">Activity</span>, <span className="font-mono font-bold">Process</span>, <span className="font-mono font-bold">Description</span>.
           </div>
         </Card>
 
         {/* Allocation matrix */}
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-            <div style={{ fontWeight: 700, color: C.navy, fontSize: 13 }}>
-              Allocation Matrix <span style={{ color: C.textMuted, fontWeight: 400, fontSize: 12 }}>— % time per role</span>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+            <div className="text-xs font-bold text-brand-800 uppercase tracking-wider font-display">
+              Allocation Matrix <span className="text-[11px] text-slate-400 font-normal lowercase tracking-normal font-sans">— % time per role</span>
             </div>
             <div style={{ display: "flex", gap: 8 }}>
               <input type="file" ref={allocFileRef} accept=".xlsx,.xls" style={{ display: "none" }}
                 onChange={e => { if (e.target.files[0]) handleAllocUpload(e.target.files[0]); e.target.value = ""; }}
               />
-              <Btn small variant="ghost" onClick={() => allocFileRef.current?.click()}>
+              <button
+                onClick={() => allocFileRef.current?.click()}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg border border-brand-200 text-brand-700 bg-white hover:bg-brand-50 transition cursor-pointer shadow-sm"
+              >
                 {uploading === "allocs" ? <><Spinner /> Uploading…</> : <><UploadIcon /> Upload Matrix</>}
-              </Btn>
+              </button>
             </div>
           </div>
 
           {activities.length === 0 ? (
-            <Card style={{ padding: 32, textAlign: "center", color: C.textMuted }}>
+            <Card className="p-10 text-center text-slate-400">
               Add activities on the left to build the allocation matrix
             </Card>
           ) : roles.length === 0 ? (
-            <Card style={{ padding: 32, textAlign: "center", color: C.textMuted }}>
+            <Card className="p-10 text-center text-slate-400">
               No roles found — check your dataset for the grouping column
             </Card>
           ) : (
-            <div style={{ overflowX: "auto", border: `1px solid ${C.border}`, borderRadius: 8 }}>
+            <div className="overflow-x-auto border border-[#dce4ee] rounded-xl shadow-card bg-white">
               <table style={{ borderCollapse: "collapse", fontSize: 11, width: "100%" }}>
                 <thead>
-                  <tr style={{ background: C.navy, color: C.white }}>
-                    <th style={{ padding: "8px 12px", textAlign: "left", fontWeight: 600, whiteSpace: "nowrap", position: "sticky", left: 0, background: C.navy }}>
+                  <tr style={{ background: C.blueL, color: C.navy, borderBottom: `1px solid ${C.border}` }}>
+                    <th style={{ padding: "10px 14px", textAlign: "left", fontWeight: 700, textTransform: "uppercase", fontSize: 10, letterSpacing: "0.05em", whiteSpace: "nowrap", position: "sticky", left: 0, background: C.blueL }}>
                       Role
                     </th>
                     {activities.map(act => (
-                      <th key={act.id} style={{ padding: "8px 8px", textAlign: "center", fontWeight: 600, maxWidth: 90, minWidth: 70 }}>
-                        <div style={{ fontSize: 10, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={act.name}>
+                      <th key={act.id} style={{ padding: "10px 8px", textAlign: "center", fontWeight: 700, textTransform: "uppercase", fontSize: 9, letterSpacing: "0.05em", maxWidth: 95, minWidth: 75 }}>
+                        <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={act.name}>
                           {act.name}
                         </div>
                         {act.process_name && (
-                          <div style={{ fontSize: 9, opacity: 0.6 }}>{act.process_name}</div>
+                          <div style={{ fontSize: 8, opacity: 0.6, textTransform: "lowercase", fontWeight: 500 }} className="italic">{act.process_name}</div>
                         )}
                       </th>
                     ))}
-                    <th style={{ padding: "8px 10px", textAlign: "center", fontWeight: 600, minWidth: 60 }}>Total %</th>
+                    <th style={{ padding: "10px 12px", textAlign: "center", fontWeight: 700, textTransform: "uppercase", fontSize: 10, letterSpacing: "0.05em", minWidth: 65 }}>Total %</th>
                   </tr>
                 </thead>
                 <tbody>
                   {roles.map((role, ri) => {
-                    const total = totalForRole(role.role_value);
-                    const cc = cellColor(total);
-                    return (
-                      <tr key={role.role_value} style={{ borderTop: `1px solid ${C.borderL}`, background: ri % 2 === 0 ? C.white : "#fafbfc" }}>
-                        <td style={{ padding: "6px 12px", fontWeight: 600, color: C.text, whiteSpace: "nowrap", position: "sticky", left: 0, background: ri % 2 === 0 ? C.white : "#fafbfc", fontSize: 12 }}>
-                          <div>{role.role_value}</div>
-                          <div style={{ fontSize: 10, color: C.textMuted, fontWeight: 400 }}>
-                            {fmt(role.headcount)} people
-                          </div>
-                        </td>
-                        {activities.map(act => (
-                          <td key={act.id} style={{ padding: "4px 6px", textAlign: "center" }}>
-                            <input
-                              type="number"
-                              min="0"
-                              max="100"
-                              value={(allocs[role.role_value]?.[act.id] ?? "")}
-                              onChange={e => handleCellChange(role.role_value, act.id, e.target.value)}
-                              style={{
-                                width: 52, padding: "4px 6px", border: `1px solid ${C.border}`,
-                                borderRadius: 4, fontSize: 12, textAlign: "center",
-                                color: C.text, background: (allocs[role.role_value]?.[act.id] > 0) ? C.blueL : C.white,
-                              }}
-                            />
-                          </td>
-                        ))}
-                        <td style={{ padding: "6px 10px", textAlign: "center", fontWeight: 700, background: cc.bg, color: cc.color }}>
-                          {total}%
-                        </td>
-                      </tr>
-                    );
+                     const total = totalForRole(role.role_value);
+                     const cc = cellColor(total);
+                     const rowBg = ri % 2 === 0 ? C.white : "rgba(232, 238, 245, 0.15)";
+                     return (
+                       <tr key={role.role_value} style={{ borderTop: `1px solid ${C.borderL}`, background: rowBg }}>
+                         <td style={{ padding: "8px 14px", fontWeight: 600, color: C.text, whiteSpace: "nowrap", position: "sticky", left: 0, background: rowBg, borderRight: `1px solid ${C.borderL}`, fontSize: 12 }}>
+                           <div>{role.role_value}</div>
+                           <div style={{ fontSize: 10, color: C.textSec, fontWeight: 400 }}>
+                             {fmt(role.headcount)} people
+                           </div>
+                         </td>
+                         {activities.map(act => {
+                           const hasVal = allocs[role.role_value]?.[act.id] > 0;
+                           return (
+                             <td key={act.id} style={{ padding: "5px 6px", textAlign: "center" }}>
+                               <input
+                                 type="number"
+                                 min="0"
+                                 max="100"
+                                 value={(allocs[role.role_value]?.[act.id] ?? "")}
+                                 onChange={e => handleCellChange(role.role_value, act.id, e.target.value)}
+                                 className={`w-12 px-1.5 py-1 border rounded-md text-xs text-center focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 outline-none transition-all ${
+                                   hasVal ? "bg-[#eaf3ff] text-[#0a3f86] border-[#74a9e7] font-bold" : "bg-white border-slate-200 text-slate-800"
+                                 }`}
+                               />
+                             </td>
+                           );
+                         })}
+                         <td style={{ padding: "8px 12px", textAlign: "center", fontWeight: 700, background: cc.bg, color: cc.color }}>
+                           {total}%
+                         </td>
+                       </tr>
+                     );
                   })}
                 </tbody>
               </table>
             </div>
           )}
 
-          <div style={{ marginTop: 10, fontSize: 11, color: C.textMuted }}>
-            Enter % per cell (0–100). Aim for each row to sum to 100%.
-            <span style={{ marginLeft: 12 }}>
-              <span style={{ color: C.success }}>■</span> = 100%&nbsp;&nbsp;
-              <span style={{ color: C.warn }}>■</span> = partial&nbsp;&nbsp;
-              <span style={{ color: C.danger }}>■</span> = low
+          <div style={{ marginTop: 12, fontSize: 11, color: C.textSec, display: "flex", alignItems: "center", gap: 16 }}>
+            <span>Enter % per cell (0–100). Aim for each row to sum to 100%.</span>
+            <span style={{ display: "flex", gap: 8 }}>
+              <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-semibold bg-green-50 text-green-700 border border-green-200/50">
+                ■ 100%
+              </span>
+              <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-semibold bg-brand-50 text-brand-800 border border-brand-200/50">
+                ■ partial
+              </span>
             </span>
           </div>
         </div>
       </div>
+
 
       {err && <div style={{ color: C.danger, fontSize: 12, marginBottom: 8 }}>{err}</div>}
 
@@ -765,7 +785,7 @@ function Step3Levers({ config, onNext }) {
 
   if (activities.length === 0) {
     return (
-      <Card style={{ padding: 32, textAlign: "center", color: C.textMuted }}>
+      <Card className="p-10 text-center text-slate-400">
         No activities defined. Go back to Step 2 to add activities.
       </Card>
     );
@@ -774,23 +794,26 @@ function Step3Levers({ config, onNext }) {
   return (
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-        <div style={{ fontSize: 13, color: C.textSec }}>
-          Apply reductions to activities. Each lever takes effect from its date.
+        <div className="text-xs text-slate-500">
+          Apply savings reductions to activities. Each lever takes effect from its date.
         </div>
         <div style={{ display: "flex", gap: 8 }}>
           <input type="file" ref={fileRef} accept=".xlsx,.xls" style={{ display: "none" }}
             onChange={e => { if (e.target.files[0]) handleUpload(e.target.files[0]); e.target.value = ""; }}
           />
-          <Btn small variant="ghost" onClick={() => fileRef.current?.click()}>
+          <button
+            onClick={() => fileRef.current?.click()}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg border border-brand-200 text-brand-700 bg-white hover:bg-brand-50 transition cursor-pointer shadow-sm"
+          >
             {uploading ? <Spinner /> : <UploadIcon />} Upload Excel
-          </Btn>
+          </button>
         </div>
       </div>
 
       {Object.entries(processGroups).map(([proc, acts]) => (
-        <div key={proc} style={{ marginBottom: 20 }}>
+        <div key={proc} style={{ marginBottom: 24 }}>
           {proc !== "General" && (
-            <div style={{ fontSize: 11, fontWeight: 700, color: C.textMuted, textTransform: "uppercase", marginBottom: 8, paddingBottom: 4, borderBottom: `1px solid ${C.borderL}` }}>
+            <div className="text-[10px] font-bold text-brand-400 uppercase tracking-wider mb-3 pb-1 border-b border-brand-100/50 font-display">
               {proc}
             </div>
           )}
@@ -806,58 +829,67 @@ function Step3Levers({ config, onNext }) {
                 totalSavingsPct += pct;
               }
             }
-            const dotColor = totalSavingsPct >= 40 ? C.success : totalSavingsPct >= 20 ? C.warn : totalSavingsPct > 0 ? C.danger : C.textMuted;
-            const pillBg = totalSavingsPct >= 40 ? C.successL : totalSavingsPct >= 20 ? C.warnL : C.dangerL;
-            const pillColor = totalSavingsPct >= 40 ? C.success : totalSavingsPct >= 20 ? C.warn : C.danger;
+            const activeSavings = totalSavingsPct > 0;
+            const dotColor = activeSavings ? C.blue : C.textMuted;
+            const pillBg = activeSavings ? "bg-brand-50 text-brand-800 border-brand-200/50" : "bg-slate-50 text-slate-500 border-slate-100";
             return (
-              <Card key={act.id} style={{ padding: 14, marginBottom: 10 }}>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+              <Card key={act.id} className="p-[18px] mb-3.5 relative overflow-hidden">
+                <div className="absolute inset-0 bg-gradient-to-br from-brand-500/5 to-transparent pointer-events-none" />
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <div style={{ width: 9, height: 9, borderRadius: "50%", background: dotColor, flexShrink: 0 }} />
-                    <div style={{ fontWeight: 700, color: C.navy, fontSize: 13 }}>{act.name}</div>
+                    <div style={{ width: 8, height: 8, borderRadius: "50%", background: dotColor, flexShrink: 0 }} />
+                    <div className="text-sm font-extrabold text-[#01244a]" style={{ fontFamily: "Manrope, Inter, sans-serif" }}>{act.name}</div>
                     {act.process_name && (
-                      <span style={{ fontSize: 10, color: C.textMuted, fontStyle: "italic" }}>{act.process_name}</span>
+                      <span className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider font-display">{act.process_name}</span>
                     )}
                   </div>
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                     {leverParts.length > 0 && (
-                      <span style={{ fontSize: 11, color: C.textSec }}>{leverParts.join(" · ")}</span>
+                      <span className="text-xs text-slate-500 font-medium">{leverParts.join(" · ")}</span>
                     )}
                     {totalSavingsPct > 0 && (
-                      <Tag color={pillColor} bg={pillBg}>{totalSavingsPct}%</Tag>
+                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold border ${pillBg}`}>
+                        {totalSavingsPct}% Saved
+                      </span>
                     )}
                   </div>
                 </div>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 10 }}>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                   {Object.entries(LEVER_META).map(([lt, meta]) => {
                     const rows = actLevers[lt] || [];
                     return (
-                      <div key={lt} style={{ border: `1px solid ${C.border}`, borderRadius: 6, overflow: "hidden" }}>
-                        <div style={{ background: meta.bg, padding: "6px 10px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                          <span style={{ fontSize: 11, fontWeight: 700, color: meta.color }}>{meta.label}</span>
+                      <div key={lt} className="border border-[#dce4ee] rounded-lg overflow-hidden bg-white/80 shadow-sm transition-all hover:border-[#74a9e7]/30">
+                        <div style={{ background: meta.bg, padding: "7px 10px", display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: `1px solid ${C.borderL}` }}>
+                          <span style={{ fontSize: 11, fontWeight: 800, color: meta.color, fontFamily: "Manrope, Inter, sans-serif" }}>{meta.label}</span>
                           <button onClick={() => addLeverRow(act.id, lt)} style={{
                             fontSize: 16, fontWeight: 700, color: meta.color, background: "none",
                             border: "none", cursor: "pointer", lineHeight: 1,
-                          }}>+</button>
+                          }} className="hover:scale-110 transition-transform">+</button>
                         </div>
-                        <div style={{ padding: "6px 8px" }}>
+                        <div style={{ padding: "8px 10px" }} className="space-y-1.5">
                           {(rows.length === 0 ? [{ lever_type: lt, reduction_pct: "", effective_date: "" }] : rows).map((row, idx) => (
-                            <div key={idx} style={{ display: "flex", gap: 4, alignItems: "center", marginBottom: 4 }}>
+                            <div key={idx} style={{ display: "flex", gap: 4, alignItems: "center" }}>
                               <input
                                 type="number" min="0" max="100" placeholder="0%"
                                 value={row.reduction_pct === "" ? "" : row.reduction_pct}
                                 onChange={e => updateLever(act.id, lt, "reduction_pct", e.target.value, idx)}
-                                style={{ width: 52, padding: "4px 6px", border: `1px solid ${C.border}`, borderRadius: 4, fontSize: 12, textAlign: "center" }}
+                                className="w-11 px-1 py-1 border border-slate-200 rounded-md text-xs text-center focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 outline-none transition-all"
                               />
-                              <span style={{ fontSize: 11, color: C.textMuted }}>%</span>
+                              <span style={{ fontSize: 10, color: C.textMuted }}>%</span>
                               <input
                                 type="date"
                                 value={row.effective_date || ""}
                                 onChange={e => updateLever(act.id, lt, "effective_date", e.target.value, idx)}
-                                style={{ flex: 1, padding: "4px 6px", border: `1px solid ${C.border}`, borderRadius: 4, fontSize: 11 }}
+                                className="flex-1 px-1.5 py-0.5 border border-slate-200 rounded-md text-[10px] focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 outline-none text-slate-700 transition-all"
                               />
                               {rows.length > 0 && (
-                                <button onClick={() => removeLeverRow(act.id, lt, idx)} style={{ color: C.danger, background: "none", border: "none", cursor: "pointer", fontSize: 14, fontWeight: 700 }}>×</button>
+                                <button
+                                  onClick={() => removeLeverRow(act.id, lt, idx)}
+                                  className="text-red-500 hover:text-red-700 cursor-pointer font-bold px-1 transition-colors"
+                                  style={{ background: "none", border: "none", fontSize: 13 }}
+                                >
+                                  ×
+                                </button>
                               )}
                             </div>
                           ))}
@@ -887,6 +919,7 @@ function Step3Levers({ config, onNext }) {
     </div>
   );
 }
+
 
 // ---------------------------------------------------------------------------
 // Step 4 — Impact Report
@@ -960,10 +993,7 @@ function Step4Impact({ config, datasetId }) {
           <select
             value={functionCol}
             onChange={e => setFunctionCol(e.target.value)}
-            style={{
-              padding: "5px 10px", border: `1px solid ${C.border}`, borderRadius: 6,
-              fontSize: 12, color: C.text, background: C.white, outline: "none",
-            }}
+            className="px-3 py-1.5 border border-slate-200 rounded-lg text-xs bg-white text-slate-800 focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 outline-none transition shadow-sm"
           >
             <option value="">— None —</option>
             {availableColumns.map(c => (
@@ -986,7 +1016,7 @@ function Step4Impact({ config, datasetId }) {
       {err && <div style={{ color: C.danger, fontSize: 12, marginBottom: 12 }}>{err}</div>}
 
       {!impact && !loading && (
-        <Card style={{ padding: 40, textAlign: "center", color: C.textMuted }}>
+        <Card className="p-10 text-center text-slate-400">
           <div style={{ fontSize: 48, marginBottom: 12 }}>⟳</div>
           <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 8 }}>Click "Refresh Model" to compute impact</div>
           <div style={{ fontSize: 12 }}>Make sure you've set up activities, allocations, and levers in steps 2 & 3</div>
@@ -996,67 +1026,48 @@ function Step4Impact({ config, datasetId }) {
       {impact && (
         <>
           {/* Summary metrics */}
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14, marginBottom: 22 }}>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
             {[
-              { label: "Baseline FTE", value: fmt(impact.baseline_fte), unit: "FTE", accent: C.navy, accentBg: C.blueL, icon: "👥" },
-              { label: "Total Savings (FTE)", value: fmt(impact.total_savings_fte), unit: "FTE", green: true, accent: C.success, accentBg: C.successL, icon: "✂" },
-              { label: "Baseline Cost", value: fmtCurr(impact.baseline_cost), unit: "", accent: C.navy, accentBg: C.blueL, icon: "💰" },
-              { label: "Total Savings", value: fmtCurr(impact.total_savings_cost), unit: "", green: true, accent: C.success, accentBg: C.successL, icon: "📉" },
+              { label: "Baseline FTE", value: fmt(impact.baseline_fte), unit: "FTE", green: false, accent: C.navy, gradient: "from-brand-500/5 to-transparent" },
+              { label: "Total Savings (FTE)", value: fmt(impact.total_savings_fte), unit: "FTE", green: true, accent: C.success, gradient: "from-green-500/5 to-transparent" },
+              { label: "Baseline Cost", value: fmtCurr(impact.baseline_cost), unit: "", green: false, accent: C.navy, gradient: "from-brand-500/5 to-transparent" },
+              { label: "Total Savings", value: fmtCurr(impact.total_savings_cost), unit: "", green: true, accent: C.success, gradient: "from-green-500/5 to-transparent" },
             ].map(m => (
-              <div key={m.label} style={{
-                background: C.white,
-                border: `1px solid ${C.border}`,
-                borderRadius: 10,
-                padding: "16px 20px",
-                position: "relative",
-                overflow: "hidden",
-                boxShadow: "0 1px 4px rgba(1,36,74,0.06)",
-              }}>
-                {/* Accent strip */}
-                <div style={{
-                  position: "absolute", top: 0, left: 0, right: 0, height: 3,
-                  background: m.accent,
-                  borderRadius: "10px 10px 0 0",
-                }} />
-                <div style={{ fontSize: 9, fontWeight: 800, color: C.textMuted, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 8 }}>{m.label}</div>
-                <div style={{ fontSize: 28, fontWeight: 800, color: m.green ? C.success : C.navy, lineHeight: 1, letterSpacing: "-0.5px" }}>
-                  {m.value}
+              <div key={m.label} className="relative overflow-hidden bg-white/90 backdrop-blur-sm border border-brand-100 rounded-xl p-4 shadow-card hover:shadow-panel hover:-translate-y-0.5 transition-all duration-300">
+                <div className={`absolute inset-0 bg-gradient-to-br ${m.gradient} pointer-events-none`} />
+                <div style={{ position: "absolute", top: 0, left: 0, bottom: 0, width: 3.5, background: m.accent }} />
+                <div className="pl-2">
+                  <div className="text-[10px] font-bold text-brand-400 uppercase tracking-wider leading-none mb-2" style={{ fontFamily: "Manrope, Inter, sans-serif" }}>{m.label}</div>
+                  <div className="text-2xl font-extrabold leading-none mt-1.5" style={{ fontFamily: "Manrope, Inter, sans-serif", color: m.green ? C.success : C.navy }}>{m.value}</div>
+                  {m.unit && <div className="text-[10px] text-slate-400 font-bold tracking-wider mt-1.5 uppercase">{m.unit}</div>}
                 </div>
-                {m.unit && <div style={{ fontSize: 11, color: C.textMuted, marginTop: 4, fontWeight: 600 }}>{m.unit}</div>}
               </div>
             ))}
           </div>
 
           {/* Tabs */}
-          <div style={{
-            display: "flex", gap: 2, borderBottom: `2px solid ${C.border}`,
-            marginBottom: 20, flexWrap: "wrap", background: "transparent",
-          }}>
+          <div className="flex flex-wrap gap-1.5 border-b border-brand-100 mb-6 bg-slate-50/50 p-1 rounded-xl">
             {TABS.map(t => {
               const isActive = activeTab === t.id;
               return (
-                <button key={t.id} onClick={() => setActiveTab(t.id)} style={{
-                  padding: "9px 16px",
-                  border: "none",
-                  background: isActive ? C.white : "transparent",
-                  fontSize: 12,
-                  fontWeight: isActive ? 700 : 500,
-                  color: isActive ? C.navy : C.textSec,
-                  borderBottom: isActive ? `2px solid ${C.navy}` : "2px solid transparent",
-                  borderRadius: "6px 6px 0 0",
-                  cursor: "pointer",
-                  marginBottom: -2,
-                  display: "flex", alignItems: "center", gap: 6,
-                  transition: "color 0.15s, background 0.15s",
-                  outline: "none",
-                }}>
-                  {t.label}
-                  {t.isNew && (
-                    <span style={{
-                      fontSize: 9, fontWeight: 800, padding: "1px 5px", borderRadius: 4,
-                      background: C.gold, color: C.white, letterSpacing: "0.05em",
-                    }}>NEW</span>
-                  )}
+                <button
+                  key={t.id}
+                  onClick={() => setActiveTab(t.id)}
+                  className={`px-4 py-2 rounded-lg text-xs font-bold transition-all duration-200 cursor-pointer outline-none border-none ${
+                    isActive
+                      ? "bg-white text-[#01244a] shadow-sm border border-brand-100"
+                      : "text-slate-500 hover:text-slate-800 hover:bg-slate-100/50"
+                  }`}
+                  style={{ fontFamily: "Manrope, Inter, sans-serif" }}
+                >
+                  <span className="flex items-center gap-1.5">
+                    {t.label}
+                    {t.isNew && (
+                      <span className="px-1.5 py-0.5 text-[8px] font-extrabold text-white bg-[#c5a84a] rounded tracking-wider">
+                        NEW
+                      </span>
+                    )}
+                  </span>
                 </button>
               );
             })}
@@ -1107,31 +1118,15 @@ function TrendChart({ title, accentColor, accentBg, values, displayMonths, chang
   const lastSavingsIdx = savingsMask.reduce((last, v, i) => v ? i : last, -1);
 
   return (
-    <div style={{
-      background: C.white,
-      border: `1px solid ${C.border}`,
-      borderRadius: 10,
-      overflow: "hidden",
-      boxShadow: "0 1px 4px rgba(1,36,74,0.06)",
-    }}>
+    <div className="relative overflow-hidden bg-white/90 backdrop-blur-sm border border-brand-100 rounded-xl shadow-card p-5 transition hover:shadow-panel duration-300">
       {/* Chart header */}
-      <div style={{
-        display: "flex", alignItems: "center", gap: 10,
-        padding: "14px 20px 0",
-      }}>
-        <div style={{
-          width: 3, height: 20, borderRadius: 2,
-          background: accentColor, flexShrink: 0,
-        }} />
-        <div style={{ fontSize: 13, fontWeight: 700, color: C.navy }}>{title}</div>
+      <div className="flex items-center gap-3.5 mb-4">
+        <div style={{ width: 3.5, height: 20, borderRadius: 2, background: accentColor }} />
+        <div className="text-sm font-extrabold text-brand-800" style={{ fontFamily: "Manrope, Inter, sans-serif" }}>{title}</div>
         {lastSavingsIdx >= 0 && (
-          <div style={{
-            marginLeft: "auto", fontSize: 11, fontWeight: 700,
-            color: C.success, background: C.successL,
-            padding: "2px 10px", borderRadius: 12,
-          }}>
+          <span className="ml-auto text-[10px] font-bold text-green-700 bg-green-50 px-2 py-0.5 rounded-full border border-green-200/50">
             {pctChanges[lastSavingsIdx] != null ? `${Math.abs(pctChanges.filter(v => v != null).reduce((s, v) => s + v, 0)).toFixed(1)}% total reduction` : ""}
-          </div>
+          </span>
         )}
       </div>
 
@@ -1159,37 +1154,29 @@ function TrendChart({ title, accentColor, accentBg, values, displayMonths, chang
       </div>
 
       {/* Data table */}
-      <div style={{ overflowX: "auto", borderTop: `1px solid ${C.borderL}` }}>
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 10 }}>
+      <div className="overflow-x-auto border border-brand-100 rounded-lg shadow-sm mt-4 bg-white">
+        <table className="w-full text-left text-xs">
           <thead>
-            <tr style={{ background: C.navy, color: C.white }}>
-              <th style={{ padding: "6px 12px", textAlign: "left", whiteSpace: "nowrap", fontWeight: 700, letterSpacing: "0.04em", fontSize: 9, textTransform: "uppercase" }}>Month</th>
+            <tr style={{ background: C.blueL, color: C.navy, borderBottom: `1px solid ${C.border}` }}>
+              <th className="px-3.5 py-2 font-bold uppercase tracking-wider text-[10px] text-brand-700">Month</th>
               {displayMonths.map(m => (
-                <th key={m} style={{ padding: "6px 8px", textAlign: "center", whiteSpace: "nowrap", fontWeight: 600, fontSize: 10 }}>{m}</th>
+                <th key={m} className="px-3 py-2 text-right font-bold uppercase tracking-wider text-[10px] text-brand-700">{m}</th>
               ))}
             </tr>
           </thead>
           <tbody>
-            <tr style={{ background: "#f7f9fc" }}>
-              <td style={{ padding: "5px 12px", fontWeight: 700, color: C.textSec, fontSize: 10, whiteSpace: "nowrap" }}>Change</td>
+            <tr style={{ background: "#f8fbff" }} className="border-b border-brand-100/30">
+              <td className="px-3.5 py-2 font-bold text-slate-700 text-[11px]">Change</td>
               {changes.map((v, i) => (
-                <td key={i} style={{
-                  padding: "5px 8px", textAlign: "center", fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace", fontSize: 10,
-                  color: v === null ? C.textMuted : v < 0 ? C.success : v > 0 ? C.danger : C.textMuted,
-                  fontWeight: v !== null && v !== 0 ? 700 : 400,
-                }}>
+                <td key={i} className={`px-3 py-2 text-right font-mono text-[11px] font-semibold ${v < 0 ? 'text-green-600' : v > 0 ? 'text-red-500' : 'text-slate-400'}`}>
                   {v === null ? "—" : (v >= 0 ? "+" : "") + (yAxisPrefix ? `${yAxisPrefix}${Math.abs(v) >= 1_000_000 ? (v / 1_000_000).toFixed(1) + "M" : Math.abs(v) >= 1_000 ? (v / 1_000).toFixed(0) + "K" : v.toFixed(1)}` : v.toFixed(1))}
                 </td>
               ))}
             </tr>
             <tr>
-              <td style={{ padding: "5px 12px", fontWeight: 700, color: C.textSec, fontSize: 10, whiteSpace: "nowrap" }}>Change %</td>
+              <td className="px-3.5 py-2 font-bold text-slate-700 text-[11px]">Change %</td>
               {pctChanges.map((v, i) => (
-                <td key={i} style={{
-                  padding: "5px 8px", textAlign: "center", fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace", fontSize: 10,
-                  color: v === null ? C.textMuted : v < 0 ? C.success : v > 0 ? C.danger : C.textMuted,
-                  fontWeight: v !== null && v !== 0 ? 700 : 400,
-                }}>
+                <td key={i} className={`px-3 py-2 text-right font-mono text-[11px] font-semibold ${v < 0 ? 'text-green-600' : v > 0 ? 'text-red-500' : 'text-slate-400'}`}>
                   {v === null ? "—" : `${v >= 0 ? "+" : ""}${v.toFixed(1)}%`}
                 </td>
               ))}
@@ -1200,6 +1187,7 @@ function TrendChart({ title, accentColor, accentBg, values, displayMonths, chang
     </div>
   );
 }
+
 
 function TrendTab({ impact }) {
   const months = impact.months || [];
@@ -1259,23 +1247,30 @@ function TrendTab({ impact }) {
 function LeverTab({ impact }) {
   const leverData = impact.savings_by_lever || {};
   const total = Object.values(leverData).reduce((s, v) => s + v, 0);
-  if (total === 0) return <div style={{ color: C.textMuted, padding: 20 }}>No lever savings computed. Ensure levers have a reduction % and date.</div>;
+  if (total === 0) {
+    return (
+      <div className="text-sm text-slate-500 p-6 text-center border border-brand-100 rounded-xl bg-white">
+        No lever savings computed. Ensure levers have a reduction % and date.
+      </div>
+    );
+  }
 
   return (
     <div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 12, marginBottom: 16 }}>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
         {Object.entries(LEVER_META).map(([lt, meta]) => {
           const sav = leverData[lt] || 0;
           const pct = total > 0 ? Math.round(sav / total * 100) : 0;
           return (
-            <Card key={lt} style={{ padding: 16 }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: meta.color, marginBottom: 8 }}>{meta.label}</div>
-              <div style={{ fontSize: 22, fontWeight: 800, color: C.navy }}>{fmtCurr(sav)}</div>
-              <div style={{ marginTop: 8, background: C.borderL, borderRadius: 3, height: 6 }}>
-                <div style={{ width: `${pct}%`, background: meta.color, height: 6, borderRadius: 3 }} />
+            <div key={lt} className="relative overflow-hidden bg-white/90 backdrop-blur-sm border border-brand-100 rounded-xl p-4 shadow-card hover:shadow-panel hover:-translate-y-0.5 transition-all duration-300">
+              <div style={{ absolute: "inset-0", background: `linear-gradient(135deg, ${meta.color}08 0%, transparent 100%)`, pointerEvents: "none" }} />
+              <div className="text-[10px] font-bold uppercase tracking-wider mb-2" style={{ color: meta.color, fontFamily: "Manrope, Inter, sans-serif" }}>{meta.label}</div>
+              <div className="text-xl font-extrabold text-[#01244a] leading-none" style={{ fontFamily: "Manrope, Inter, sans-serif" }}>{fmtCurr(sav)}</div>
+              <div style={{ marginTop: 10, background: C.borderL, borderRadius: 4, height: 5 }}>
+                <div style={{ width: `${pct}%`, background: meta.color, height: 5, borderRadius: 4 }} />
               </div>
-              <div style={{ fontSize: 10, color: C.textMuted, marginTop: 4 }}>{pct}% of total savings</div>
-            </Card>
+              <div className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider mt-2">{pct}% of total savings</div>
+            </div>
           );
         })}
       </div>
@@ -1286,27 +1281,31 @@ function LeverTab({ impact }) {
 function ActivityTab({ impact }) {
   const rows = impact.savings_by_process || [];
   return (
-    <div style={{ border: `1px solid ${C.border}`, borderRadius: 8, overflow: "auto" }}>
-      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+    <div className="overflow-x-auto border border-[#dce4ee] rounded-xl shadow-card bg-white">
+      <table className="w-full text-left text-xs">
         <thead>
-          <tr style={{ background: C.navy, color: C.white }}>
-            <th style={{ padding: "8px 12px", textAlign: "left" }}>Activity</th>
-            <th style={{ padding: "8px 12px", textAlign: "left" }}>Process</th>
-            <th style={{ padding: "8px 12px", textAlign: "right" }}>Savings FTE</th>
-            <th style={{ padding: "8px 12px", textAlign: "right" }}>Savings Cost</th>
+          <tr className="border-b border-[#dce4ee]" style={{ background: "#eaf3ff", color: "#01244a" }}>
+            <th className="px-4 py-2.5 font-bold uppercase tracking-wider text-[10px] text-brand-700">Activity</th>
+            <th className="px-4 py-2.5 font-bold uppercase tracking-wider text-[10px] text-brand-700">Process</th>
+            <th className="px-4 py-2.5 font-bold uppercase tracking-wider text-[10px] text-brand-700 text-right">Savings FTE</th>
+            <th className="px-4 py-2.5 font-bold uppercase tracking-wider text-[10px] text-brand-700 text-right">Savings Cost</th>
           </tr>
         </thead>
         <tbody>
           {rows.map((r, i) => (
-            <tr key={r.activity_id} style={{ borderTop: `1px solid ${C.borderL}`, background: i % 2 === 0 ? C.white : "#fafbfc" }}>
-              <td style={{ padding: "7px 12px", fontWeight: 600 }}>{r.activity}</td>
-              <td style={{ padding: "7px 12px", color: C.textSec }}>{r.process || "—"}</td>
-              <td style={{ padding: "7px 12px", textAlign: "right", fontFamily: "monospace" }}>{fmtPct(r.savings_fte)}</td>
-              <td style={{ padding: "7px 12px", textAlign: "right", fontWeight: 700, color: C.success, fontFamily: "monospace" }}>{fmtCurr(r.savings_cost)}</td>
+            <tr key={r.activity_id} className={`border-b border-[#dce4ee]/50 hover:bg-[#eaf3ff]/15 transition-colors ${i % 2 === 0 ? "bg-white" : "bg-slate-50/30"}`}>
+              <td className="px-4 py-2.5 font-bold text-slate-800">{r.activity}</td>
+              <td className="px-4 py-2.5 text-slate-500 font-medium">{r.process || "—"}</td>
+              <td className="px-4 py-2.5 text-right font-mono text-slate-700 font-semibold">{fmtPct(r.savings_fte)}</td>
+              <td className="px-4 py-2.5 text-right font-bold text-[#16b867] font-mono">{fmtCurr(r.savings_cost)}</td>
             </tr>
           ))}
           {rows.length === 0 && (
-            <tr><td colSpan={4} style={{ padding: 24, textAlign: "center", color: C.textMuted }}>No activity savings computed</td></tr>
+            <tr>
+              <td colSpan={4} className="px-4 py-8 text-center text-slate-400 font-medium bg-white">
+                No activity savings computed
+              </td>
+            </tr>
           )}
         </tbody>
       </table>
@@ -1317,41 +1316,46 @@ function ActivityTab({ impact }) {
 function RoleTab({ impact }) {
   const rows = impact.savings_by_role || [];
   return (
-    <div style={{ border: `1px solid ${C.border}`, borderRadius: 8, overflow: "auto" }}>
-      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+    <div className="overflow-x-auto border border-[#dce4ee] rounded-xl shadow-card bg-white">
+      <table className="w-full text-left text-xs">
         <thead>
-          <tr style={{ background: C.navy, color: C.white }}>
-            <th style={{ padding: "8px 12px", textAlign: "left" }}>Role</th>
-            <th style={{ padding: "8px 12px", textAlign: "right" }}>Baseline FTE</th>
-            <th style={{ padding: "8px 12px", textAlign: "right" }}>Baseline Cost</th>
-            <th style={{ padding: "8px 12px", textAlign: "right" }}>Savings FTE</th>
-            <th style={{ padding: "8px 12px", textAlign: "right" }}>Savings Cost</th>
-            <th style={{ padding: "8px 12px", textAlign: "right" }}>% Saved</th>
+          <tr className="border-b border-[#dce4ee]" style={{ background: "#eaf3ff", color: "#01244a" }}>
+            <th className="px-4 py-2.5 font-bold uppercase tracking-wider text-[10px] text-brand-700">Role</th>
+            <th className="px-4 py-2.5 font-bold uppercase tracking-wider text-[10px] text-brand-700 text-right">Baseline FTE</th>
+            <th className="px-4 py-2.5 font-bold uppercase tracking-wider text-[10px] text-brand-700 text-right">Baseline Cost</th>
+            <th className="px-4 py-2.5 font-bold uppercase tracking-wider text-[10px] text-brand-700 text-right">Savings FTE</th>
+            <th className="px-4 py-2.5 font-bold uppercase tracking-wider text-[10px] text-brand-700 text-right">Savings Cost</th>
+            <th className="px-4 py-2.5 font-bold uppercase tracking-wider text-[10px] text-brand-700 text-right">% Saved</th>
           </tr>
         </thead>
         <tbody>
           {rows.map((r, i) => (
-            <tr key={r.role_value} style={{ borderTop: `1px solid ${C.borderL}`, background: i % 2 === 0 ? C.white : "#fafbfc" }}>
-              <td style={{ padding: "7px 12px", fontWeight: 600 }}>{r.role_value}</td>
-              <td style={{ padding: "7px 12px", textAlign: "right" }}>{fmt(r.baseline_fte)}</td>
-              <td style={{ padding: "7px 12px", textAlign: "right", fontFamily: "monospace" }}>{fmtCurr(r.baseline_cost)}</td>
-              <td style={{ padding: "7px 12px", textAlign: "right", color: C.success }}>{fmt(r.savings_fte)}</td>
-              <td style={{ padding: "7px 12px", textAlign: "right", fontWeight: 700, color: C.success, fontFamily: "monospace" }}>{fmtCurr(r.savings_cost)}</td>
-              <td style={{ padding: "7px 12px", textAlign: "right" }}>
-                <Tag color={r.pct_saved > 10 ? C.success : C.textSec} bg={r.pct_saved > 10 ? C.successL : C.bg}>
+            <tr key={r.role_value} className={`border-b border-[#dce4ee]/50 hover:bg-[#eaf3ff]/15 transition-colors ${i % 2 === 0 ? "bg-white" : "bg-slate-50/30"}`}>
+              <td className="px-4 py-2.5 font-bold text-slate-800">{r.role_value}</td>
+              <td className="px-4 py-2.5 text-right font-mono text-slate-600 font-semibold">{fmt(r.baseline_fte)}</td>
+              <td className="px-4 py-2.5 text-right font-mono text-slate-600">{fmtCurr(r.baseline_cost)}</td>
+              <td className="px-4 py-2.5 text-right font-mono text-[#16b867] font-semibold">{fmt(r.savings_fte)}</td>
+              <td className="px-4 py-2.5 text-right font-bold text-[#16b867] font-mono">{fmtCurr(r.savings_cost)}</td>
+              <td className="px-4 py-2.5 text-right">
+                <span className={`inline-flex px-2 py-0.5 rounded text-[10px] font-bold ${r.pct_saved > 10 ? 'bg-green-50 text-green-700 border border-green-200/50' : 'bg-brand-50 text-brand-800 border border-brand-100'}`}>
                   {fmtPct(r.pct_saved)}
-                </Tag>
+                </span>
               </td>
             </tr>
           ))}
           {rows.length === 0 && (
-            <tr><td colSpan={6} style={{ padding: 24, textAlign: "center", color: C.textMuted }}>No role savings computed</td></tr>
+            <tr>
+              <td colSpan={6} className="px-4 py-8 text-center text-slate-400 font-medium bg-white">
+                No role savings computed
+              </td>
+            </tr>
           )}
         </tbody>
       </table>
     </div>
   );
 }
+
 
 function IndividualTab({ impact }) {
   const [filter, setFilter] = useState("");
@@ -1360,47 +1364,57 @@ function IndividualTab({ impact }) {
 
   return (
     <div>
-      <div style={{ marginBottom: 10 }}>
+      <div style={{ marginBottom: 14 }} className="flex items-center gap-3">
         <input
           placeholder="Filter by ID or role…"
           value={filter}
           onChange={e => setFilter(e.target.value)}
-          style={{ padding: "6px 12px", border: `1px solid ${C.border}`, borderRadius: 6, fontSize: 12, width: 280 }}
+          className="px-3.5 py-1.5 border border-slate-200 rounded-lg focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 outline-none text-xs bg-white transition shadow-sm w-72"
         />
-        <span style={{ marginLeft: 12, fontSize: 11, color: C.textMuted }}>{filtered.length} people</span>
+        <span className="text-xs text-slate-400 font-semibold uppercase tracking-wider">{filtered.length} people</span>
       </div>
-      <div style={{ border: `1px solid ${C.border}`, borderRadius: 8, overflow: "auto", maxHeight: 400 }}>
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+      <div className="overflow-x-auto border border-[#dce4ee] rounded-xl shadow-card bg-white max-h-[400px] overflow-y-auto">
+        <table className="w-full text-left text-xs">
           <thead>
-            <tr style={{ background: C.navy, color: C.white }}>
-              <th style={{ padding: "8px 12px", textAlign: "left" }}>Employee ID</th>
-              <th style={{ padding: "8px 12px", textAlign: "left" }}>Role</th>
-              <th style={{ padding: "8px 12px", textAlign: "right" }}>Baseline Cost</th>
-              <th style={{ padding: "8px 12px", textAlign: "right" }}>Savings</th>
-              <th style={{ padding: "8px 12px", textAlign: "right" }}>% Saved</th>
+            <tr className="border-b border-[#dce4ee]" style={{ background: "#eaf3ff", color: "#01244a" }}>
+              <th className="px-4 py-2.5 font-bold uppercase tracking-wider text-[10px] text-brand-700">Employee ID</th>
+              <th className="px-4 py-2.5 font-bold uppercase tracking-wider text-[10px] text-brand-700">Role</th>
+              <th className="px-4 py-2.5 font-bold uppercase tracking-wider text-[10px] text-brand-700 text-right">Baseline Cost</th>
+              <th className="px-4 py-2.5 font-bold uppercase tracking-wider text-[10px] text-brand-700 text-right">Savings</th>
+              <th className="px-4 py-2.5 font-bold uppercase tracking-wider text-[10px] text-brand-700 text-right">% Saved</th>
             </tr>
           </thead>
           <tbody>
             {filtered.slice(0, 200).map((r, i) => (
-              <tr key={`${r.emp_id}-${i}`} style={{ borderTop: `1px solid ${C.borderL}`, background: i % 2 === 0 ? C.white : "#fafbfc" }}>
-                <td style={{ padding: "6px 12px", fontFamily: "monospace", fontSize: 11 }}>{r.emp_id || "—"}</td>
-                <td style={{ padding: "6px 12px", color: C.textSec }}>{r.role_value}</td>
-                <td style={{ padding: "6px 12px", textAlign: "right", fontFamily: "monospace" }}>{fmtCurr(r.baseline_cost)}</td>
-                <td style={{ padding: "6px 12px", textAlign: "right", fontWeight: 700, color: r.savings_cost > 0 ? C.success : C.textMuted, fontFamily: "monospace" }}>
+              <tr key={`${r.emp_id}-${i}`} className={`border-b border-[#dce4ee]/50 hover:bg-[#eaf3ff]/15 transition-colors ${i % 2 === 0 ? "bg-white" : "bg-slate-50/30"}`}>
+                <td className="px-4 py-2.5 font-mono text-[11px] font-semibold text-slate-800">{r.emp_id || "—"}</td>
+                <td className="px-4 py-2.5 text-slate-500 font-medium">{r.role_value}</td>
+                <td className="px-4 py-2.5 text-right font-mono text-slate-600">{fmtCurr(r.baseline_cost)}</td>
+                <td className={`px-4 py-2.5 text-right font-bold font-mono ${r.savings_cost > 0 ? "text-[#16b867]" : "text-slate-400"}`}>
                   {r.savings_cost > 0 ? fmtCurr(r.savings_cost) : "—"}
                 </td>
-                <td style={{ padding: "6px 12px", textAlign: "right" }}>
-                  {r.pct_saved > 0 ? <Tag color={C.success} bg={C.successL}>{fmtPct(r.pct_saved)}</Tag> : "—"}
+                <td className="px-4 py-2.5 text-right">
+                  {r.pct_saved > 0 ? (
+                    <span className="inline-flex px-1.5 py-0.5 rounded text-[10px] font-bold bg-green-50 text-green-700 border border-green-200/50">
+                      {fmtPct(r.pct_saved)}
+                    </span>
+                  ) : "—"}
                 </td>
               </tr>
             ))}
             {filtered.length > 200 && (
-              <tr><td colSpan={5} style={{ padding: 12, textAlign: "center", color: C.textMuted, fontSize: 11 }}>
-                Showing first 200 of {filtered.length} — export for full list
-              </td></tr>
+              <tr>
+                <td colSpan={5} className="px-4 py-3 text-center text-slate-400 font-medium bg-slate-50/20 text-xs">
+                  Showing first 200 of {filtered.length} — export for full list
+                </td>
+              </tr>
             )}
             {filtered.length === 0 && (
-              <tr><td colSpan={5} style={{ padding: 24, textAlign: "center", color: C.textMuted }}>No individual data</td></tr>
+              <tr>
+                <td colSpan={5} className="px-4 py-8 text-center text-slate-400 font-medium bg-white">
+                  No individual data
+                </td>
+              </tr>
             )}
           </tbody>
         </table>
@@ -1408,6 +1422,7 @@ function IndividualTab({ impact }) {
     </div>
   );
 }
+
 
 // ---------------------------------------------------------------------------
 // By Function tabs (aggregate + cross-tabs)
@@ -1433,40 +1448,39 @@ function FunctionTab({ impact }) {
     }),
     { baseline_fte: 0, post_impact_fte: 0, delta_fte: 0, baseline_cost: 0, post_impact_cost: 0, delta_cost: 0 }
   );
-  const th = { padding: "8px 12px", fontWeight: 600 };
   return (
-    <div style={{ border: `1px solid ${C.border}`, borderRadius: 8, overflow: "auto" }}>
+    <div className="overflow-x-auto border border-[#dce4ee] rounded-xl shadow-card bg-white">
       <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
         <thead>
-          <tr style={{ background: C.navy, color: C.white }}>
-            <th style={{ ...th, textAlign: "left" }}>Function</th>
-            <th style={{ ...th, textAlign: "right" }}>Baseline FTE</th>
-            <th style={{ ...th, textAlign: "right" }}>Post-Impact FTE</th>
-            <th style={{ ...th, textAlign: "right" }}>Delta FTE</th>
-            <th style={{ ...th, textAlign: "right" }}>Baseline Cost</th>
-            <th style={{ ...th, textAlign: "right" }}>Post-Impact Cost</th>
-            <th style={{ ...th, textAlign: "right" }}>Delta Cost</th>
+          <tr className="border-b border-[#dce4ee]" style={{ background: "#eaf3ff", color: "#01244a" }}>
+            <th className="px-4 py-2.5 font-bold uppercase tracking-wider text-[10px] text-brand-700 text-left">Function</th>
+            <th className="px-4 py-2.5 font-bold uppercase tracking-wider text-[10px] text-brand-700 text-right">Baseline FTE</th>
+            <th className="px-4 py-2.5 font-bold uppercase tracking-wider text-[10px] text-brand-700 text-right">Post-Impact FTE</th>
+            <th className="px-4 py-2.5 font-bold uppercase tracking-wider text-[10px] text-brand-700 text-right">Delta FTE</th>
+            <th className="px-4 py-2.5 font-bold uppercase tracking-wider text-[10px] text-brand-700 text-right">Baseline Cost</th>
+            <th className="px-4 py-2.5 font-bold uppercase tracking-wider text-[10px] text-brand-700 text-right">Post-Impact Cost</th>
+            <th className="px-4 py-2.5 font-bold uppercase tracking-wider text-[10px] text-brand-700 text-right">Delta Cost</th>
           </tr>
         </thead>
         <tbody>
-          <tr style={{ background: C.blueL, borderTop: `2px solid ${C.blue}` }}>
-            <td style={{ padding: "8px 12px", fontWeight: 800, color: C.navy }}>Total</td>
-            <td style={{ padding: "8px 12px", textAlign: "right", fontWeight: 700 }}>{totals.baseline_fte.toFixed(1)}</td>
-            <td style={{ padding: "8px 12px", textAlign: "right", fontWeight: 700 }}>{totals.post_impact_fte.toFixed(1)}</td>
-            <td style={{ padding: "8px 12px", textAlign: "right", fontWeight: 700, color: C.success }}>{totals.delta_fte.toFixed(1)}</td>
-            <td style={{ padding: "8px 12px", textAlign: "right", fontWeight: 700, fontFamily: "monospace" }}>{fmtCurr(totals.baseline_cost)}</td>
-            <td style={{ padding: "8px 12px", textAlign: "right", fontWeight: 700, fontFamily: "monospace" }}>{fmtCurr(totals.post_impact_cost)}</td>
-            <td style={{ padding: "8px 12px", textAlign: "right", fontWeight: 700, color: C.success, fontFamily: "monospace" }}>{fmtCurr(totals.delta_cost)}</td>
+          <tr className="border-b border-[#dce4ee]" style={{ background: "rgba(21, 91, 178, 0.05)", borderTop: "2px solid #155bb2" }}>
+            <td className="px-4 py-2.5 font-extrabold text-[#01244a]">Total</td>
+            <td className="px-4 py-2.5 text-right font-bold text-slate-800">{totals.baseline_fte.toFixed(1)}</td>
+            <td className="px-4 py-2.5 text-right font-bold text-slate-800">{totals.post_impact_fte.toFixed(1)}</td>
+            <td className="px-4 py-2.5 text-right font-bold text-[#16b867]">{totals.delta_fte.toFixed(1)}</td>
+            <td className="px-4 py-2.5 text-right font-bold font-mono text-slate-800">{fmtCurr(totals.baseline_cost)}</td>
+            <td className="px-4 py-2.5 text-right font-bold font-mono text-slate-800">{fmtCurr(totals.post_impact_cost)}</td>
+            <td className="px-4 py-2.5 text-right font-bold font-mono text-[#16b867]">{fmtCurr(totals.delta_cost)}</td>
           </tr>
           {rows.map((r, i) => (
-            <tr key={r.function} style={{ borderTop: `1px solid ${C.borderL}`, background: i % 2 === 0 ? C.white : "#fafbfc" }}>
-              <td style={{ padding: "7px 12px", fontWeight: 600 }}>{r.function}</td>
-              <td style={{ padding: "7px 12px", textAlign: "right" }}>{r.baseline_fte.toFixed(1)}</td>
-              <td style={{ padding: "7px 12px", textAlign: "right" }}>{r.post_impact_fte.toFixed(1)}</td>
-              <td style={{ padding: "7px 12px", textAlign: "right", color: r.delta_fte > 0 ? C.success : C.textMuted }}>{r.delta_fte.toFixed(1)}</td>
-              <td style={{ padding: "7px 12px", textAlign: "right", fontFamily: "monospace" }}>{fmtCurr(r.baseline_cost)}</td>
-              <td style={{ padding: "7px 12px", textAlign: "right", fontFamily: "monospace" }}>{fmtCurr(r.post_impact_cost)}</td>
-              <td style={{ padding: "7px 12px", textAlign: "right", color: r.delta_cost > 0 ? C.success : C.textMuted, fontFamily: "monospace" }}>{fmtCurr(r.delta_cost)}</td>
+            <tr key={r.function} className={`border-b border-[#dce4ee]/50 hover:bg-[#eaf3ff]/15 transition-colors ${i % 2 === 0 ? "bg-white" : "bg-slate-50/40"}`}>
+              <td className="px-4 py-2.5 font-bold text-slate-800">{r.function}</td>
+              <td className="px-4 py-2.5 text-right font-mono text-slate-600 font-semibold">{r.baseline_fte.toFixed(1)}</td>
+              <td className="px-4 py-2.5 text-right font-mono text-slate-600">{r.post_impact_fte.toFixed(1)}</td>
+              <td className={`px-4 py-2.5 text-right font-mono font-semibold ${r.delta_fte > 0 ? "text-[#16b867]" : "text-slate-400"}`}>{r.delta_fte.toFixed(1)}</td>
+              <td className="px-4 py-2.5 text-right font-mono text-slate-600">{fmtCurr(r.baseline_cost)}</td>
+              <td className="px-4 py-2.5 text-right font-mono text-slate-600">{fmtCurr(r.post_impact_cost)}</td>
+              <td className={`px-4 py-2.5 text-right font-mono font-semibold ${r.delta_cost > 0 ? "text-[#16b867]" : "text-slate-400"}`}>{fmtCurr(r.delta_cost)}</td>
             </tr>
           ))}
         </tbody>
@@ -1501,14 +1515,14 @@ function _CrossTabByFunction({ funcData, months, valueFormatter }) {
   };
 
   return (
-    <div style={{ overflowX: "auto", border: `1px solid ${C.border}`, borderRadius: 8 }}>
+    <div className="overflow-x-auto border border-[#dce4ee] rounded-xl shadow-card bg-white">
       <table style={{ borderCollapse: "collapse", fontSize: 11, minWidth: "100%" }}>
         <thead>
-          <tr style={{ background: C.navy, color: C.white }}>
-            <th style={{ padding: "8px 12px", textAlign: "left", minWidth: 140, position: "sticky", left: 0, background: C.navy }}>Function</th>
-            <th style={{ padding: "8px 12px", textAlign: "left", minWidth: 110 }}>Lever</th>
+          <tr className="border-b border-[#dce4ee]" style={{ background: "#eaf3ff", color: "#01244a" }}>
+            <th style={{ padding: "10px 14px", textAlign: "left", minWidth: 140, position: "sticky", left: 0, background: "#eaf3ff" }} className="font-bold uppercase tracking-wider text-[10px] text-brand-700 font-display">Function</th>
+            <th style={{ padding: "10px 14px", textAlign: "left", minWidth: 110 }} className="font-bold uppercase tracking-wider text-[10px] text-brand-700 font-display">Lever</th>
             {months.map(m => (
-              <th key={m} style={{ padding: "8px 8px", textAlign: "right", minWidth: 68, whiteSpace: "nowrap" }}>{formatMonth(m)}</th>
+              <th key={m} style={{ padding: "10px 8px", textAlign: "right", minWidth: 68, whiteSpace: "nowrap" }} className="font-bold uppercase tracking-wider text-[10px] text-brand-700">{formatMonth(m)}</th>
             ))}
           </tr>
         </thead>
@@ -1522,16 +1536,17 @@ function _CrossTabByFunction({ funcData, months, valueFormatter }) {
             return (
               <React.Fragment key={func}>
                 <tr
-                  style={{ background: "#edf1f7", cursor: "pointer", borderTop: `2px solid ${C.border}` }}
+                  style={{ background: "#f1f5f9", cursor: "pointer", borderTop: "2px solid #dce4ee" }}
+                  className="hover:bg-slate-100 transition-colors"
                   onClick={() => toggleFunc(func)}
                 >
-                  <td style={{ padding: "8px 12px", fontWeight: 700, color: C.navy, position: "sticky", left: 0, background: "#edf1f7", whiteSpace: "nowrap" }}>
+                  <td style={{ padding: "8px 12px", fontWeight: 700, color: C.navy, position: "sticky", left: 0, background: "#f1f5f9", whiteSpace: "nowrap" }} className="font-display">
                     <span style={{ marginRight: 7, fontSize: 10, color: C.textSec }}>{isExpanded ? "▼" : "▶"}</span>
                     {func}
                   </td>
-                  <td style={{ padding: "8px 12px", fontWeight: 700, color: C.textSec }}>Total</td>
+                  <td style={{ padding: "8px 12px", fontWeight: 700, color: C.textSec }} className="font-display">Total</td>
                   {months.map(m => (
-                    <td key={m} style={{ padding: "8px 8px", textAlign: "right", fontWeight: 700 }}>
+                    <td key={m} style={{ padding: "8px 8px", textAlign: "right", fontWeight: 700 }} className="font-mono">
                       {totalRow[m] != null ? valueFormatter(totalRow[m]) : "—"}
                     </td>
                   ))}
@@ -1540,16 +1555,16 @@ function _CrossTabByFunction({ funcData, months, valueFormatter }) {
                   const leverRow = leverData[lt] || {};
                   const meta = LEVER_META[lt];
                   return (
-                    <tr key={lt} style={{ borderTop: `1px solid ${C.borderL}`, background: C.white }}>
+                    <tr key={lt} style={{ borderTop: `1px solid ${C.borderL}`, background: C.white }} className="hover:bg-slate-50/50 transition-colors">
                       <td style={{ padding: "6px 12px 6px 30px", color: C.textMuted, position: "sticky", left: 0, background: C.white }} />
                       <td style={{ padding: "6px 12px", fontSize: 11 }}>
                         {meta && (
                           <span style={{ display: "inline-block", width: 7, height: 7, borderRadius: "50%", background: meta.color, marginRight: 6, verticalAlign: "middle" }} />
                         )}
-                        <span style={{ color: meta ? meta.color : C.textSec }}>{meta?.label || lt}</span>
+                        <span style={{ color: meta ? meta.color : C.textSec, fontWeight: 600 }}>{meta?.label || lt}</span>
                       </td>
                       {months.map(m => (
-                        <td key={m} style={{ padding: "6px 8px", textAlign: "right", color: C.textSec }}>
+                        <td key={m} style={{ padding: "6px 8px", textAlign: "right", color: C.textSec }} className="font-mono">
                           {leverRow[m] != null ? valueFormatter(leverRow[m]) : "—"}
                         </td>
                       ))}
@@ -1670,9 +1685,10 @@ export default function ActivityAnalysis({ datasetId }) {
           {activeConfig && (
             <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
               <Tag>{activeConfig.name}</Tag>
-              <button onClick={() => { setActiveConfig(null); setRoles([]); setStep(1); }} style={{
-                fontSize: 12, color: C.textMuted, background: "none", border: "none", cursor: "pointer",
-              }}>
+              <button
+                onClick={() => { setActiveConfig(null); setRoles([]); setStep(1); }}
+                className="text-xs text-slate-500 hover:text-slate-800 transition-colors font-semibold cursor-pointer border-none bg-transparent"
+              >
                 ← Back to configs
               </button>
             </div>
@@ -1692,11 +1708,11 @@ export default function ActivityAnalysis({ datasetId }) {
 
           {step === 4 ? (
             /* Step 4 gets a white card with its own internal padding */
-            <div style={{ background: C.white, borderRadius: 10, border: `1px solid ${C.border}` }}>
+            <div className="bg-white border border-[#dce4ee] rounded-xl shadow-card">
               <Step4Impact config={activeConfig} datasetId={datasetId} />
             </div>
           ) : (
-            <div style={{ background: C.white, borderRadius: 10, border: `1px solid ${C.border}`, padding: 20 }}>
+            <div className="bg-white border border-[#dce4ee] rounded-xl shadow-card p-5">
               {step === 1 && (
                 <Step1Setup
                   datasetId={datasetId}
@@ -1722,7 +1738,7 @@ export default function ActivityAnalysis({ datasetId }) {
           )}
         </>
       ) : (
-        <div style={{ background: C.white, borderRadius: 10, border: `1px solid ${C.border}`, padding: 20 }}>
+        <div className="bg-white border border-[#dce4ee] rounded-xl shadow-card p-5">
           <Step1Setup
             datasetId={datasetId}
             existingConfigs={configs}

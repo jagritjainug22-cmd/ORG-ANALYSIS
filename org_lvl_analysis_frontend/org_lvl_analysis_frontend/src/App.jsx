@@ -1,6 +1,7 @@
-﻿import React from "react";
+import React from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
 import { useAuth } from "./contexts/AuthContext";
+import WorkspaceLoader from "./components/WorkspaceLoader";
 
 import Login from "./components/Login";
 import ProjectSelector from "./pages/ProjectSelector";
@@ -139,14 +140,7 @@ export default function App() {
   const { isAuthenticated, mustChangePassword, loading } = useAuth();
 
     if (loading) {
-    return (
-      <div className="min-h-screen bg-surface-soft flex items-center justify-center">
-        <div className="flex flex-col items-center gap-3">
-          <div className="w-10 h-10 border-4 border-brand-100 border-t-brand-500 rounded-full animate-spin"></div>
-          <p className="text-gray-500 text-sm">Restoring session...</p>
-        </div>
-      </div>
-    );
+    return <WorkspaceLoader text="Restoring session..." fullScreen={true} />;
   }
 
   return (

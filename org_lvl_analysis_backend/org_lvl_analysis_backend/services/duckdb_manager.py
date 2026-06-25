@@ -81,6 +81,18 @@ def load(
     if cols_to_drop:
         df.drop(columns=cols_to_drop, inplace=True)
 
+    # Restore numeric types lost by the pipeline's NaN→"" replacement and
+    # json.dumps(default=str) serialization.  For each object-typed column,
+    # try parsing values as numbers; if ≥80% of non-null values succeed, use
+    # the numeric version.  The 80% threshold keeps mixed columns like "Grade"
+    # (values: "E1", "M2", ...) safely as VARCHAR.
+    for col in df.columns:
+        if df[col].dtype == object:
+            numeric = pd.to_numeric(df[col], errors="coerce")
+            non_null = df[col].notna().sum()
+            if non_null > 0 and numeric.notna().sum() / non_null >= 0.8:
+                df[col] = numeric
+
     data_key = _make_key(project_id, dataset_id, scenario_id)
 
     with _lock:

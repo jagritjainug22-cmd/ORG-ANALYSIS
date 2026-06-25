@@ -1,15 +1,17 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { cleanup as cleanupApi, validate as validateApi, filterErrors as filterErrorsApi } from "../api/backend";
 import DataSourceSelector from "./DataSourceSelector";
 
 function StatCard({ label, value, accent = false }) {
   return (
-    <div className="bg-white rounded-lg border border-brand-100 px-4 py-3 shadow-sm">
-      <p className="text-xs text-slate-500 font-medium mb-0.5">{label}</p>
-      <p className={`text-xl font-bold ${accent ? "text-brand-500" : "text-brand-800"}`}>{value}</p>
+    <div className="relative overflow-hidden bg-white/90 backdrop-blur-sm border border-brand-100 rounded-xl p-4 shadow-card hover:shadow-panel hover:-translate-y-0.5 transition-all duration-300 flex flex-col justify-between">
+      <div className={`absolute inset-0 bg-gradient-to-br ${accent ? 'from-[#c5a84a]/5' : 'from-brand-500/5'} to-transparent pointer-events-none`} />
+      <p className="relative text-[10px] font-bold text-brand-400 uppercase tracking-wider leading-none mb-2" style={{ fontFamily: "Manrope, Inter, sans-serif" }}>{label}</p>
+      <p className={`relative text-xl font-extrabold leading-none ${accent ? "text-[#c5a84a]" : "text-[#01244a]"}`} style={{ fontFamily: "Manrope, Inter, sans-serif" }}>{value}</p>
     </div>
   );
 }
+
 
 function FlagRow({ label, count, checked, onChange }) {
   const hasIssues = count > 0;
@@ -361,10 +363,36 @@ export default function UploadAndPrepare({
   columnMappingMessage = null,
   columnMappingRequiresAttention = false,
   columnMappingSummary = null,
+  onPipelineComplete,
 }) {
   const [isDragging, setIsDragging] = useState(false);
   const [uploadError, setUploadError] = useState(null);
   const [mappingBannerDismissed, setMappingBannerDismissed] = useState(false);
+
+  // Upload loader stage text
+  const [mapSubStep, setMapSubStep] = useState(0);
+  const UPLOAD_STAGES = [
+    { step: "read", msg: "Reading file...",      sub: "Detecting sheets and headers" },
+    { step: "map",  msg: "Mapping columns...",   sub: "AI is matching columns" },
+    { step: "map2", msg: "Almost ready...",      sub: "Finalising configuration" },
+  ];
+  useEffect(() => {
+    if (uploadStep === "map") {
+      setMapSubStep(1);
+      const t = setTimeout(() => setMapSubStep(2), 3000);
+      return () => clearTimeout(t);
+    } else if (uploadStep === "read") {
+      setMapSubStep(0);
+    }
+  }, [uploadStep]);
+
+  // Cleanup/validate loader stage text
+  const [pipelineStage, setPipelineStage] = useState(0);
+  const PIPELINE_STAGES = [
+    { msg: "Running cleanup...",      sub: "Removing duplicates and anomalies" },
+    { msg: "Validating hierarchy...", sub: "Checking manager-employee links" },
+    { msg: "Generating report...",    sub: "Summarising data quality" },
+  ];
 
   // Phase 2: cleanup + validate state
   const [pipelineRunning, setPipelineRunning] = useState(false);
@@ -372,6 +400,13 @@ export default function UploadAndPrepare({
   const [cleanupResult, setCleanupResult] = useState(null);
   const [validationResult, setValidationResult] = useState(null);
   const [pipelineComplete, setPipelineComplete] = useState(false);
+
+  useEffect(() => {
+    if (!pipelineRunning) { setPipelineStage(0); return; }
+    const t1 = setTimeout(() => setPipelineStage(1), 4000);
+    const t2 = setTimeout(() => setPipelineStage(2), 10000);
+    return () => { clearTimeout(t1); clearTimeout(t2); };
+  }, [pipelineRunning]);
 
   // Filter state
   const [filterFlags, setFilterFlags] = useState({});
@@ -443,6 +478,7 @@ export default function UploadAndPrepare({
       }
 
       setPipelineComplete(true);
+      onPipelineComplete?.();
     } catch (err) {
       console.error("Pipeline error:", err);
       setPipelineError(err.response?.data?.detail || "Pipeline failed. Check your column selections and try again.");
@@ -514,12 +550,13 @@ export default function UploadAndPrepare({
                 <div className="w-16 h-16 rounded-full bg-brand-100 flex items-center justify-center">
                   <svg className="w-8 h-8 text-brand-500 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
                 </div>
-                <p className="text-sm font-semibold text-brand-700">
-                  {uploadStep === "map" ? "Mapping columns..." : "Reading file..."}
+                <p className="text-sm font-semibold text-brand-700 transition-opacity duration-300">
+                  {UPLOAD_STAGES[mapSubStep].msg}
                 </p>
-                <div className="w-48 h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                <p className="text-xs text-slate-400 mt-0.5 transition-opacity duration-300">{UPLOAD_STAGES[mapSubStep].sub}</p>
+                <div className="w-48 h-1.5 bg-gray-200 rounded-full overflow-hidden mt-2">
                   <div className="h-full bg-brand-500 rounded-full" style={{
-                    width: uploadStep === "map" ? "70%" : "30%",
+                    width: `${[30, 65, 90][mapSubStep]}%`,
                     backgroundImage: "linear-gradient(90deg, #0a3f86 0%, #74a9e7 50%, #0a3f86 100%)",
                     backgroundSize: "200% 100%", animation: "shimmer 1.5s infinite", transition: "width 0.5s",
                   }} />
@@ -637,7 +674,7 @@ export default function UploadAndPrepare({
               {pipelineRunning ? (
                 <>
                   <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
-                  Running Cleanup & Validation...
+                  {PIPELINE_STAGES[pipelineStage].msg} <span className="text-xs font-normal opacity-70 ml-1">{PIPELINE_STAGES[pipelineStage].sub}</span>
                 </>
               ) : !empCol || !mgrCol ? (
                 "Select Employee & Manager columns to continue"

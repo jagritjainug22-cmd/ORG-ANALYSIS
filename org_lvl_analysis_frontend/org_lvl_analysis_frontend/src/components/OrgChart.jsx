@@ -144,7 +144,7 @@ export default function OrgChart({
   const [maxDepth, setMaxDepth] = useState(2);
   const [zoomLabel, setZoomLabel] = useState(1);
   const [search, setSearch] = useState("");
-  const [searchFocusIndex, setSearchFocusIndex] = useState(0);
+  const [searchDropdownOpen, setSearchDropdownOpen] = useState(false);
   const [focusedNodeId, setFocusedNodeId] = useState(null);
   const [departmentFilter, setDepartmentFilter] = useState("");
   const [jobTitleFilter, setJobTitleFilter] = useState("");
@@ -1064,6 +1064,25 @@ export default function OrgChart({
     setZoomLabel(clamped);
   }, [applyTransform]);
 
+  // Zoom anchored to a screen-space point (anchorX, anchorY) so that world
+  // point under the anchor stays fixed. Used by +/- buttons (viewport center)
+  // and Ctrl+scroll (cursor position).
+  const setZoomAt = useCallback((nextOrFn, anchorX, anchorY) => {
+    const oldZoom = zoomRef.current;
+    const next = typeof nextOrFn === "function" ? nextOrFn(oldZoom) : nextOrFn;
+    const newZoom = Math.max(0.1, Math.min(2.5, next));
+    // Adjust pan so the world point under anchor stays fixed:
+    //   panNew = anchor - (anchor - panOld) * (newZoom / oldZoom)
+    const ratio = newZoom / oldZoom;
+    panRef.current = {
+      x: anchorX - (anchorX - panRef.current.x) * ratio,
+      y: anchorY - (anchorY - panRef.current.y) * ratio,
+    };
+    zoomRef.current = newZoom;
+    applyTransform();
+    setZoomLabel(newZoom);
+  }, [applyTransform]);
+
   const setPan = useCallback((x, y) => {
     panRef.current = { x, y };
     applyTransform();
@@ -1105,7 +1124,9 @@ export default function OrgChart({
     });
   }, [parentMap]);
 
-  const focusOnNode = useCallback((empId, { zoom = FOCUS_ZOOM, setFocused = true } = {}) => {
+  // Core camera move: pan + zoom to a node. Does NOT select or highlight.
+  // Returns true if the node was found in the layout.
+  const cameraToNode = useCallback((empId, { zoom = FOCUS_ZOOM } = {}) => {
     const pos = layout.nodes.get(String(empId));
     if (!pos || !viewportRef.current) return false;
 
@@ -1117,90 +1138,111 @@ export default function OrgChart({
     const { panX, panY } = computeFocusPan(pos, { width: vw, height: vh }, zoom);
     panRef.current = { x: panX, y: panY };
     applyTransform();
-
-    const id = String(empId);
-    setSelectedId(id);
-    if (setFocused) setFocusedNodeId(id);
     return true;
   }, [layout, applyTransform]);
 
-  const navigateToNode = useCallback((empId, { zoom = FOCUS_ZOOM, onComplete } = {}) => {
+  // Full focus: camera + gold highlight + detail panel.
+  // Used for "View in OrgSight" and search selection.
+  const focusOnNode = useCallback((empId, { zoom = FOCUS_ZOOM } = {}) => {
+    if (!cameraToNode(empId, { zoom })) return false;
     const id = String(empId);
-    pendingFocusRef.current = { id, zoom, onComplete };
+    setSelectedId(id);
+    setFocusedNodeId(id);
+    return true;
+  }, [cameraToNode]);
+
+  // navigateToNode: uncollapse ancestors, wait for layout, then execute.
+  // mode: "camera" | "focus" (default)
+  const navigateToNode = useCallback((empId, { zoom = FOCUS_ZOOM, mode = "focus", onComplete } = {}) => {
+    const id = String(empId);
+    pendingFocusRef.current = { id, zoom, mode, onComplete };
     uncollapseAncestorsOf(id);
   }, [uncollapseAncestorsOf]);
 
-  // After uncollapse / filter layout settles, pan + zoom to the pending target.
+  // After uncollapse / filter layout settles, execute the pending navigation.
+  // We keep the pending item alive until the target node appears in the layout
+  // (it may take multiple render cycles if ancestors were deeply collapsed).
   useEffect(() => {
     const pending = pendingFocusRef.current;
     if (!pending) return;
-    if (!layout.nodes.has(pending.id)) return;
+
+    if (!layout.nodes.has(pending.id)) {
+      // Target not visible yet — uncollapse ancestors again in case the first
+      // call happened before layout was fully computed.
+      uncollapseAncestorsOf(pending.id);
+      return;
+    }
 
     pendingFocusRef.current = null;
     requestAnimationFrame(() => {
       setTimeout(() => {
-        focusOnNode(pending.id, { zoom: pending.zoom });
+        if (pending.mode === "camera") {
+          cameraToNode(pending.id, { zoom: pending.zoom });
+        } else {
+          focusOnNode(pending.id, { zoom: pending.zoom });
+        }
         pending.onComplete?.();
       }, 150);
     });
-  }, [layout, collapsed, focusOnNode]);
+  }, [layout, collapsed, cameraToNode, focusOnNode, uncollapseAncestorsOf]);
 
-  // Focus a node when navigated from Spans & Layers ("View in OrgSight")
+  // "View in OrgSight" from Spans & Layers: filter tree + full focus + detail panel.
   useEffect(() => {
     if (!initialFocusNodeId || !records?.length) return;
     const targetId = String(initialFocusNodeId);
     if (focusHandledRef.current === targetId) return;
     focusHandledRef.current = targetId;
-    navigateToNode(targetId, { onComplete: onFocusHandled });
-  }, [initialFocusNodeId, records, navigateToNode, onFocusHandled]);
+
+    // Find the record so we can set the search to filter the tree to their branch.
+    const rec = records.find((r) => String(r.__emp_id ?? r[empCol] ?? "") === targetId);
+    if (rec) {
+      const name = String(rec[empCol] ?? targetId);
+      setSearch(name);
+      setSearchDropdownOpen(false);
+    }
+
+    // Navigate (uncollapse ancestors) and open the detail panel.
+    navigateToNode(targetId, { mode: "focus", onComplete: onFocusHandled });
+  }, [initialFocusNodeId, records, empCol, navigateToNode, onFocusHandled]);
 
   useEffect(() => {
     if (!initialFocusNodeId) focusHandledRef.current = null;
   }, [initialFocusNodeId]);
 
   // Reset search match index when query or filters change.
-  useEffect(() => {
-    setSearchFocusIndex(0);
-  }, [search, departmentFilter, jobTitleFilter]);
-
-  // Debounced auto-focus on the best search match when the query changes.
+  // Clear focused node when search is cleared.
   useEffect(() => {
     if (!search.trim()) {
       setFocusedNodeId(null);
-      return;
+      setSearchDropdownOpen(false);
     }
-    if (!searchMatches.length) return;
+  }, [search]);
 
-    const timer = setTimeout(() => {
-      setSearchFocusIndex(0);
-      navigateToNode(searchMatches[0].id);
-    }, 300);
-    return () => clearTimeout(timer);
-  }, [search, searchMatches, navigateToNode]);
-
-  const cycleSearchMatch = useCallback((direction) => {
-    if (!searchMatches.length) return;
-    const nextIdx = direction < 0
-      ? (searchFocusIndex - 1 + searchMatches.length) % searchMatches.length
-      : (searchFocusIndex + 1) % searchMatches.length;
-    setSearchFocusIndex(nextIdx);
-    navigateToNode(searchMatches[nextIdx].id);
-  }, [searchMatches, searchFocusIndex, navigateToNode]);
+  // Select a match from the dropdown: full focus (camera + highlight + panel).
+  const selectSearchMatch = useCallback((match) => {
+    setSearch(match.label);
+    setSearchDropdownOpen(false);
+    navigateToNode(match.id, { mode: "focus" });
+  }, [navigateToNode]);
 
   const onWheel = (e) => {
     if (!e.ctrlKey && !e.metaKey) return;
     e.preventDefault();
     const factor = e.deltaY < 0 ? 1.1 : 1 / 1.1;
-    setZoom((z) => z * factor);
+    const rect = viewportRef.current?.getBoundingClientRect();
+    const anchorX = rect ? e.clientX - rect.left : viewportRef.current?.clientWidth / 2 ?? 600;
+    const anchorY = rect ? e.clientY - rect.top : viewportRef.current?.clientHeight / 2 ?? 400;
+    setZoomAt((z) => z * factor, anchorX, anchorY);
   };
 
+  // Home button: move camera to root, no selection change.
   const centerOnRoot = useCallback(() => {
     const firstRootId = index.roots[0];
     if (!firstRootId) return;
-    navigateToNode(firstRootId, { zoom: ROOT_ENTRY_ZOOM });
+    navigateToNode(firstRootId, { zoom: ROOT_ENTRY_ZOOM, mode: "camera" });
   }, [index.roots, navigateToNode]);
 
-  // Auto-focus the top-level root when entering the org chart (zoomed in).
+  // On first load (manual open): camera-only, no highlight, no detail panel.
   useEffect(() => {
     if (!records || !records.length || !layout.nodes.size) return;
     if (!viewportRef.current) return;
@@ -1213,9 +1255,9 @@ export default function OrgChart({
 
     hasAutoCenteredRef.current = true;
     requestAnimationFrame(() => {
-      focusOnNode(firstRootId, { zoom: ROOT_ENTRY_ZOOM });
+      cameraToNode(firstRootId, { zoom: ROOT_ENTRY_ZOOM });
     });
-  }, [records, layout, index.roots, initialFocusNodeId, search, focusOnNode]);
+  }, [records, layout, index.roots, initialFocusNodeId, search, cameraToNode]);
 
   // Reset hasAutoCentered when scenario / dataset changes so the new dataset
   // gets auto-centered too.
@@ -1234,6 +1276,51 @@ export default function OrgChart({
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [inDbMode, activeScenarioId]);
+
+  // Keyboard shortcuts for pan (Shift+Arrow) and zoom (Z / Shift+Z / X).
+  // Skipped when focus is inside any text input so typing isn't intercepted.
+  useEffect(() => {
+    const onKey = (e) => {
+      const tag = document.activeElement?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || document.activeElement?.isContentEditable) return;
+
+      const PAN_STEP = 200;
+
+      switch (e.key) {
+        case "ArrowUp":
+          if (e.shiftKey) { e.preventDefault(); panBy(0, PAN_STEP); }
+          break;
+        case "ArrowDown":
+          if (e.shiftKey) { e.preventDefault(); panBy(0, -PAN_STEP); }
+          break;
+        case "ArrowLeft":
+          if (e.shiftKey) { e.preventDefault(); panBy(PAN_STEP, 0); }
+          break;
+        case "ArrowRight":
+          if (e.shiftKey) { e.preventDefault(); panBy(-PAN_STEP, 0); }
+          break;
+        case "z":
+        case "Z": {
+          if (e.ctrlKey || e.metaKey) break; // leave Ctrl+Z for undo
+          e.preventDefault();
+          const vw = viewportRef.current?.clientWidth ?? 1200;
+          const vh = viewportRef.current?.clientHeight ?? 800;
+          e.shiftKey
+            ? setZoomAt((z) => z / 1.15, vw / 2, vh / 2)
+            : setZoomAt((z) => z * 1.15, vw / 2, vh / 2);
+          break;
+        }
+        case "x":
+        case "X":
+          if (!e.ctrlKey && !e.metaKey) { e.preventDefault(); fitToView(); }
+          break;
+        default:
+          break;
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [panBy, setZoomAt, fitToView]);
 
   // Fit-to-view: scale + pan to show the entire tree at once.
   const fitToView = useCallback(() => {
@@ -1523,7 +1610,9 @@ export default function OrgChart({
         fontFamily: "Inter, system-ui, sans-serif",
         position: fullscreen ? "fixed" : "relative",
         borderRadius: fullscreen ? 0 : 12,
-        overflow: "hidden",
+        // overflow must be visible so header dropdowns (search, export) can
+        // extend below the header bar. The canvas body div clips itself.
+        overflow: "visible",
         border: fullscreen ? "none" : `1px solid ${AM.border}`,
         ...(fullscreen ? { inset: 0, zIndex: 100 } : {}),
       }}
@@ -1680,9 +1769,9 @@ export default function OrgChart({
           flexShrink: 0,
           flexWrap: "nowrap",
           overflowX: "auto",
-          overflowY: "hidden",
+          overflowY: "visible",
           position: "relative",
-          zIndex: 10,
+          zIndex: 50,
           minHeight: 44,
         }}
       >
@@ -1713,45 +1802,146 @@ export default function OrgChart({
 
         <div style={{ flex: 1 }} />
 
-        <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 1, minWidth: 0 }}>
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && searchMatches.length) {
-                e.preventDefault();
-                cycleSearchMatch(e.shiftKey ? -1 : 1);
-              }
-            }}
-            placeholder="Search…"
-            title={searchMatches.length > 1 ? "Enter: next match · Shift+Enter: previous" : undefined}
-            style={{
-              background: "#0a3366",
-              border: "1px solid #1a4d7a",
-              color: AM.white,
-              borderRadius: 6,
-              padding: "6px 12px",
-              fontSize: 12,
-              outline: "none",
-              width: 160,
-              minWidth: 100,
-              flexShrink: 1,
-            }}
-          />
-          {search.trim() && searchMatches.length > 0 && (
-            <span
-              style={{
-                fontSize: 10,
-                color: AM.gold,
-                fontFamily: "Inter, system-ui, sans-serif",
-                fontWeight: 600,
-                whiteSpace: "nowrap",
-                flexShrink: 0,
-              }}
-              title="Press Enter to cycle matches"
+        {/* Search typeahead */}
+        <div style={{ position: "relative", flexShrink: 1, minWidth: 0 }}>
+          <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
+            <svg
+              viewBox="0 0 20 20"
+              fill="none"
+              stroke="rgba(255,255,255,0.5)"
+              strokeWidth={1.8}
+              style={{ position: "absolute", left: 9, width: 13, height: 13, pointerEvents: "none", flexShrink: 0 }}
             >
-              {searchFocusIndex + 1}/{searchMatches.length}
-            </span>
+              <circle cx="8.5" cy="8.5" r="5.5" />
+              <line x1="13" y1="13" x2="17" y2="17" />
+            </svg>
+            <input
+              value={search}
+              onChange={(e) => {
+                setSearch(e.target.value);
+                if (e.target.value.trim()) setSearchDropdownOpen(true);
+              }}
+              onFocus={() => { if (search.trim()) setSearchDropdownOpen(true); }}
+              onBlur={() => setTimeout(() => setSearchDropdownOpen(false), 180)}
+              onKeyDown={(e) => {
+                if (e.key === "Escape") { setSearch(""); setSearchDropdownOpen(false); }
+                if (e.key === "Enter" && searchMatches.length > 0) {
+                  e.preventDefault();
+                  selectSearchMatch(searchMatches[0]);
+                }
+              }}
+              placeholder="Search people…"
+              style={{
+                background: "#0a3366",
+                border: `1px solid ${search.trim() && searchMatches.length === 0 ? "rgba(220,38,38,0.6)" : "#1a4d7a"}`,
+                color: AM.white,
+                borderRadius: 6,
+                padding: "6px 28px 6px 28px",
+                fontSize: 12,
+                outline: "none",
+                width: 176,
+                minWidth: 100,
+                flexShrink: 1,
+              }}
+            />
+            {search.trim() && (
+              <button
+                onMouseDown={(e) => { e.preventDefault(); setSearch(""); setSearchDropdownOpen(false); setFocusedNodeId(null); }}
+                style={{
+                  position: "absolute",
+                  right: 8,
+                  background: "none",
+                  border: "none",
+                  color: "rgba(255,255,255,0.5)",
+                  cursor: "pointer",
+                  padding: 0,
+                  fontSize: 14,
+                  lineHeight: 1,
+                  display: "flex",
+                  alignItems: "center",
+                }}
+                title="Clear search"
+              >
+                ×
+              </button>
+            )}
+          </div>
+          {searchDropdownOpen && searchMatches.length > 0 && (
+            <div
+              style={{
+                position: "absolute",
+                top: "calc(100% + 4px)",
+                left: 0,
+                right: 0,
+                minWidth: 240,
+                maxHeight: 280,
+                overflowY: "auto",
+                background: AM.white,
+                border: `1px solid ${AM.border}`,
+                borderRadius: 8,
+                boxShadow: "0 8px 28px rgba(1,36,74,0.16)",
+                zIndex: 400,
+              }}
+            >
+              {searchMatches.slice(0, 12).map((match) => {
+                const jobTitle = (jobTitleCol && match.record[jobTitleCol]) || match.record["Job Title"] || "";
+                const dept = match.record.Division || match.record.Department || "";
+                return (
+                  <button
+                    key={match.id}
+                    onMouseDown={(e) => { e.preventDefault(); selectSearchMatch(match); }}
+                    style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      width: "100%",
+                      padding: "8px 12px",
+                      textAlign: "left",
+                      background: "none",
+                      border: "none",
+                      borderBottom: `1px solid ${AM.borderLight}`,
+                      cursor: "pointer",
+                      fontFamily: "Inter, system-ui, sans-serif",
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.background = AM.blueLight)}
+                    onMouseLeave={(e) => (e.currentTarget.style.background = "none")}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      <span
+                        style={{
+                          fontSize: 9,
+                          fontWeight: 700,
+                          background: AM.navyLight,
+                          color: AM.white,
+                          borderRadius: 3,
+                          padding: "1px 5px",
+                          letterSpacing: "0.3px",
+                          flexShrink: 0,
+                        }}
+                      >
+                        L{match.level}
+                      </span>
+                      <span style={{ fontSize: 12, fontWeight: 600, color: AM.navy }}>{match.label}</span>
+                      <span style={{ fontSize: 10, color: AM.textMuted, fontFamily: "monospace", marginLeft: "auto" }}>{match.id}</span>
+                    </div>
+                    {(jobTitle || dept) && (
+                      <div style={{ fontSize: 10, color: AM.textSecondary, marginTop: 2 }}>
+                        {[jobTitle, dept].filter(Boolean).join(" · ")}
+                      </div>
+                    )}
+                  </button>
+                );
+              })}
+              {searchMatches.length > 12 && (
+                <div style={{ padding: "6px 12px", fontSize: 10, color: AM.textMuted, textAlign: "center" }}>
+                  {searchMatches.length - 12} more — refine your search
+                </div>
+              )}
+            </div>
+          )}
+          {search.trim() && searchMatches.length === 0 && (
+            <div style={{ position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0, padding: "7px 12px", background: AM.white, border: `1px solid ${AM.border}`, borderRadius: 8, fontSize: 11, color: AM.textMuted, zIndex: 400 }}>
+              No matches
+            </div>
           )}
         </div>
         {departments.length > 0 && (
@@ -1828,11 +2018,25 @@ export default function OrgChart({
         </select>
 
         <div style={{ display: "flex", alignItems: "center", gap: 4, marginLeft: 6, flexShrink: 0 }}>
-          <ZoomBtn onClick={() => setZoom((z) => z / 1.15)} title="Zoom out">−</ZoomBtn>
+          <ZoomBtn
+            onClick={() => {
+              const vw = viewportRef.current?.clientWidth ?? 1200;
+              const vh = viewportRef.current?.clientHeight ?? 800;
+              setZoomAt((z) => z / 1.15, vw / 2, vh / 2);
+            }}
+            title="Zoom out"
+          >−</ZoomBtn>
           <span style={{ fontSize: 11, color: AM.white, width: 42, textAlign: "center", fontFamily: "Inter, system-ui, sans-serif", fontWeight: 600, whiteSpace: "nowrap" }}>
             {(zoomLabel * 100).toFixed(0)}%
           </span>
-          <ZoomBtn onClick={() => setZoom((z) => z * 1.15)} title="Zoom in">+</ZoomBtn>
+          <ZoomBtn
+            onClick={() => {
+              const vw = viewportRef.current?.clientWidth ?? 1200;
+              const vh = viewportRef.current?.clientHeight ?? 800;
+              setZoomAt((z) => z * 1.15, vw / 2, vh / 2);
+            }}
+            title="Zoom in"
+          >+</ZoomBtn>
           <ZoomBtn onClick={fitToView} title="Fit tree to view">⤢</ZoomBtn>
           <ZoomBtn
             onClick={centerOnRoot}
@@ -1881,7 +2085,7 @@ export default function OrgChart({
                 minWidth: 260,
                 maxHeight: 460,
                 overflowY: "auto",
-                zIndex: 20,
+                zIndex: 500,
               }}
             >
               {inDbMode ? (
@@ -2294,6 +2498,7 @@ export default function OrgChart({
                     } else {
                       setMultiSelectedIds(new Set());
                       setSelectedId(eid);
+                      setFocusedNodeId(null); // manual click clears programmatic highlight
                     }
                   }}
                   onStartEdit={(eid) => setSelectedId(eid)}

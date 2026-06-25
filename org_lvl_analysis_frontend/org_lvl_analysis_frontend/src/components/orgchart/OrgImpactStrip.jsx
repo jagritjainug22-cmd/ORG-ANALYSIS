@@ -539,7 +539,7 @@ function DeltaTd({ value, fmt, decimals = 0, bold }) {
   return (
     <td style={{
       padding: "6px 10px", textAlign: "right",
-      fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+      fontFamily: "Inter, system-ui, sans-serif",
       color, fontWeight: bold ? 700 : 600, fontSize: 11,
     }}>
       {display}
@@ -547,6 +547,7 @@ function DeltaTd({ value, fmt, decimals = 0, bold }) {
   );
 }
 
+// ... (remaining helper functions)
 function sectionLabel() {
   return {
     fontSize: 10, fontWeight: 700, color: AM.textMuted,
@@ -573,7 +574,7 @@ function ImpactPill({ icon, label, tone = "neutral" }) {
       display: "inline-flex",
       alignItems: "center",
       gap: 6,
-      fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+      fontFamily: "Inter, system-ui, sans-serif",
       letterSpacing: "0.1px",
     }}>
       {icon}{label}
@@ -619,7 +620,7 @@ function Row({ label, value, bold, accent, isDelta, cost }) {
       <span style={{ fontSize: 11, color: AM.textMuted }}>{label}</span>
       <span style={{
         fontSize: bold ? 13 : 12,
-        fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+        fontFamily: "Inter, system-ui, sans-serif",
         fontWeight: bold ? 700 : 500,
         color: valueColor,
         letterSpacing: "-0.3px",
@@ -662,11 +663,12 @@ function Th({ children }) {
   );
 }
 
+// Note: keep mono mapping to stock font so it doesn't render monospace
 function Td({ children, mono, bold, right }) {
   return (
     <td style={{
       padding: "6px 10px", color: AM.textPrimary,
-      fontFamily: mono ? "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace" : "inherit",
+      fontFamily: mono ? "Inter, system-ui, sans-serif" : "inherit",
       fontWeight: bold ? 700 : 400,
       textAlign: right ? "right" : "left",
       verticalAlign: "middle",

@@ -200,6 +200,9 @@ export default function OrgChart({
   const [comparison, setComparison] = useState(null);
   const [addChildFor, setAddChildFor] = useState(null);
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
+  const [exportingLabel, setExportingLabel] = useState(null); // e.g. "PowerPoint – Summary"
+  const exportBtnRef = useRef(null);
+  const searchWrapRef = useRef(null);
 
   // Activity feed (recent changes since user's last visit)
   const [activityOpen, setActivityOpen] = useState(false);
@@ -396,6 +399,15 @@ export default function OrgChart({
       setError(e.message || "Failed to export.")
     );
   }, [activeScenarioId, scenarios]);
+
+  /** Wraps any export promise with a loading toast. */
+  const runExport = useCallback((label, promiseFn) => {
+    setExportingLabel(label);
+    setExportMenuOpen(false);
+    promiseFn()
+      .catch((e) => setError(e.response?.data?.detail || e.message || "Export failed."))
+      .finally(() => setExportingLabel(null));
+  }, []);
 
   const lookupRateCardForValues = useCallback(async (values) => {
     if (!activeScenarioId || !activeScenario?.rate_card_id) return null;
@@ -1599,6 +1611,10 @@ export default function OrgChart({
   const totalFte = summary?.current?.total_fte ?? records.filter((r) => !r.is_flagged_removed).reduce((s, r) => s + (fteCol ? Number(r[fteCol] || 0) : 0), 0);
   const totalCost = summary?.current?.total_cost ?? records.filter((r) => !r.is_flagged_removed).reduce((s, r) => s + (flcCol ? Number(r[flcCol] || 0) : 0), 0);
 
+  // Viewport-relative positions for fixed-position dropdowns (immune to overflow clipping).
+  const searchRect = searchWrapRef.current?.getBoundingClientRect() ?? null;
+  const exportRect = exportBtnRef.current?.getBoundingClientRect() ?? null;
+
   return (
     <div
       style={{
@@ -1610,9 +1626,7 @@ export default function OrgChart({
         fontFamily: "Inter, system-ui, sans-serif",
         position: fullscreen ? "fixed" : "relative",
         borderRadius: fullscreen ? 0 : 12,
-        // overflow must be visible so header dropdowns (search, export) can
-        // extend below the header bar. The canvas body div clips itself.
-        overflow: "visible",
+        overflow: "hidden",
         border: fullscreen ? "none" : `1px solid ${AM.border}`,
         ...(fullscreen ? { inset: 0, zIndex: 100 } : {}),
       }}
@@ -1769,7 +1783,7 @@ export default function OrgChart({
           flexShrink: 0,
           flexWrap: "nowrap",
           overflowX: "auto",
-          overflowY: "visible",
+          overflowY: "hidden",
           position: "relative",
           zIndex: 50,
           minHeight: 44,
@@ -1803,7 +1817,7 @@ export default function OrgChart({
         <div style={{ flex: 1 }} />
 
         {/* Search typeahead */}
-        <div style={{ position: "relative", flexShrink: 1, minWidth: 0 }}>
+        <div ref={searchWrapRef} style={{ position: "relative", flexShrink: 1, minWidth: 0 }}>
           <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
             <svg
               viewBox="0 0 20 20"
@@ -1869,18 +1883,18 @@ export default function OrgChart({
           {searchDropdownOpen && searchMatches.length > 0 && (
             <div
               style={{
-                position: "absolute",
-                top: "calc(100% + 4px)",
-                left: 0,
-                right: 0,
-                minWidth: 240,
+                position: "fixed",
+                top: searchRect ? searchRect.bottom + 4 : 60,
+                left: searchRect ? searchRect.left : 0,
+                minWidth: searchRect ? searchRect.width : 240,
+                maxWidth: 320,
                 maxHeight: 280,
                 overflowY: "auto",
                 background: AM.white,
                 border: `1px solid ${AM.border}`,
                 borderRadius: 8,
                 boxShadow: "0 8px 28px rgba(1,36,74,0.16)",
-                zIndex: 400,
+                zIndex: 9999,
               }}
             >
               {searchMatches.slice(0, 12).map((match) => {
@@ -1939,7 +1953,7 @@ export default function OrgChart({
             </div>
           )}
           {search.trim() && searchMatches.length === 0 && (
-            <div style={{ position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0, padding: "7px 12px", background: AM.white, border: `1px solid ${AM.border}`, borderRadius: 8, fontSize: 11, color: AM.textMuted, zIndex: 400 }}>
+            <div style={{ position: "fixed", top: searchRect ? searchRect.bottom + 4 : 60, left: searchRect ? searchRect.left : 0, minWidth: searchRect ? searchRect.width : 180, padding: "7px 12px", background: AM.white, border: `1px solid ${AM.border}`, borderRadius: 8, fontSize: 11, color: AM.textMuted, zIndex: 9999 }}>
               No matches
             </div>
           )}
@@ -2046,7 +2060,7 @@ export default function OrgChart({
           </ZoomBtn>
         </div>
 
-        <div style={{ position: "relative", flexShrink: 0 }}>
+        <div ref={exportBtnRef} style={{ position: "relative", flexShrink: 0 }}>
           <button
             onClick={() => setExportMenuOpen((v) => !v)}
             style={{
@@ -2075,9 +2089,9 @@ export default function OrgChart({
             <div
               onMouseLeave={() => setExportMenuOpen(false)}
               style={{
-                position: "absolute",
-                top: "calc(100% + 6px)",
-                right: 0,
+                position: "fixed",
+                top: exportRect ? exportRect.bottom + 6 : 60,
+                right: exportRect ? window.innerWidth - exportRect.right : 16,
                 background: AM.white,
                 borderRadius: 8,
                 boxShadow: "0 12px 28px rgba(1,36,74,0.18)",
@@ -2085,7 +2099,7 @@ export default function OrgChart({
                 minWidth: 260,
                 maxHeight: 460,
                 overflowY: "auto",
-                zIndex: 500,
+                zIndex: 9999,
               }}
             >
               {inDbMode ? (
@@ -2096,10 +2110,7 @@ export default function OrgChart({
                     desc="Title + KPIs + L1-L2 chart"
                     onClick={() => {
                       const s = (scenarios || []).find((x) => x.id === activeScenarioId);
-                      dbExportPpt(activeScenarioId, s?.name || "scenario", "overview").catch((e) =>
-                        setError(e.response?.data?.detail || e.message || "Failed to export.")
-                      );
-                      setExportMenuOpen(false);
+                      runExport("PowerPoint – Overview", () => dbExportPpt(activeScenarioId, s?.name || "scenario", "overview"));
                     }}
                   />
                   <ExportItem
@@ -2107,10 +2118,7 @@ export default function OrgChart({
                     desc="Overview + subtree slides per L1 report"
                     onClick={() => {
                       const s = (scenarios || []).find((x) => x.id === activeScenarioId);
-                      dbExportPpt(activeScenarioId, s?.name || "scenario", "summary").catch((e) =>
-                        setError(e.response?.data?.detail || e.message || "Failed to export.")
-                      );
-                      setExportMenuOpen(false);
+                      runExport("PowerPoint – Summary", () => dbExportPpt(activeScenarioId, s?.name || "scenario", "summary"));
                     }}
                   />
                   <ExportItem
@@ -2118,10 +2126,7 @@ export default function OrgChart({
                     desc="Summary + deep drill-down for large teams"
                     onClick={() => {
                       const s = (scenarios || []).find((x) => x.id === activeScenarioId);
-                      dbExportPpt(activeScenarioId, s?.name || "scenario", "full").catch((e) =>
-                        setError(e.response?.data?.detail || e.message || "Failed to export.")
-                      );
-                      setExportMenuOpen(false);
+                      runExport("PowerPoint – Full Detail", () => dbExportPpt(activeScenarioId, s?.name || "scenario", "full"));
                     }}
                   />
                   <ExportGroupLabel label="PDF" />
@@ -2130,10 +2135,7 @@ export default function OrgChart({
                     desc="L1-L2 visual chart"
                     onClick={() => {
                       const s = (scenarios || []).find((x) => x.id === activeScenarioId);
-                      dbExportPdf(activeScenarioId, s?.name || "scenario", "overview").catch((e) =>
-                        setError(e.response?.data?.detail || e.message || "Failed to export.")
-                      );
-                      setExportMenuOpen(false);
+                      runExport("PDF – Overview", () => dbExportPdf(activeScenarioId, s?.name || "scenario", "overview"));
                     }}
                   />
                   <ExportItem
@@ -2141,10 +2143,7 @@ export default function OrgChart({
                     desc="Overview + subtree pages per L1 report"
                     onClick={() => {
                       const s = (scenarios || []).find((x) => x.id === activeScenarioId);
-                      dbExportPdf(activeScenarioId, s?.name || "scenario", "summary").catch((e) =>
-                        setError(e.response?.data?.detail || e.message || "Failed to export.")
-                      );
-                      setExportMenuOpen(false);
+                      runExport("PDF – Summary", () => dbExportPdf(activeScenarioId, s?.name || "scenario", "summary"));
                     }}
                   />
                   <ExportGroupLabel label="Other Formats" />
@@ -2153,10 +2152,7 @@ export default function OrgChart({
                     desc="Raw vector file"
                     onClick={() => {
                       const s = (scenarios || []).find((x) => x.id === activeScenarioId);
-                      dbExportSvg(activeScenarioId, s?.name || "scenario").catch((e) =>
-                        setError(e.response?.data?.detail || e.message || "Failed to export.")
-                      );
-                      setExportMenuOpen(false);
+                      runExport("SVG", () => dbExportSvg(activeScenarioId, s?.name || "scenario"));
                     }}
                   />
                   <ExportItem
@@ -2164,10 +2160,7 @@ export default function OrgChart({
                     desc="Summary + change log + breakdown by dimension"
                     onClick={() => {
                       const s = (scenarios || []).find((x) => x.id === activeScenarioId);
-                      dbExportChanges(activeScenarioId, s?.name || "scenario").catch((e) =>
-                        setError(e.message || "Failed to export.")
-                      );
-                      setExportMenuOpen(false);
+                      runExport("Excel – Change Summary", () => dbExportChanges(activeScenarioId, s?.name || "scenario"));
                     }}
                   />
                   <ExportItem
@@ -2175,10 +2168,7 @@ export default function OrgChart({
                     desc="Full To-Be roster"
                     onClick={() => {
                       const s = (scenarios || []).find((x) => x.id === activeScenarioId);
-                      dbExportRecords(activeScenarioId, s?.name || "scenario").catch((e) =>
-                        setError(e.message || "Failed to export.")
-                      );
-                      setExportMenuOpen(false);
+                      runExport("Excel – Current Records", () => dbExportRecords(activeScenarioId, s?.name || "scenario"));
                     }}
                   />
                 </>
@@ -2290,6 +2280,41 @@ export default function OrgChart({
             : undefined}
           onJumpToNode={navigateToNode}
         />
+      )}
+
+      {/* Export loading toast */}
+      {exportingLabel && (
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            background: AM.navy,
+            color: AM.white,
+            padding: "9px 18px",
+            fontSize: 12,
+            fontWeight: 500,
+            flexShrink: 0,
+            borderBottom: `1px solid rgba(255,255,255,0.08)`,
+          }}
+        >
+          {/* spinner */}
+          <svg
+            width={14}
+            height={14}
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke={AM.gold}
+            strokeWidth={2.5}
+            style={{ flexShrink: 0, animation: "orgScenarioSpin 0.9s linear infinite" }}
+          >
+            <circle cx="12" cy="12" r="10" strokeOpacity={0.25} />
+            <path d="M12 2 a10 10 0 0 1 10 10" />
+          </svg>
+          <span>
+            Exporting <strong style={{ color: AM.gold }}>{exportingLabel}</strong> — preparing your file…
+          </span>
+        </div>
       )}
 
       {error && (

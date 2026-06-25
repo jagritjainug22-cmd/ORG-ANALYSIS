@@ -18,7 +18,7 @@ import time
 
 import requests
 
-BASE = "http://127.0.0.1:8001"
+BASE = "http://0.0.0.0:8601"
 DEFAULT_USER = "am.admin"
 DEFAULT_PWD  = "AM@dmin2026!"
 

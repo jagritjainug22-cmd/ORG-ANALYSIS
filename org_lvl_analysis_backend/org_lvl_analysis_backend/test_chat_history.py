@@ -26,7 +26,7 @@ import requests
 # Configuration
 # ---------------------------------------------------------------------------
 
-DEFAULT_BASE = "http://127.0.0.1:8001"
+DEFAULT_BASE = "http://0.0.0.0:8601"
 DEFAULT_USER = "jagrit.m"
 DEFAULT_PASS = "32jaincolony"
 DEFAULT_PROJECT = 1

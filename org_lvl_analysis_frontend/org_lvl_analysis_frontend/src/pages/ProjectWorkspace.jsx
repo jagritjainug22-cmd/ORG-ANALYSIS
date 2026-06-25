@@ -272,7 +272,7 @@ export default function ProjectWorkspace() {
         } else if (!err.response) {
           setProjectError({
             code: "backend_unreachable",
-            message: "Cannot reach the API at port 8001. Is the backend running?",
+            message: "Cannot reach the API at port 8601. Is the backend running?",
           });
         } else {
           setProjectError({ code: "unknown", message: errMessage });

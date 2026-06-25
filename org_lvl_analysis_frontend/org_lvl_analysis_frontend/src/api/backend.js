@@ -1,6 +1,8 @@
 import axios from "axios";
 
-const BASE_URL = "http://127.0.0.1:8001";
+const BASE_URL = typeof window !== "undefined"
+  ? `${window.location.protocol}//${window.location.hostname}:8601`
+  : "http://127.0.0.1:8601";
 
 // --- In-memory auth state ---
 let accessToken = null;

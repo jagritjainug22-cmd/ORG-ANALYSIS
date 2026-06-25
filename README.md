@@ -4,8 +4,8 @@
 
 | Service | URL | Start command |
 |---------|-----|---------------|
-| **Backend** (FastAPI) | http://127.0.0.1:8001 | `.\scripts\start-backend.ps1` |
-| **Frontend** (Vite) | http://localhost:5173 | `.\scripts\start-frontend.ps1` |
+| **Backend** (FastAPI) | http://0.0.0.0:8601 | `.\scripts\start-backend.ps1` |
+| **Frontend** (Vite) | http://localhost:8501 | `.\scripts\start-frontend.ps1` |
 | **Org chart app** (Vite) | http://localhost:5174 | `.\scripts\start-org-chart.ps1` |
 
 The frontend calls the API at **port 8001** only (`org_lvl_analysis_frontend/.../src/api/backend.js`). Do not use port 8000 — it is redundant.

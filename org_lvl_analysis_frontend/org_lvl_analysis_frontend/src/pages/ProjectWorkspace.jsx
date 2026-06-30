@@ -195,6 +195,7 @@ export default function ProjectWorkspace() {
   // --- Lock state ---
   const [lockHolder, setLockHolder] = useState(null);
   const [lockAcquired, setLockAcquired] = useState(false);
+  const [lockBannerDismissed, setLockBannerDismissed] = useState(false);
   const heartbeatRef = useRef(null);
   const orgGuardRef = useRef(null);
   const { registerGuard, unregisterGuard } = useWorkGuard();
@@ -335,6 +336,10 @@ export default function ProjectWorkspace() {
       releaseLock(pid).catch(() => {});
     };
   }, [pid]);
+
+  useEffect(() => {
+    setLockBannerDismissed(false);
+  }, [lockHolder]);
 
   const handleOrgChart = async () => {
     if (!empCol || !mgrCol) {
@@ -953,14 +958,24 @@ export default function ProjectWorkspace() {
 
 
       {/* LOCK BANNER */}
-      {lockHolder && !lockAcquired && (
+      {lockHolder && !lockAcquired && !lockBannerDismissed && (
         <div className="px-8 py-3 bg-amber-50 border-b border-amber-200 flex items-center gap-3">
           <svg className="w-5 h-5 text-amber-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
           </svg>
-          <p className="text-sm text-amber-800">
+          <p className="text-sm text-amber-800 flex-1">
             <span className="font-semibold">{lockHolder}</span> is currently editing this project. Your changes may conflict. The lock will release when they leave or after 90 seconds of inactivity.
           </p>
+          <button
+            type="button"
+            onClick={() => setLockBannerDismissed(true)}
+            className="p-1 rounded-md text-amber-600 hover:text-amber-800 hover:bg-amber-100 transition-colors flex-shrink-0"
+            aria-label="Dismiss lock warning"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
         </div>
       )}
 

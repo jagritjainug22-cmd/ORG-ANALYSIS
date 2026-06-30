@@ -19,7 +19,17 @@
 body {
   margin: 0;
   min-width: 320px;
-  min-height: 100vh;
+  min-height: calc(100vh / 0.9);
+  zoom: 0.9;
+}
+
+/* Compensate viewport-height utilities for the 0.9 body zoom,
+   since vh units always reference the real (un-zoomed) viewport. */
+.min-h-screen {
+  min-height: calc(100vh / 0.9) !important;
+}
+.h-screen {
+  height: calc(100vh / 0.9) !important;
 }
 
 @keyframes fadeInUp {

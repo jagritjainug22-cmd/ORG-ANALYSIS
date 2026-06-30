@@ -221,10 +221,10 @@ async def change_password(
     body: ChangePasswordRequest,
     user: dict = Depends(get_current_user_allow_password_change),
 ):
-    if len(body.new_password) < 8:
+    if len(body.new_password) < 5:
         raise HTTPException(
             status_code=400,
-            detail="New password must be at least 8 characters",
+            detail="New password must be at least 5 characters",
         )
 
     if body.old_password == body.new_password:

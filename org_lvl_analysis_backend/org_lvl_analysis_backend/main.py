@@ -5,6 +5,8 @@ if sys.stdout and hasattr(sys.stdout, "reconfigure"):
 if sys.stderr and hasattr(sys.stderr, "reconfigure"):
     sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
+import os
+import re
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -29,6 +31,23 @@ ALLOWED_ORIGINS = [
     "http://localhost:8501",
     "http://127.0.0.1:8501",
 ]
+_extra_origins = os.environ.get("CORS_ORIGINS", "")
+if _extra_origins:
+    ALLOWED_ORIGINS.extend(o.strip() for o in _extra_origins.split(",") if o.strip())
+
+# In dev, allow the frontend on any host/IP (e.g. VM IP for colleagues on the same network).
+IS_PRODUCTION = os.environ.get("ENVIRONMENT") == "production"
+CORS_ORIGIN_REGEX = None if IS_PRODUCTION else r"^https?://[\w.\-]+:8501$"
+
+
+def _origin_allowed(origin: str) -> bool:
+    if not origin:
+        return False
+    if origin in ALLOWED_ORIGINS:
+        return True
+    if CORS_ORIGIN_REGEX and re.fullmatch(CORS_ORIGIN_REGEX, origin):
+        return True
+    return False
 
 
 @asynccontextmanager
@@ -53,6 +72,7 @@ app = FastAPI(title="Org Level Analysis Backend", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
+    allow_origin_regex=CORS_ORIGIN_REGEX,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -74,7 +94,7 @@ class _CORSErrorMiddleware:
 
         origin = dict(scope.get("headers", [])).get(b"origin", b"").decode()
 
-        if origin not in ALLOWED_ORIGINS:
+        if not _origin_allowed(origin):
             await self._app(scope, receive, send)
             return
 

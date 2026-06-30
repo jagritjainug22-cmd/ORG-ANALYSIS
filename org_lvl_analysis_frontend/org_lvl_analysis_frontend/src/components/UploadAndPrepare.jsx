@@ -16,17 +16,17 @@ function StatCard({ label, value, accent = false }) {
 function FlagRow({ label, count, checked, onChange }) {
   const hasIssues = count > 0;
   return (
-    <div className={`flex items-center justify-between px-4 py-2.5 border-l-4 ${hasIssues ? "border-amber-400 bg-amber-50/50" : "border-green-500 bg-green-50/30"}`}>
+    <div className={`flex items-center justify-between px-4 py-2.5 border-l-4 ${hasIssues ? "border-amber-400 bg-amber-50/50" : "border-blue-400 bg-blue-50/30"}`}>
       <div className="flex items-center gap-2">
         {hasIssues ? (
           <svg className="w-4 h-4 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
         ) : (
-          <svg className="w-4 h-4 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+          <svg className="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
         )}
         <span className="text-sm text-slate-700">{label}</span>
       </div>
       <div className="flex items-center gap-3">
-        <span className={`text-sm font-semibold ${hasIssues ? "text-amber-700" : "text-green-700"}`}>{count}</span>
+        <span className={`text-sm font-semibold ${hasIssues ? "text-amber-700" : "text-blue-700"}`}>{count}</span>
         {hasIssues && (
           <label className="flex items-center gap-1.5 cursor-pointer text-xs text-slate-500">
             <input type="checkbox" checked={checked} onChange={onChange} className="rounded border-gray-300 text-brand-500 focus:ring-brand-500 h-3.5 w-3.5" />
@@ -144,10 +144,10 @@ function HierarchyReadinessPanel({ readiness }) {
 
   const styles = {
     ready: {
-      box: "bg-green-50 border-green-200",
-      title: "text-green-900",
-      body: "text-green-800",
-      badge: "bg-green-600 text-white",
+      box: "bg-blue-50 border-blue-200",
+      title: "text-blue-900",
+      body: "text-blue-800",
+      badge: "bg-blue-600 text-white",
       label: "Hierarchy ready",
     },
     warning: {
@@ -168,24 +168,24 @@ function HierarchyReadinessPanel({ readiness }) {
   const s = styles[readiness.status] || styles.warning;
 
   return (
-    <div className={`border rounded-lg px-4 py-3 ${s.box}`}>
+    <div className={`border rounded-xl px-4 py-3 ${s.box}`}>
       <div className="flex items-start gap-3">
-        <span className={`text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded ${s.badge} flex-shrink-0 mt-0.5`}>
+        <span className={`text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-md shadow-sm ${s.badge} flex-shrink-0 mt-0.5`}>
           {s.label}
         </span>
         <div className="flex-1 min-w-0">
           <p className={`text-sm font-semibold ${s.title} mb-2`}>Analysis readiness</p>
           <div className="grid grid-cols-3 gap-2 mb-2">
-            <div className="bg-white/60 rounded px-2 py-1.5 text-center">
-              <p className="text-[10px] text-slate-500 uppercase">Internal links</p>
+            <div className="bg-white/70 border border-white/80 rounded-lg px-2 py-1.5 text-center shadow-sm">
+              <p className="text-[10px] text-slate-500 uppercase tracking-wide">Internal links</p>
               <p className="text-sm font-bold text-slate-800">{readiness.internalLinkCount}</p>
             </div>
-            <div className="bg-white/60 rounded px-2 py-1.5 text-center">
-              <p className="text-[10px] text-slate-500 uppercase">Managers in file</p>
+            <div className="bg-white/70 border border-white/80 rounded-lg px-2 py-1.5 text-center shadow-sm">
+              <p className="text-[10px] text-slate-500 uppercase tracking-wide">Managers in file</p>
               <p className="text-sm font-bold text-slate-800">{readiness.managerCount}</p>
             </div>
-            <div className="bg-white/60 rounded px-2 py-1.5 text-center">
-              <p className="text-[10px] text-slate-500 uppercase">External mgr IDs</p>
+            <div className="bg-white/70 border border-white/80 rounded-lg px-2 py-1.5 text-center shadow-sm">
+              <p className="text-[10px] text-slate-500 uppercase tracking-wide">External mgr IDs</p>
               <p className="text-sm font-bold text-slate-800">{readiness.invalidManagerIdCount}</p>
             </div>
           </div>
@@ -442,12 +442,12 @@ function PipelineStatusBadge({ label, ts }) {
     <span
       className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-semibold ${
         ran
-          ? "bg-green-50 text-green-700 border border-green-200"
+          ? "bg-blue-50 text-blue-700 border border-blue-200"
           : "bg-slate-50 text-slate-400 border border-slate-200"
       }`}
       title={ran ? `${label}: ${new Date(ts.endsWith("Z") ? ts : ts + "Z").toLocaleString()}` : `${label}: never run`}
     >
-      <span className={`w-1.5 h-1.5 rounded-full ${ran ? "bg-green-500" : "bg-slate-300"}`} />
+      <span className={`w-1.5 h-1.5 rounded-full ${ran ? "bg-blue-500" : "bg-slate-300"}`} />
       {label}: {ran ? formatRelative(ts) : "never"}
     </span>
   );
@@ -844,13 +844,13 @@ export default function UploadAndPrepare({
           {/* Dataset / file info card */}
           <div className="flex items-center justify-between bg-white border border-brand-100 rounded-lg px-4 py-3 shadow-sm">
             <div className="flex items-center gap-3 min-w-0">
-              <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${isSavedSource ? "bg-brand-100" : "bg-green-100"}`}>
+              <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${isSavedSource ? "bg-brand-100" : "bg-blue-100"}`}>
                 {isSavedSource ? (
                   <svg className="w-5 h-5 text-brand-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4" />
                   </svg>
                 ) : (
-                  <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </svg>
                 )}
@@ -997,7 +997,7 @@ export default function UploadAndPrepare({
               <div>
                 <h4 className="text-xs font-semibold text-brand-400 uppercase tracking-wide mb-2" style={{ fontFamily: "Manrope, Inter, sans-serif" }}>Cleanup</h4>
                 <div className="bg-white border border-brand-100 rounded-lg px-4 py-3 shadow-sm flex items-center gap-2">
-                  <svg className="w-4 h-4 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                  <svg className="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
                   <span className="text-sm text-slate-700">
                     {cleanupResult?.removed ? `${cleanupResult.removed} exclusion rows removed` : "No exclusion rows found"}
                   </span>
@@ -1011,7 +1011,7 @@ export default function UploadAndPrepare({
                     <h4 className="text-xs font-semibold text-brand-400 uppercase tracking-wide mb-2" style={{ fontFamily: "Manrope, Inter, sans-serif" }}>
                       Validation
                       {!hasValidationIssues && (
-                        <span className="ml-2 text-green-600 normal-case">— All clear</span>
+                        <span className="ml-2 text-blue-600 normal-case">— All clear</span>
                       )}
                       {hasValidationIssues && (
                         <span className="ml-2 text-amber-600 normal-case">
@@ -1030,7 +1030,7 @@ export default function UploadAndPrepare({
                         />
                       ))}
                       {!hasValidationIssues && (
-                        <div className="px-4 py-3 text-sm text-green-600 flex items-center gap-2">
+                        <div className="px-4 py-3 text-sm text-blue-600 flex items-center gap-2">
                           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
                           No validation issues found
                         </div>
@@ -1075,7 +1075,7 @@ export default function UploadAndPrepare({
                       </div>
                     )}
                     {filterApplied && (
-                      <div className="mt-2 px-3 py-2 bg-green-50 border border-green-200 rounded-lg text-sm text-green-700 flex items-center gap-2">
+                      <div className="mt-2 px-3 py-2 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-700 flex items-center gap-2">
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
                         Filters applied — {(validatedDf || dfRecords)?.length} rows remaining
                       </div>
@@ -1106,8 +1106,8 @@ export default function UploadAndPrepare({
                   </span>
                 </div>
               ) : (
-                <div className="bg-green-50 border border-green-200 rounded-lg px-4 py-3 text-sm text-green-700 flex items-center gap-2">
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-3 text-sm text-blue-800 flex items-center gap-2">
+                  <svg className="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                   <span>
                     <span className="font-semibold">Data ready.</span> Proceed to{" "}
                     <span className="font-semibold">Rationalise</span> to standardise titles, functions, and subfunctions.

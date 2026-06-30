@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import { useConfirmLogout } from "../hooks/useConfirmLogout";
 import { changePassword, login as loginApi } from "../api/backend";
+import AMLogo from "../components/AMLogo";
 
 export default function ChangePassword() {
   const navigate = useNavigate();
@@ -22,8 +23,8 @@ export default function ChangePassword() {
       setError("New passwords do not match.");
       return;
     }
-    if (newPass.length < 8) {
-      setError("Password must be at least 8 characters.");
+    if (newPass.length < 5) {
+      setError("Password must be at least 5 characters.");
       return;
     }
 
@@ -44,7 +45,7 @@ export default function ChangePassword() {
     <div className="min-h-screen bg-surface-soft flex items-center justify-center p-6">
       <div className="w-full max-w-md">
         <div className="flex items-center gap-3 mb-6 justify-center">
-          <span className="text-brand-500 font-bold text-xl tracking-tight">A&amp;M</span>
+          <AMLogo className="h-7" />
           <span className="h-5 w-px bg-gray-300" />
           <span className="text-gray-800 font-semibold">OrgSight</span>
         </div>
@@ -78,7 +79,7 @@ export default function ChangePassword() {
                 type="password" value={newPass}
                 onChange={(e) => setNewPass(e.target.value)}
                 className="w-full border border-gray-300 rounded-md px-4 py-2.5 text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition"
-                required minLength={8}
+                required minLength={5}
                 autoComplete="new-password"
               />
             </div>
@@ -88,7 +89,7 @@ export default function ChangePassword() {
                 type="password" value={confirmPass}
                 onChange={(e) => setConfirmPass(e.target.value)}
                 className="w-full border border-gray-300 rounded-md px-4 py-2.5 text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition"
-                required minLength={8}
+                required minLength={5}
                 autoComplete="new-password"
               />
             </div>

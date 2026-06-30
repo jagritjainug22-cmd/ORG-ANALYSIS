@@ -4,6 +4,7 @@ import { useAuth } from "../contexts/AuthContext";
 import { useConfirmLogout } from "../hooks/useConfirmLogout";
 import { fetchProjects, fetchProjectDetail } from "../api/backend";
 import SkeletonTableLoader from "../components/SkeletonTableLoader";
+import AMLogo from "../components/AMLogo";
 
 const AVATAR_COLORS = [
   "bg-brand-500", "bg-indigo-500", "bg-rose-500", "bg-accent-500",
@@ -232,15 +233,15 @@ export default function ProjectSelector() {
       <header className="px-8 py-4 bg-brand-600 text-white border-b border-brand-700 shadow-sm">
         <div className="flex items-center justify-between max-w-7xl mx-auto w-full">
           <div className="flex items-center gap-3">
-              <span className="text-white font-bold text-xl tracking-tight">A&amp;M</span>
+              <AMLogo className="h-7" />
               <span className="h-5 w-px bg-white/30" />
               <span className="text-white/90 font-semibold">OrgSight</span>
             </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-4">
             {user?.role === "admin" && (
               <button
                 onClick={() => navigate("/admin")}
-                className="inline-flex items-center gap-2 px-4 py-2 bg-white text-brand-700 hover:bg-white/90 rounded-md text-sm font-semibold transition transform hover:-translate-y-0.5 shadow-md border border-white/20 focus:outline-none focus:ring-2 focus:ring-brand-300"
+                className="inline-flex items-center gap-2 px-4 py-2 bg-transparent border border-white/25 text-white hover:bg-white/10 hover:border-white/40 rounded-lg text-sm font-medium transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-white/30"
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
@@ -249,21 +250,28 @@ export default function ProjectSelector() {
                 Admin Panel
               </button>
             )}
-            <div className="flex items-center gap-2 px-3 py-1.5 bg-white/10 rounded-full border border-white/10">
-              <div className={`w-6 h-6 rounded-full ${colorFor(user?.username || "")} flex items-center justify-center text-white text-[10px] font-semibold`}>
-                {initialsOf(user?.display_name, user?.username)}
+
+            <div className="h-9 w-px bg-white/15"></div>
+
+            <div className="flex items-center gap-3">
+              <div className="relative">
+                <div className="w-10 h-10 rounded-full bg-white text-brand-700 flex items-center justify-center text-sm font-semibold shadow-md">
+                  {initialsOf(user?.display_name, user?.username)}
+                </div>
+                <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-emerald-500 rounded-full ring-2 ring-brand-600"></span>
               </div>
-              <span className="text-sm text-white font-medium">
-                {user?.username}{user?.role === "admin" ? " (Admin)" : ""}
-              </span>
+              <div className="leading-tight">
+                <p className="text-sm font-semibold text-white">{user?.username}</p>
+                <p className="text-xs text-white/60">{user?.role === "admin" ? "Administrator" : "Member"}</p>
+              </div>
             </div>
+
+            <div className="h-9 w-px bg-white/15"></div>
+
             <button
               onClick={(e) => confirmLogout(e)}
-              className="inline-flex items-center gap-2 px-3 py-2 text-white/90 hover:text-white hover:bg-white/10 rounded-md text-sm font-medium transition border border-white/10"
+              className="inline-flex items-center justify-center px-5 py-2 rounded-lg text-sm font-medium text-red-400 bg-red-500/5 border border-red-500/40 backdrop-blur-sm hover:bg-red-500/10 hover:border-red-500/60 hover:text-red-300 transition-all duration-150"
             >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-              </svg>
               Logout
             </button>
           </div>

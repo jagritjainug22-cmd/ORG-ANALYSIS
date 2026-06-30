@@ -2,12 +2,14 @@ import React from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
 import { useAuth } from "./contexts/AuthContext";
 import WorkspaceLoader from "./components/WorkspaceLoader";
+import AMLogo from "./components/AMLogo";
 
 import Login from "./components/Login";
 import ProjectSelector from "./pages/ProjectSelector";
 import ProjectWorkspace from "./pages/ProjectWorkspace";
 import ChangePassword from "./pages/ChangePassword";
 import AdminLayout from "./pages/admin/AdminLayout";
+import AnalyticsDashboard from "./pages/admin/AnalyticsDashboard";
 import UserManagement from "./pages/admin/UserManagement";
 import ProjectManagement from "./pages/admin/ProjectManagement";
 import AuditLog from "./pages/admin/AuditLog";
@@ -40,7 +42,7 @@ function LoginPage() {
 
         {/* Logo */}
         <div className="relative z-10 flex items-center gap-3">
-          <div className="text-2xl font-bold tracking-tight">A&amp;M</div>
+          <AMLogo className="h-8" />
           <div className="h-6 w-px bg-white/30" />
           <div className="text-sm font-medium text-white/80 tracking-wide">
             OrgSight
@@ -98,12 +100,6 @@ function LoginPage() {
 
       {/* RIGHT: Login form */}
       <div className="flex items-center justify-center p-6 sm:p-12 bg-surface-soft">
-        {/* Mobile brand header */}
-        <div className="absolute top-6 left-6 lg:hidden flex items-center gap-2">
-          <span className="text-brand-500 font-bold text-lg">A&amp;M</span>
-          <span className="text-gray-500 text-sm">OrgSight</span>
-        </div>
-
         <Login
           setToken={() => {}}
           setUsername={() => {}}
@@ -165,7 +161,8 @@ export default function App() {
 
       {/* Admin routes â€” only role=admin can access */}
       <Route path="/admin" element={<RequireAdmin><AdminLayout /></RequireAdmin>}>
-        <Route index element={<Navigate to="/admin/users" replace />} />
+        <Route index element={<Navigate to="/admin/dashboard" replace />} />
+        <Route path="dashboard" element={<AnalyticsDashboard />} />
         <Route path="users" element={<UserManagement />} />
         <Route path="projects" element={<ProjectManagement />} />
         <Route path="audit" element={<AuditLog />} />

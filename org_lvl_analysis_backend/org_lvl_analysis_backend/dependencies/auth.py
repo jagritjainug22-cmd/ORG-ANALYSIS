@@ -270,4 +270,5 @@ def _extract_user_from_token(request: Request) -> Dict[str, Any]:
         )
         raise HTTPException(status_code=401, detail="Account is deactivated")
 
+    db_service.touch_user_last_seen(user["id"])
     return user

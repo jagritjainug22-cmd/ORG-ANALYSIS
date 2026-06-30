@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { crosstab } from "../api/backend";
 
 /** Apply formula columns client-side before crosstab (mirrors formula_service.py) */
@@ -36,6 +36,9 @@ export default function Crosstab({ df, fteCol, flcCol, formulas = [], datasetId 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   
+  // View mode: "table" or "heatmap"
+  const [viewMode, setViewMode] = useState("table");
+
   // Others grouping state
   const [enableOthersGrouping, setEnableOthersGrouping] = useState(false);
   const [colXThreshold, setColXThreshold] = useState(5);
@@ -93,6 +96,40 @@ export default function Crosstab({ df, fteCol, flcCol, formulas = [], datasetId 
     }
     
     return value;
+  };
+
+  // Compute quartile breakpoints per column (excluding TOTAL/Others rows)
+  const quartiles = useMemo(() => {
+    if (!rows.length) return {};
+    const keys = Object.keys(rows[0]).filter(k => k !== "Index");
+    const result = {};
+    keys.forEach(key => {
+      const values = rows
+        .filter(r => r.Index !== "TOTAL" && r.Index !== "Others")
+        .map(r => parseFloat(r[key]))
+        .filter(v => isFinite(v) && v > 0)
+        .sort((a, b) => a - b);
+      if (!values.length) { result[key] = null; return; }
+      const q = (p) => {
+        const idx = (p / 100) * (values.length - 1);
+        const lo = Math.floor(idx);
+        const hi = Math.ceil(idx);
+        return values[lo] + (values[hi] - values[lo]) * (idx - lo);
+      };
+      result[key] = { q1: q(25), q2: q(50), q3: q(75), min: values[0], max: values[values.length - 1] };
+    });
+    return result;
+  }, [rows]);
+
+  const getHeatmapStyle = (value, key) => {
+    if (!quartiles[key]) return { bg: "bg-gray-100", text: "text-gray-400" };
+    const num = parseFloat(value);
+    if (!isFinite(num) || num === 0) return { bg: "bg-gray-100", text: "text-gray-400" };
+    const { q1, q2, q3 } = quartiles[key];
+    if (num <= q1) return { bg: "bg-[#e0f2fe]", text: "text-gray-800" };
+    if (num <= q2) return { bg: "bg-[#bae6fd]", text: "text-gray-800" };
+    if (num <= q3) return { bg: "bg-[#3b82f6]", text: "text-white" };
+    return { bg: "bg-[#1e3a5f]", text: "text-white" };
   };
 
   const fetchPreview = async () => {
@@ -605,7 +642,7 @@ export default function Crosstab({ df, fteCol, flcCol, formulas = [], datasetId 
       {/* Results Section */}
         {rows.length > 0 && (
         <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-          <div className="bg-[#01244a] px-4 py-2 border-b border-[#01244a]">
+          <div className="bg-[#01244a] px-4 py-2 border-b border-[#01244a] flex items-center justify-between">
             <h4 className="text-base font-semibold text-white flex items-center gap-2">
                 <svg
                 className="w-5 h-5 text-brand-500"
@@ -622,16 +659,64 @@ export default function Crosstab({ df, fteCol, flcCol, formulas = [], datasetId 
               </svg>
               Crosstab Results
             </h4>
+            <div className="flex rounded-md overflow-hidden border border-white/30">
+              <button
+                onClick={() => setViewMode("table")}
+                className={`px-3 py-1 text-xs font-medium transition-colors ${
+                  viewMode === "table"
+                    ? "bg-white text-[#01244a]"
+                    : "bg-transparent text-white hover:bg-white/10"
+                }`}
+              >
+                Table
+              </button>
+              <button
+                onClick={() => setViewMode("heatmap")}
+                className={`px-3 py-1 text-xs font-medium transition-colors ${
+                  viewMode === "heatmap"
+                    ? "bg-white text-[#01244a]"
+                    : "bg-transparent text-white hover:bg-white/10"
+                }`}
+              >
+                Heatmap
+              </button>
+            </div>
           </div>
+
+          {viewMode === "heatmap" && (
+            <div className="px-4 py-2 bg-gray-50 border-b border-gray-200 flex items-center gap-4 flex-wrap">
+              <span className="text-xs font-medium text-gray-600">Quartile:</span>
+              <div className="flex items-center gap-1">
+                <span className="w-5 h-4 rounded-sm bg-[#e0f2fe] border border-gray-200"></span>
+                <span className="text-[11px] text-gray-600">Q1 (Lowest 25%)</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <span className="w-5 h-4 rounded-sm bg-[#bae6fd] border border-gray-200"></span>
+                <span className="text-[11px] text-gray-600">Q2 (25-50%)</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <span className="w-5 h-4 rounded-sm bg-[#3b82f6]"></span>
+                <span className="text-[11px] text-gray-600">Q3 (50-75%)</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <span className="w-5 h-4 rounded-sm bg-[#1e3a5f]"></span>
+                <span className="text-[11px] text-gray-600">Q4 (Top 25%)</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <span className="w-5 h-4 rounded-sm bg-gray-100 border border-gray-200"></span>
+                <span className="text-[11px] text-gray-600">Zero/Null</span>
+              </div>
+            </div>
+          )}
 
           <div className="overflow-auto max-h-[600px]">
               <table className="w-full border-collapse">
-              <thead className="sticky top-0 z-10 bg-[#01244a] text-white">
+              <thead className="sticky top-0 z-20 bg-[#01244a] text-white">
                 {Object.keys(multiHeaders).length > 0 && (
                   <>
                     {/* Top-level X headers */}
                     <tr className="border-b-2 border-[#0b2f4a]">
-                      <th className="border-r border-[#083145] px-3 py-2 font-bold text-left text-sm sticky left-0 z-20 shadow-sm" rowSpan={2}>
+                      <th className="border-r border-[#083145] px-3 py-2 font-bold text-left text-sm sticky left-0 z-30 bg-[#01244a] shadow-sm" rowSpan={2}>
                         Index
                       </th>
                       {Object.entries(multiHeaders).map(([top, metrics]) => (
@@ -666,7 +751,7 @@ export default function Crosstab({ df, fteCol, flcCol, formulas = [], datasetId 
                         key={k}
                         className={`border-r border-[#083145] px-3 py-2 font-bold text-white text-sm ${
                           idx === 0
-                            ? "text-left sticky left-0 bg-[#01244a] z-20 shadow-sm"
+                            ? "text-left sticky left-0 bg-[#01244a] z-30 shadow-sm"
                             : "text-center bg-[#01244a]"
                         }`}
                       >
@@ -677,7 +762,15 @@ export default function Crosstab({ df, fteCol, flcCol, formulas = [], datasetId 
                 )}
               </thead>
               <tbody>
-                {rows.map((r, i) => (
+                {rows.map((r, i) => {
+                  const rowBg = r.Index === "TOTAL"
+                    ? "bg-blue-50"
+                    : r.Index === "Others"
+                    ? "bg-yellow-50"
+                    : i % 2 === 0
+                    ? "bg-white"
+                    : "bg-gray-50";
+                  return (
                   <tr
                     key={i}
                     className={`border-b border-gray-200 ${
@@ -688,22 +781,42 @@ export default function Crosstab({ df, fteCol, flcCol, formulas = [], datasetId 
                         : i % 2 === 0
                         ? "bg-white"
                         : "bg-gray-50"
-                    } hover:bg-blue-50 transition-colors`}
+                    } hover:bg-blue-50 transition-colors group`}
                   >
-                    {Object.entries(r).map(([k, v], j) => (
+                    {Object.entries(r).map(([k, v], j) => {
+                      if (j === 0) {
+                        return (
+                          <td
+                            key={j}
+                            className={`border-r border-gray-200 px-3 py-2 text-sm font-semibold text-gray-900 text-left sticky left-0 z-10 shadow-sm ${rowBg} group-hover:bg-blue-50`}
+                          >
+                            {v ?? "-"}
+                          </td>
+                        );
+                      }
+                      if (viewMode === "heatmap" && r.Index !== "TOTAL" && r.Index !== "Others") {
+                        const style = getHeatmapStyle(v, k);
+                        return (
+                          <td
+                            key={j}
+                            className={`border-r border-gray-200 px-3 py-2 text-sm text-center tabular-nums ${style.bg} ${style.text}`}
+                          >
+                            {formatValue(v, k)}
+                          </td>
+                        );
+                      }
+                      return (
                         <td
-                        key={j}
-                        className={`border-r border-gray-200 px-3 py-2 text-sm ${
-                          j === 0
-                            ? "font-semibold text-gray-900 text-left sticky left-0 bg-inherit z-10 shadow-sm"
-                            : "text-center text-gray-700 tabular-nums"
-                        }`}
-                      >
-                        {j === 0 ? (v ?? "-") : formatValue(v, k)}
-                      </td>
-                    ))}
+                          key={j}
+                          className="border-r border-gray-200 px-3 py-2 text-sm text-center text-gray-700 tabular-nums"
+                        >
+                          {formatValue(v, k)}
+                        </td>
+                      );
+                    })}
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>

@@ -22,6 +22,138 @@ function Badge({ method }) {
   return <span className={`${m.bg} ${m.text} text-[11px] font-semibold px-2 py-0.5 rounded-full whitespace-nowrap`}>{m.label}</span>;
 }
 
+const METHOD_ORDER = ["exact", "fuzzy", "ai", "inferred", "cached", "unresolved", "placeholder"];
+const METHOD_HEX = {
+  exact:       "#01244a",
+  fuzzy:       "#1e5a8a",
+  ai:          "#2d7ab6",
+  inferred:    "#4a9fd4",
+  cached:      "#7ab8de",
+  placeholder: "#bdd7ea",
+  unresolved:  "#dc2626",
+};
+
+function RatSummaryCard({ funcMappings, subfuncMappings, titleMappings, funcAccepted, subfuncAccepted, titleAccepted, funcOverrides, subfuncOverrides, titleOverrides }) {
+  const [showChanges, setShowChanges] = useState(false);
+
+  const buildStats = (mappings, accepted, overrides) => {
+    const total = mappings.length;
+    const acceptedCount = mappings.filter((_, i) => accepted[i] !== false).length;
+    const rejectedCount = total - acceptedCount;
+    const methods = {};
+    const changed = [];
+    mappings.forEach((m, i) => {
+      if (accepted[i] === false) return;
+      const method = m.method;
+      methods[method] = (methods[method] || 0) + 1;
+      const final = overrides[i] !== undefined ? overrides[i] : m.resolved;
+      if (final !== m.input) changed.push({ input: m.input, resolved: final, method, function: m.function });
+    });
+    return { total, acceptedCount, rejectedCount, methods, changed };
+  };
+
+  const funcStats    = buildStats(funcMappings,    funcAccepted,    funcOverrides);
+  const subfuncStats = buildStats(subfuncMappings, subfuncAccepted, subfuncOverrides);
+  const titleStats   = buildStats(titleMappings,   titleAccepted,   titleOverrides);
+  const allChanged   = [...funcStats.changed, ...subfuncStats.changed, ...titleStats.changed];
+
+  const CategoryPanel = ({ label, stats, isLast }) => {
+    const methodsPresent = METHOD_ORDER.filter(m => stats.methods[m] > 0);
+    const base = stats.acceptedCount || 1;
+    return (
+      <div className={`flex-1 min-w-0 px-5 py-3 ${!isLast ? "border-r border-brand-100" : ""}`}>
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-xs font-bold uppercase tracking-widest text-brand-400">{label}</span>
+          <span className="text-xs text-brand-500 font-semibold">{stats.acceptedCount}/{stats.total}</span>
+        </div>
+
+        <div className="h-1.5 w-full rounded-full overflow-hidden flex bg-brand-100/60">
+          {methodsPresent.map(m => (
+            <div
+              key={m}
+              style={{ width: `${(stats.methods[m] / base) * 100}%`, backgroundColor: METHOD_HEX[m] }}
+              title={`${METHOD_BADGE[m]?.label}: ${stats.methods[m]}`}
+            />
+          ))}
+        </div>
+
+        <div className="flex items-center gap-2 mt-2 flex-wrap">
+          {methodsPresent.map(m => (
+            <span key={m} className="text-xs text-slate-500">
+              <span className="inline-block w-1.5 h-1.5 rounded-full mr-0.5 align-middle" style={{ backgroundColor: METHOD_HEX[m] }} />
+              {METHOD_BADGE[m]?.label} <span className="font-semibold text-slate-700">{stats.methods[m]}</span>
+            </span>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <div className="bg-white border border-brand-200 rounded-xl shadow-sm overflow-hidden">
+      {/* Header */}
+      <div className="bg-brand-600 px-5 py-2.5 flex items-center gap-2">
+        <svg className="w-4 h-4 text-brand-200 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+        <span className="text-sm font-semibold text-white">Rationalisation applied</span>
+        <span className="text-brand-300 text-xs">— 6 new columns added to your dataset</span>
+      </div>
+
+      {/* 3-column stat panels */}
+      <div className="flex divide-x divide-brand-100">
+        <CategoryPanel label="Functions"    stats={funcStats}    isLast={false} />
+        <CategoryPanel label="Subfunctions" stats={subfuncStats} isLast={false} />
+        <CategoryPanel label="Titles"       stats={titleStats}   isLast />
+      </div>
+
+      {/* What Changed — collapsible */}
+      {allChanged.length > 0 && (
+        <div className="border-t border-brand-100">
+          <button
+            onClick={() => setShowChanges(v => !v)}
+            className="w-full flex items-center justify-between px-5 py-2 text-xs font-semibold text-brand-600 hover:bg-brand-50/60 transition select-none"
+          >
+            <span className="flex items-center gap-1.5">
+              <svg className="w-4 h-4 text-brand-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16V4m0 0L3 8m4-4l4 4m6 4v8m0 0l4-4m-4 4l-4-4" />
+              </svg>
+              {allChanged.length} values standardised to taxonomy
+            </span>
+            <svg className={`w-4 h-4 text-brand-400 transition-transform duration-200 ${showChanges ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+          {showChanges && (
+            <div className="px-5 pb-3.5 flex flex-wrap gap-1.5 max-h-28 overflow-y-auto">
+              {allChanged.slice(0, 40).map((c, i) => (
+                <span key={i} className="inline-flex items-center gap-1 bg-brand-50 border border-brand-100 rounded-md px-2 py-0.5 text-xs">
+                  <span className="text-slate-500 truncate max-w-[90px]">{c.input}</span>
+                  <svg className="w-2.5 h-2.5 text-brand-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 5l7 7-7 7" />
+                  </svg>
+                  <span className="text-brand-700 font-semibold truncate max-w-[90px]">{c.resolved}</span>
+                </span>
+              ))}
+              {allChanged.length > 40 && (
+                <span className="text-xs text-slate-400 self-center">+{allChanged.length - 40} more</span>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Footer */}
+      <div className="bg-brand-50/60 border-t border-brand-100 px-5 py-2 flex items-center justify-end gap-1">
+        <span className="text-xs text-brand-500 font-medium">Proceed to Hierarchy to build your org structure</span>
+        <svg className="w-3 h-3 text-brand-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+        </svg>
+      </div>
+    </div>
+  );
+}
+
 function SummaryBar({ mappings }) {
   const counts = useMemo(() => {
     const c = { exact: 0, fuzzy: 0, ai: 0, inferred: 0, cached: 0, placeholder: 0, original: 0, unresolved: 0 };
@@ -529,10 +661,17 @@ export default function Rationalise({
       {viewMode === "run" && (
       <>
       {applied && (
-        <div className="bg-green-50 border border-green-200 rounded-lg px-4 py-3 text-sm text-green-700 flex items-center gap-2">
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-          <span className="font-medium">Rationalisation applied</span> — 6 new columns added to your dataset. Proceed to Hierarchy.
-        </div>
+        <RatSummaryCard
+          funcMappings={funcMappings}
+          subfuncMappings={subfuncMappings}
+          titleMappings={titleMappings}
+          funcAccepted={funcAccepted}
+          subfuncAccepted={subfuncAccepted}
+          titleAccepted={titleAccepted}
+          funcOverrides={funcOverrides}
+          subfuncOverrides={subfuncOverrides}
+          titleOverrides={titleOverrides}
+        />
       )}
 
       {/* Shimmering progress card when running */}

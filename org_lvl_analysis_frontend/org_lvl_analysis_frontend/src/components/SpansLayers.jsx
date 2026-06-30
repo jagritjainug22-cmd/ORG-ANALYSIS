@@ -1,10 +1,15 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import Plot from "react-plotly.js";
+import PptxGenJS from "pptxgenjs";
 import { spansLayers, hierarchy as hierarchyBackend } from "../api/backend";
 import * as XLSX from "xlsx";
 
 const NAVY = "#01244A";
 const BLUE_MID = "#5C8BB4";
+const WHITE = "FFFFFF";
+const NAVY_HEX = "01244A";
+const BLUE_MID_HEX = "5C8BB4";
+const LIGHT_BG_HEX = "E8EEF4";
 
 function OpenInOrgChartButton({ empId, onJump }) {
   if (!empId || !onJump) return null;
@@ -63,7 +68,9 @@ export default function SpansLayers({
   const [enriching, setEnriching] = useState(false);
   const [selectedLayer, setSelectedLayer] = useState(null);
   const [analysisTab, setAnalysisTab] = useState("micro");
+  const [downloading, setDownloading] = useState(false);
   const enrichingRef = useRef(false);
+  const plotRef = useRef(null);
   
   // Dynamic filter states
   const [filters, setFilters] = useState([
@@ -268,42 +275,262 @@ export default function SpansLayers({
     }
   };
 
+  // PPT export
+  const downloadPPT = async () => {
+    if (!result || !result.summary?.length) {
+      setError("No analysis data to export. Run analysis first.");
+      return;
+    }
+    setDownloading(true);
+    try {
+      const pptx = new PptxGenJS();
+      pptx.layout = "LAYOUT_WIDE";
+      pptx.author = "OrgSight";
+      pptx.title = "Spans & Layers Analysis";
+
+      const headerOpts = { color: WHITE, fill: { color: NAVY_HEX }, bold: true, fontSize: 9, align: "center", valign: "middle" };
+      const cellOpts = { fontSize: 9, align: "center", valign: "middle", border: { type: "solid", pt: 0.5, color: "CCCCCC" } };
+      const altRow = { ...cellOpts, fill: { color: LIGHT_BG_HEX } };
+
+      // --- Slide 1: Title + KPIs ---
+      const s1 = pptx.addSlide();
+      s1.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: "100%", h: 1.1, fill: { color: NAVY_HEX } });
+      s1.addText("Spans & Layers Analysis", { x: 0.5, y: 0.2, w: 8, h: 0.6, fontSize: 24, bold: true, color: WHITE, fontFace: "Arial" });
+      s1.addText(`Span Threshold: ${threshold}`, { x: 0.5, y: 0.7, w: 4, h: 0.3, fontSize: 11, color: "AACCEE", fontFace: "Arial" });
+
+      const kpis = result.insights ? [
+        { label: "1:1 Managers", value: String(result.insights.one_to_one_count ?? 0), sub: "Micro-teams (span = 1)" },
+        { label: "FTE Opportunity", value: threshold > 0 ? String(result.insights.fte_opportunity ?? 0) : "—", sub: threshold > 0 ? `Below target span (${threshold})` : "Set threshold" },
+        { label: "Thin Layers", value: String(result.insights.thin_layer_count ?? 0), sub: "Consecutive 1:1 chains" },
+        { label: "Avg Span", value: String(result.insights.avg_span ?? "—"), sub: "Managers only" },
+      ] : [];
+
+      kpis.forEach((kpi, i) => {
+        const x = 0.4 + i * 3.1;
+        s1.addShape(pptx.ShapeType.roundRect, { x, y: 1.5, w: 2.8, h: 1.3, fill: { color: WHITE }, shadow: { type: "outer", blur: 4, offset: 2, color: "CCCCCC" }, rectRadius: 0.1 });
+        s1.addText(kpi.label.toUpperCase(), { x, y: 1.6, w: 2.8, h: 0.3, fontSize: 8, bold: true, color: BLUE_MID_HEX, align: "center", fontFace: "Arial" });
+        s1.addText(kpi.value, { x, y: 1.9, w: 2.8, h: 0.5, fontSize: 22, bold: true, color: NAVY_HEX, align: "center", fontFace: "Arial" });
+        s1.addText(kpi.sub, { x, y: 2.4, w: 2.8, h: 0.3, fontSize: 7, color: "888888", align: "center", fontFace: "Arial" });
+      });
+
+      if (result.high != null || result.low != null) {
+        s1.addText(`High: ${result.high || 0}   |   Low: ${result.low || 0}`, { x: 0.5, y: 3.1, w: 5, h: 0.3, fontSize: 10, color: NAVY_HEX, fontFace: "Arial" });
+      }
+
+      // --- Slide 2: Summary Table + Chart ---
+      const s2 = pptx.addSlide();
+      s2.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: "100%", h: 0.6, fill: { color: NAVY_HEX } });
+      s2.addText("Summary & Structure", { x: 0.3, y: 0.1, w: 6, h: 0.4, fontSize: 16, bold: true, color: WHITE, fontFace: "Arial" });
+
+      const summaryHeaders = [
+        [
+          { text: "Level", options: headerOpts },
+          { text: "IC", options: headerOpts },
+          { text: "Mgr", options: headerOpts },
+          { text: "Total", options: headerOpts },
+          { text: "Avg Span", options: headerOpts },
+        ],
+      ];
+      const summaryRows = result.summary.map((r, i) => [
+        { text: String(r.Level), options: i % 2 ? altRow : cellOpts },
+        { text: String(r.IC_Count || "-"), options: i % 2 ? altRow : cellOpts },
+        { text: String(r.Manager_Count || "-"), options: i % 2 ? altRow : cellOpts },
+        { text: String(r.Total_Employees || "-"), options: { ...(i % 2 ? altRow : cellOpts), bold: true } },
+        { text: String(r.Avg_Span || "-"), options: i % 2 ? altRow : cellOpts },
+      ]);
+
+      s2.addTable([...summaryHeaders, ...summaryRows], { x: 0.3, y: 0.8, w: 4.5, colW: [0.7, 0.8, 0.8, 0.9, 1.0], rowH: 0.35, border: { type: "solid", pt: 0.5, color: "CCCCCC" } });
+
+      // Capture chart as PNG via SVG serialization
+      const gd = plotRef.current?.el;
+      if (gd) {
+        try {
+          const svgEl = gd.querySelector("svg.main-svg");
+          if (svgEl) {
+            const svgData = new XMLSerializer().serializeToString(svgEl);
+            const svgBlob = new Blob([svgData], { type: "image/svg+xml;charset=utf-8" });
+            const url = URL.createObjectURL(svgBlob);
+            const imgData = await new Promise((resolve, reject) => {
+              const img = new Image();
+              img.onload = () => {
+                const canvas = document.createElement("canvas");
+                canvas.width = img.naturalWidth * 2;
+                canvas.height = img.naturalHeight * 2;
+                const ctx = canvas.getContext("2d");
+                ctx.scale(2, 2);
+                ctx.fillStyle = "white";
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.drawImage(img, 0, 0);
+                resolve(canvas.toDataURL("image/png"));
+                URL.revokeObjectURL(url);
+              };
+              img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("SVG render failed")); };
+              img.src = url;
+            });
+            s2.addImage({ data: imgData, x: 5.0, y: 0.7, w: 7.8, h: 4.0 });
+          }
+        } catch (e) {
+          console.warn("Could not capture chart for PPT:", e);
+        }
+      }
+
+      // --- Slide 3: Micro-Teams ---
+      if (result.insights?.one_to_one_managers?.length > 0) {
+        const s3 = pptx.addSlide();
+        s3.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: "100%", h: 0.6, fill: { color: NAVY_HEX } });
+        s3.addText("Micro-Teams (1:1 Managers)", { x: 0.3, y: 0.1, w: 8, h: 0.4, fontSize: 16, bold: true, color: WHITE, fontFace: "Arial" });
+        s3.addText(`${result.insights.one_to_one_count} manager(s) with exactly 1 direct report`, { x: 0.3, y: 0.7, w: 10, h: 0.3, fontSize: 10, color: NAVY_HEX, fontFace: "Arial" });
+
+        const microHeaders = [[
+          { text: "Manager", options: headerOpts },
+          { text: "ID", options: headerOpts },
+          { text: "Level", options: headerOpts },
+          { text: "Span", options: headerOpts },
+        ]];
+        const microRows = result.insights.one_to_one_managers.map((m, i) => [
+          { text: String(m.name || ""), options: { ...(i % 2 ? altRow : cellOpts), align: "left" } },
+          { text: String(m.emp_id || ""), options: i % 2 ? altRow : cellOpts },
+          { text: String(m.level ?? ""), options: i % 2 ? altRow : cellOpts },
+          { text: String(m.span ?? ""), options: i % 2 ? altRow : cellOpts },
+        ]);
+        s3.addTable([...microHeaders, ...microRows], { x: 0.3, y: 1.1, w: 12, colW: [4, 3, 2.5, 2.5], rowH: 0.3, border: { type: "solid", pt: 0.5, color: "CCCCCC" } });
+      }
+
+      // --- Slide 4: Below Target ---
+      if (threshold > 0 && result.insights?.below_target?.length > 0) {
+        const s4 = pptx.addSlide();
+        s4.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: "100%", h: 0.6, fill: { color: NAVY_HEX } });
+        s4.addText("Below Target Span", { x: 0.3, y: 0.1, w: 8, h: 0.4, fontSize: 16, bold: true, color: WHITE, fontFace: "Arial" });
+        s4.addText(`${result.insights.below_target_count} manager(s) below target span of ${threshold} · FTE opportunity: ${result.insights.fte_opportunity}`, { x: 0.3, y: 0.7, w: 12, h: 0.3, fontSize: 10, color: NAVY_HEX, fontFace: "Arial" });
+
+        const belowHeaders = [[
+          { text: "Manager", options: headerOpts },
+          { text: "Current Span", options: headerOpts },
+          { text: "Target", options: headerOpts },
+          { text: "Gap", options: headerOpts },
+          { text: "FTE", options: headerOpts },
+        ]];
+        const belowRows = result.insights.below_target.map((m, i) => [
+          { text: String(m.name || ""), options: { ...(i % 2 ? altRow : cellOpts), align: "left" } },
+          { text: String(m.current_span ?? ""), options: i % 2 ? altRow : cellOpts },
+          { text: String(m.target_span ?? ""), options: i % 2 ? altRow : cellOpts },
+          { text: String(m.gap ?? ""), options: i % 2 ? altRow : cellOpts },
+          { text: String(m.fte ?? ""), options: i % 2 ? altRow : cellOpts },
+        ]);
+        s4.addTable([...belowHeaders, ...belowRows], { x: 0.3, y: 1.1, w: 12, colW: [3.5, 2.2, 2.1, 2.1, 2.1], rowH: 0.3, border: { type: "solid", pt: 0.5, color: "CCCCCC" } });
+      }
+
+      // --- Slide 5: Thin Layers ---
+      if (result.insights?.thin_layers?.length > 0) {
+        const s5 = pptx.addSlide();
+        s5.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: "100%", h: 0.6, fill: { color: NAVY_HEX } });
+        s5.addText("Thin Layers", { x: 0.3, y: 0.1, w: 8, h: 0.4, fontSize: 16, bold: true, color: WHITE, fontFace: "Arial" });
+        s5.addText(`${result.insights.thin_layer_count} consecutive 1:1 management chain(s)`, { x: 0.3, y: 0.7, w: 10, h: 0.3, fontSize: 10, color: NAVY_HEX, fontFace: "Arial" });
+
+        const thinHeaders = [[
+          { text: "Manager", options: headerOpts },
+          { text: "Report", options: headerOpts },
+          { text: "Level", options: headerOpts },
+        ]];
+        const thinRows = result.insights.thin_layers.map((t, i) => [
+          { text: String(t.name || ""), options: { ...(i % 2 ? altRow : cellOpts), align: "left" } },
+          { text: `${t.report_name || ""} (${t.report_id || ""})`, options: { ...(i % 2 ? altRow : cellOpts), align: "left" } },
+          { text: String(t.level ?? ""), options: i % 2 ? altRow : cellOpts },
+        ]);
+        s5.addTable([...thinHeaders, ...thinRows], { x: 0.3, y: 1.1, w: 12, colW: [4, 5, 3], rowH: 0.3, border: { type: "solid", pt: 0.5, color: "CCCCCC" } });
+      }
+
+      await pptx.writeFile({ fileName: `Spans_Layers_Analysis_${new Date().toISOString().split("T")[0]}.pptx` });
+    } catch (err) {
+      console.error("PPT export failed:", err);
+      setError("Failed to generate PPT. Please try again.");
+    } finally {
+      setDownloading(false);
+    }
+  };
+
   // Summary data
   const summary = result?.summary || [];
   const insights = result?.insights;
 
   const layerEmployees = useMemo(() => {
-    if (selectedLayer == null || !result?.df?.length) return [];
+    if (selectedLayer == null) return [];
+    const dataSource = (filteredDf && filteredDf.length > 0) ? filteredDf : baseDf;
+    if (!dataSource.length) return [];
     const lvl = Number(selectedLayer);
-    return result.df
-      .filter((r) => Number(r.Level) === lvl)
-      .map((r) => ({
+    const matched = dataSource.filter((r) => Number(r.Level) === lvl);
+    return matched.map((r) => ({
         emp_id: empCol ? String(r[empCol]) : "",
         name: getDisplayName(r),
         span: Number(r.Span || 0),
         is_manager: Number(r.Span || 0) > 0,
       }));
-  }, [selectedLayer, result, empCol, getDisplayName]);
+  }, [selectedLayer, filteredDf, baseDf, empCol, getDisplayName]);
 
-  const handlePlotClick = (event) => {
-    const pt = event?.points?.[0];
-    if (!pt) return;
-    const layer = pt.y;
-    setSelectedLayer(layer);
-  };
-
-  const barColor = (level, base) =>
-    selectedLayer != null && Number(level) === Number(selectedLayer) ? NAVY : base;
-
-  // Start with level 1 (remove level 0)
+  // Derived chart arrays
   const maxLevel = summary.length > 0 ? Math.max(...summary.map(r => r.Level)) : 1;
-  const levels = summary.map(r => r.Level);
-  const icCounts = summary.map(r => r.IC_Count);
-  const mgrCounts = summary.map(r => r.Manager_Count);
-  const totals = summary.map(r => r.Total_Employees);
+  const levels = useMemo(() => summary.map(r => r.Level), [summary]);
+  const icCounts = useMemo(() => summary.map(r => r.IC_Count), [summary]);
+  const mgrCounts = useMemo(() => summary.map(r => r.Manager_Count), [summary]);
+  const totals = useMemo(() => summary.map(r => r.Total_Employees), [summary]);
 
   const maxVal = Math.max(...icCounts, ...mgrCounts, 1);
   const pad = maxVal * 0.2;
+
+  // Total-label annotations (replaces the old invisible trace that blocked clicks)
+  const totalAnnotations = useMemo(() => levels.map((lvl, i) => ({
+    x: maxVal + pad * 0.3,
+    y: lvl,
+    text: `<b>${totals[i]}</b>`,
+    showarrow: false,
+    font: { size: 14, family: "Arial Black", color: "black" },
+    xanchor: "left",
+  })), [levels, totals, maxVal, pad]);
+
+  // 4 traces only: mirror IC, mirror Mgr, IC, Mgr — NO invisible 5th trace
+  const chartData = useMemo(() => [
+    { y: levels, x: icCounts.map(v => -v), type: "bar", orientation: "h", marker: { color: BLUE_MID }, showlegend: false, hovertemplate: "<b>Layer %{y}</b><br>%{x:.0f} ICs<br><i>Click to drill down</i><extra></extra>" },
+    { y: levels, x: mgrCounts.map(v => -v), type: "bar", orientation: "h", marker: { color: NAVY }, showlegend: false, hovertemplate: "<b>Layer %{y}</b><br>%{x:.0f} managers<br><i>Click to drill down</i><extra></extra>" },
+    { y: levels, x: icCounts, type: "bar", orientation: "h", name: "Individual Contributors", marker: { color: BLUE_MID }, text: icCounts, textposition: "inside", textfont: { color: "white", size: 12 }, hovertemplate: "<b>Layer %{y}</b><br>%{x} ICs<br><i>Click to drill down</i><extra></extra>" },
+    { y: levels, x: mgrCounts, type: "bar", orientation: "h", name: "Managers", marker: { color: NAVY }, text: mgrCounts, textposition: "inside", textfont: { color: "white", size: 12 }, hovertemplate: "<b>Layer %{y}</b><br>%{x} managers<br><i>Click to drill down</i><extra></extra>" },
+  ], [levels, icCounts, mgrCounts, totals]);
+
+  const chartLayout = useMemo(() => ({
+    height: 80 + (summary.length * 41),
+    barmode: "relative",
+    bargap: 0.1,
+    bargroupgap: 0.05,
+    dragmode: "pan",
+    plot_bgcolor: "white",
+    paper_bgcolor: "white",
+    yaxis: { autorange: "reversed", range: [0, maxLevel], tickvals: levels, ticktext: levels.map(l => String(l)), tickfont: { size: 12 }, fixedrange: false, title: "" },
+    xaxis: { range: [-(maxVal + pad), maxVal + pad], title: "Employee Count", zeroline: true, fixedrange: false, showticklabels: false },
+    clickmode: "event",
+    annotations: totalAnnotations,
+    margin: { l: 10, r: 10, t: 50, b: 20 },
+    showlegend: true,
+    legend: { orientation: "h", yanchor: "bottom", y: -0.15, xanchor: "center", x: 0.5 },
+  }), [summary, maxLevel, levels, maxVal, pad, totalAnnotations]);
+
+  const chartConfig = useMemo(() => ({
+    displayModeBar: true,
+    displaylogo: false,
+    modeBarButtonsToRemove: ['select2d', 'lasso2d'],
+    scrollZoom: true,
+    responsive: true,
+    toImageButtonOptions: { format: 'png', filename: `org_pyramid_${new Date().toISOString().split('T')[0]}`, height: 80 + (summary.length * 41), scale: 2 },
+  }), [summary]);
+
+  // Bind plotly_click via onInitialized/onUpdate (fires after Plotly has set up the graphDiv)
+  const bindPlotClick = useCallback((_figure, graphDiv) => {
+    if (!graphDiv || typeof graphDiv.on !== "function") return;
+    graphDiv.removeAllListeners("plotly_click");
+    graphDiv.on("plotly_click", (data) => {
+      const pt = data?.points?.[0];
+      if (!pt) return;
+      setSelectedLayer((prev) => (prev === pt.y ? null : pt.y));
+    });
+  }, []);
 
   return (
     <div className="p-4 space-y-4 overflow-auto h-full">
@@ -339,7 +566,7 @@ export default function SpansLayers({
           </h4>
           <button
             onClick={addFilter}
-            className="flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium bg-green-600 text-white hover:bg-green-700 transition"
+            className="flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium bg-brand-500 text-white hover:bg-brand-600 transition"
           >
             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
@@ -432,19 +659,19 @@ export default function SpansLayers({
 
           {threshold > 0 && result && (
             <>
-              <div className="flex items-center gap-1.5 px-2.5 py-1 bg-red-50 border border-red-200 rounded-md">
-                <svg className="w-3 h-3 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <div className="flex items-center gap-1.5 px-2.5 py-1 bg-[#01244A] rounded-md">
+                <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 10l7-7m0 0l7 7m-7-7v18" />
                 </svg>
-                <span className="text-xs text-gray-600">High</span>
-                <span className="text-sm font-bold text-red-600">{result.high || 0}</span>
+                <span className="text-xs text-white/70">High</span>
+                <span className="text-sm font-bold text-white">{result.high || 0}</span>
               </div>
-              <div className="flex items-center gap-1.5 px-2.5 py-1 bg-blue-50 border border-blue-200 rounded-md">
-                <svg className="w-3 h-3 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <div className="flex items-center gap-1.5 px-2.5 py-1 bg-brand-50 border border-[#01244A]/30 rounded-md">
+                <svg className="w-3 h-3 text-[#01244A]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
                 </svg>
-                <span className="text-xs text-gray-600">Low</span>
-                <span className="text-sm font-bold text-blue-600">{result.low || 0}</span>
+                <span className="text-xs text-[#01244A]/70">Low</span>
+                <span className="text-sm font-bold text-[#01244A]">{result.low || 0}</span>
               </div>
             </>
           )}
@@ -476,14 +703,26 @@ export default function SpansLayers({
 
           {summary.length > 0 && (
             <button
-              onClick={downloadSummary}
-              disabled={loading}
-              className="px-3 py-1.5 bg-white border border-brand-500 text-brand-600 hover:bg-brand-50 rounded-md text-sm font-medium transition disabled:opacity-50 flex items-center gap-1.5"
+              onClick={downloadPPT}
+              disabled={loading || downloading}
+              className="px-3 py-1.5 bg-white border border-[#01244A] text-[#01244A] hover:bg-brand-50 rounded-md text-sm font-medium transition disabled:opacity-50 flex items-center gap-1.5"
             >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-              </svg>
-              Summary
+              {downloading ? (
+                <>
+                  <svg className="animate-spin h-4 w-4 text-[#01244A]" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                  </svg>
+                  Generating...
+                </>
+              ) : (
+                <>
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                  Download PPT
+                </>
+              )}
             </button>
           )}
 
@@ -491,7 +730,7 @@ export default function SpansLayers({
             <button
               onClick={handleDownload}
               disabled={loading}
-              className="px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white rounded-md text-sm font-medium shadow-sm transition disabled:opacity-50 flex items-center gap-1.5"
+              className="px-3 py-1.5 bg-[#01244A] hover:bg-[#01244A]/90 text-white rounded-md text-sm font-medium shadow-sm transition disabled:opacity-50 flex items-center gap-1.5"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
@@ -601,7 +840,11 @@ export default function SpansLayers({
                     </thead>
                     <tbody className="divide-y divide-gray-200">
                       {summary.map((r) => (
-                        <tr key={r.Level} className="hover:bg-gray-50">
+                        <tr
+                          key={r.Level}
+                          onClick={() => setSelectedLayer((prev) => (prev === r.Level ? null : r.Level))}
+                          className={`cursor-pointer transition-colors ${selectedLayer === r.Level ? "bg-brand-50 ring-1 ring-brand-300" : "hover:bg-gray-50"}`}
+                        >
                           <td className="px-3 py-2 font-medium text-gray-900">{r.Level}</td>
                           <td className="px-3 py-2 text-right text-gray-900">{r.IC_Count || "-"}</td>
                           <td className="px-3 py-2 text-right text-gray-900">{r.Manager_Count || "-"}</td>
@@ -616,116 +859,15 @@ export default function SpansLayers({
 
               {/* Pyramid Chart - Takes 9 columns */}
               <div className="col-span-9">
-                <p className="text-xs text-gray-400 mb-2">Click a layer bar to drill down into employees</p>
+                <p className="text-xs text-gray-400 mb-2">Click a layer bar or summary row to drill down into employees</p>
                 <div className="overflow-auto" style={{ maxHeight: "600px", width: "100%" }}>
                   <Plot
-                    onClick={handlePlotClick}
-                    data={[
-                      {
-                        y: levels,
-                        x: icCounts.map((x) => -x),
-                        type: "bar",
-                        orientation: "h",
-                        marker: { color: levels.map((l) => barColor(l, BLUE_MID)) },
-                        showlegend: false,
-                        hoverinfo: "skip",
-                      },
-                      {
-                        y: levels,
-                        x: mgrCounts.map((x) => -x),
-                        type: "bar",
-                        orientation: "h",
-                        marker: { color: levels.map((l) => barColor(l, NAVY)) },
-                        showlegend: false,
-                        hoverinfo: "skip",
-                      },
-                      {
-                        y: levels,
-                        x: icCounts,
-                        type: "bar",
-                        orientation: "h",
-                        name: "Individual Contributors",
-                        marker: { color: levels.map((l) => barColor(l, BLUE_MID)) },
-                        text: icCounts,
-                        textposition: "inside",
-                        textfont: { color: "white", size: 12 },
-                        hovertemplate: "<b>Layer %{y}</b><br>%{x} ICs<br><i>Click to drill down</i><extra></extra>",
-                      },
-                      {
-                        y: levels,
-                        x: mgrCounts,
-                        type: "bar",
-                        orientation: "h",
-                        name: "Managers",
-                        marker: { color: levels.map((l) => barColor(l, NAVY)) },
-                        text: mgrCounts,
-                        textposition: "inside",
-                        textfont: { color: "white", size: 12 },
-                        hovertemplate: "<b>Layer %{y}</b><br>%{x} managers<br><i>Click to drill down</i><extra></extra>",
-                      },
-                      {
-                        y: levels,
-                        x: new Array(levels.length).fill(0),
-                        type: "bar",
-                        orientation: "h",
-                        text: totals,
-                        textposition: "outside",
-                        marker: { color: "rgba(0,0,0,0)" },
-                        showlegend: false,
-                        textfont: {
-                          size: 14,
-                          family: "Arial Black",
-                          color: "black",
-                        },
-                        hoverinfo: "skip",
-                      },
-                    ]}
-                    layout={{
-                      height: 80 + (summary.length * 41),
-                      barmode: "relative",
-                      bargap: 0.1,
-                      bargroupgap: 0.05,
-                      plot_bgcolor: "white",
-                      paper_bgcolor: "white",
-                      yaxis: {
-                        autorange: "reversed",
-                        range: [0, maxLevel],
-                        tickvals: levels,
-                        ticktext: levels.map(l => String(l)),
-                        tickfont: { size: 12 },
-                        fixedrange: false,
-                        title: "",
-                      },
-                      xaxis: {
-                        range: [-(maxVal + pad), maxVal + pad],
-                        title: "Employee Count",
-                        zeroline: true,
-                        fixedrange: false,
-                        showticklabels: false,
-                      },
-                      margin: { l: 10, r: 10, t: 50, b: 20 },
-                      showlegend: true,
-                      legend: {
-                        orientation: "h",
-                        yanchor: "bottom",
-                        y: -0.15,
-                        xanchor: "center",
-                        x: 0.5,
-                      },
-                    }}
-                    config={{ 
-                      displayModeBar: true,
-                      displaylogo: false,
-                      modeBarButtonsToRemove: ['select2d', 'lasso2d'],
-                      scrollZoom: true,
-                      responsive: true,
-                      toImageButtonOptions: {
-                        format: 'png',
-                        filename: `org_pyramid_${new Date().toISOString().split('T')[0]}`,
-                        height: 80 + (summary.length * 41),
-                        scale: 2
-                      }
-                    }}
+                    ref={plotRef}
+                    onInitialized={bindPlotClick}
+                    onUpdate={bindPlotClick}
+                    data={chartData}
+                    layout={chartLayout}
+                    config={chartConfig}
                     style={{ width: "100%" }}
                     useResizeHandler
                   />
@@ -803,7 +945,7 @@ export default function SpansLayers({
                   >
                     {tab.label}
                     {tab.count > 0 && (
-                      <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-red-100 text-red-700">
+                      <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-brand-100 text-brand-700">
                         {tab.count}
                       </span>
                     )}
@@ -814,7 +956,7 @@ export default function SpansLayers({
                 {analysisTab === "micro" && (
                   <>
                     <div className="mb-4">
-                      <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-red-50 border border-red-200 rounded-full text-xs font-semibold text-red-700">
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-brand-50 border border-brand-200 rounded-full text-xs font-semibold text-brand-700">
                         {insights.one_to_one_count} manager{insights.one_to_one_count !== 1 ? "s" : ""} with exactly 1 direct report
                       </span>
                     </div>
@@ -852,7 +994,7 @@ export default function SpansLayers({
                   <>
                     <div className="mb-4">
                       {threshold > 0 ? (
-                        <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 border border-amber-200 rounded-full text-xs font-semibold text-amber-700">
+                        <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-brand-50 border border-brand-200 rounded-full text-xs font-semibold text-brand-700">
                           {insights.below_target_count} manager{insights.below_target_count !== 1 ? "s" : ""} below target span of {threshold} · FTE opportunity: {insights.fte_opportunity}
                         </span>
                       ) : (
@@ -894,7 +1036,7 @@ export default function SpansLayers({
                 {analysisTab === "thin" && (
                   <>
                     <div className="mb-4">
-                      <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-red-50 border border-red-200 rounded-full text-xs font-semibold text-red-700">
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-brand-50 border border-brand-200 rounded-full text-xs font-semibold text-brand-700">
                         {insights.thin_layer_count} consecutive 1:1 management chain{insights.thin_layer_count !== 1 ? "s" : ""}
                       </span>
                     </div>

@@ -501,86 +501,116 @@ export default function OrgDetailPanel({
             )}
           </div>
 
-          {allFields.map(([k, v], idx) => (
-            <div
-              key={k}
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                gap: 12,
-                padding: "8px 14px",
-                borderBottom: idx < allFields.length - 1 ? `1px solid ${AM.borderLight}` : "none",
-                transition: "background 0.1s",
-              }}
-              onMouseEnter={(e) => { e.currentTarget.style.background = "#f4f7fb"; }}
-              onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
-            >
-              <span
+          {allFields.map(([k, v], idx) => {
+            // The employee ID column is the primary key that drives the entire hierarchy
+            // (reporting chains, drag-and-drop targets, etc.). Changing it would silently
+            // break those references, so we treat it as permanently read-only here.
+            const isIdField = k === empCol;
+            const fieldEditable = canInlineEdit && !isIdField;
+
+            return (
+              <div
+                key={k}
                 style={{
-                  fontSize: 11.5,
-                  color: AM.textMuted,
-                  flexShrink: 0,
-                  fontWeight: 400,
-                  maxWidth: 120,
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  gap: 12,
+                  padding: "8px 14px",
+                  borderBottom: idx < allFields.length - 1 ? `1px solid ${AM.borderLight}` : "none",
+                  transition: "background 0.1s",
                 }}
-                title={k}
+                onMouseEnter={(e) => { e.currentTarget.style.background = "#f4f7fb"; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
               >
-                {k}
-              </span>
-              {editingKey === k ? (
-                <input
-                  autoFocus
-                  value={inlineDraft}
-                  onChange={(e) => setInlineDraft(e.target.value)}
-                  onBlur={() => saveInlineEdit(k)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") saveInlineEdit(k);
-                    if (e.key === "Escape") cancelInlineEdit();
-                  }}
-                  style={{
-                    ...inputStyle,
-                    flex: 1,
-                    maxWidth: 190,
-                    padding: "4px 8px",
-                    fontSize: 12,
-                    fontFamily: "Inter, system-ui, sans-serif",
-                    textAlign: "right",
-                  }}
-                />
-              ) : (
                 <span
-                  onClick={() => startInlineEdit(k, v)}
                   style={{
-                    fontSize: 12,
-                    color: AM.textPrimary,
-                    fontFamily: "Inter, system-ui, sans-serif",
-                    fontWeight: 500,
-                    textAlign: "right",
-                    maxWidth: 190,
+                    fontSize: 11.5,
+                    color: AM.textMuted,
+                    flexShrink: 0,
+                    fontWeight: 400,
+                    maxWidth: 120,
                     overflow: "hidden",
                     textOverflow: "ellipsis",
                     whiteSpace: "nowrap",
-                    cursor: canInlineEdit ? "pointer" : "default",
-                    borderRadius: 4,
-                    padding: canInlineEdit ? "2px 4px" : 0,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 4,
                   }}
-                  title={canInlineEdit ? `Click to edit: ${String(v ?? "")}` : String(v ?? "")}
-                  onMouseEnter={(e) => {
-                    if (canInlineEdit) e.currentTarget.style.background = AM.borderLight;
-                  }}
-                  onMouseLeave={(e) => {
-                    if (canInlineEdit) e.currentTarget.style.background = "transparent";
-                  }}
+                  title={k}
                 >
-                  {formatVal(v)}
+                  {k}
+                  {isIdField && (
+                    <span
+                      title="Employee ID cannot be changed"
+                      style={{
+                        fontSize: 9,
+                        fontWeight: 700,
+                        color: AM.textMuted,
+                        background: AM.borderLight,
+                        border: `1px solid ${AM.border}`,
+                        borderRadius: 3,
+                        padding: "1px 4px",
+                        letterSpacing: "0.4px",
+                        lineHeight: 1.4,
+                        flexShrink: 0,
+                      }}
+                    >
+                      ID
+                    </span>
+                  )}
                 </span>
-              )}
-            </div>
-          ))}
+                {editingKey === k ? (
+                  <input
+                    autoFocus
+                    value={inlineDraft}
+                    onChange={(e) => setInlineDraft(e.target.value)}
+                    onBlur={() => saveInlineEdit(k)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") saveInlineEdit(k);
+                      if (e.key === "Escape") cancelInlineEdit();
+                    }}
+                    style={{
+                      ...inputStyle,
+                      flex: 1,
+                      maxWidth: 190,
+                      padding: "4px 8px",
+                      fontSize: 12,
+                      fontFamily: "Inter, system-ui, sans-serif",
+                      textAlign: "right",
+                    }}
+                  />
+                ) : (
+                  <span
+                    onClick={() => fieldEditable && startInlineEdit(k, v)}
+                    style={{
+                      fontSize: 12,
+                      color: AM.textPrimary,
+                      fontFamily: "Inter, system-ui, sans-serif",
+                      fontWeight: 500,
+                      textAlign: "right",
+                      maxWidth: 190,
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                      cursor: fieldEditable ? "pointer" : "default",
+                      borderRadius: 4,
+                      padding: fieldEditable ? "2px 4px" : 0,
+                    }}
+                    title={fieldEditable ? `Click to edit: ${String(v ?? "")}` : String(v ?? "")}
+                    onMouseEnter={(e) => {
+                      if (fieldEditable) e.currentTarget.style.background = AM.borderLight;
+                    }}
+                    onMouseLeave={(e) => {
+                      if (fieldEditable) e.currentTarget.style.background = "transparent";
+                    }}
+                  >
+                    {formatVal(v)}
+                  </span>
+                )}
+              </div>
+            );
+          })}
         </div>
 
         {/* Calculated columns (formula-derived) */}

@@ -94,6 +94,7 @@ export default function OrgChart({
   flcCol,
   jobTitleCol,
   countryCol,
+  funcCol,
   datasetId,
   scenarios,
   activeScenarioId,
@@ -148,6 +149,7 @@ export default function OrgChart({
   const [focusedNodeId, setFocusedNodeId] = useState(null);
   const [departmentFilter, setDepartmentFilter] = useState("");
   const [jobTitleFilter, setJobTitleFilter] = useState("");
+  const [functionFilter, setFunctionFilter] = useState("");
 
   // dnd-kit sensors: PointerSensor (mouse) + TouchSensor (mobile).
   // distance: 5 prevents accidental drags during card clicks.
@@ -176,8 +178,10 @@ export default function OrgChart({
   const stageRef = useRef(null);
   const viewportRef = useRef(null);
   const hasAutoCenteredRef = useRef(false);
+  const cameraToNodeRef = useRef(null);
   const pendingFocusRef = useRef(null);
   const focusHandledRef = useRef(null);
+  const pendingCollapseNodeRef = useRef(null);
 
   const applyTransform = useCallback(() => {
     if (!stageRef.current) return;
@@ -613,11 +617,11 @@ export default function OrgChart({
     return computeSubtreeStats(records, idOf, parentOf, { fteOf, flcOf, flaggedOf });
   }, [records, idOf, parentOf, fteOf, flcOf, flaggedOf]);
 
-  // Hidden ids from search + department + job title filters; ranked search matches
+  // Hidden ids from search + department + job title + function filters; ranked search matches
   const { hidden, searchMatches } = useMemo(() => {
     const out = new Set();
     const emptyMatches = [];
-    if (!records || (!search.trim() && !departmentFilter && !jobTitleFilter)) {
+    if (!records || (!search.trim() && !departmentFilter && !jobTitleFilter && !functionFilter)) {
       return { hidden: out, searchMatches: emptyMatches };
     }
 
@@ -630,6 +634,10 @@ export default function OrgChart({
       if (jobTitleFilter) {
         const title = (jobTitleCol && r[jobTitleCol]) || r["Job Title"] || "";
         if (String(title) !== jobTitleFilter) return false;
+      }
+      if (functionFilter) {
+        const func = (funcCol && r[funcCol]) || r["Function"] || "";
+        if (String(func) !== functionFilter) return false;
       }
       if (term) {
         const haystack = [
@@ -686,7 +694,7 @@ export default function OrgChart({
       if (!visible.has(id)) out.add(id);
     });
     return { hidden: out, searchMatches: rankedMatches };
-  }, [records, search, departmentFilter, jobTitleFilter, empCol, jobTitleCol, countryCol, idOf, parentOf, index]);
+  }, [records, search, departmentFilter, jobTitleFilter, functionFilter, empCol, jobTitleCol, funcCol, countryCol, idOf, parentOf, index]);
 
   const layout = useMemo(() => {
     if (!records || !records.length) return { nodes: new Map(), width: 0, height: 0, childRowsInfo: new Map() };
@@ -756,6 +764,17 @@ export default function OrgChart({
     });
     return Array.from(set).sort();
   }, [records, jobTitleCol]);
+
+  // Unique functions for the filter dropdown
+  const functions = useMemo(() => {
+    if (!records) return [];
+    const set = new Set();
+    records.forEach((r) => {
+      const f = (funcCol && r[funcCol]) || r["Function"];
+      if (f) set.add(String(f));
+    });
+    return Array.from(set).sort();
+  }, [records, funcCol]);
 
   const selectedRecord = useMemo(() => {
     if (!selectedId || !records) return null;
@@ -1152,6 +1171,9 @@ export default function OrgChart({
     applyTransform();
     return true;
   }, [layout, applyTransform]);
+  // Keep ref always pointing at the latest cameraToNode so RAF callbacks
+  // that fire after a re-render (e.g. auto-collapse) use the correct layout.
+  cameraToNodeRef.current = cameraToNode;
 
   // Full focus: camera + gold highlight + detail panel.
   // Used for "View in OrgSight" and search selection.
@@ -1197,6 +1219,20 @@ export default function OrgChart({
       }, 150);
     });
   }, [layout, collapsed, cameraToNode, focusOnNode, uncollapseAncestorsOf]);
+
+  // After a collapse/expand toggle, pan the camera back to the toggled node so the
+  // user doesn't get disoriented when the tree reflows around them.
+  useEffect(() => {
+    const eid = pendingCollapseNodeRef.current;
+    if (!eid) return;
+    if (!layout.nodes.has(eid)) return;
+    pendingCollapseNodeRef.current = null;
+    requestAnimationFrame(() => {
+      setTimeout(() => {
+        cameraToNode(eid);
+      }, 150);
+    });
+  }, [layout, cameraToNode]);
 
   // "View in OrgSight" from Spans & Layers: filter tree + full focus + detail panel.
   useEffect(() => {
@@ -1266,8 +1302,9 @@ export default function OrgChart({
     if (!firstRootId) return;
 
     hasAutoCenteredRef.current = true;
+    const capturedRootId = firstRootId;
     requestAnimationFrame(() => {
-      cameraToNode(firstRootId, { zoom: ROOT_ENTRY_ZOOM });
+      cameraToNodeRef.current(capturedRootId, { zoom: ROOT_ENTRY_ZOOM });
     });
   }, [records, layout, index.roots, initialFocusNodeId, search, cameraToNode]);
 
@@ -1276,6 +1313,38 @@ export default function OrgChart({
   useEffect(() => {
     hasAutoCenteredRef.current = false;
   }, [datasetId, activeScenarioId]);
+
+  // Re-center viewport when dropdown filters change so the user isn't left
+  // staring at empty space after the tree shrinks/moves.
+  const prevFiltersRef = useRef({ departmentFilter, jobTitleFilter, functionFilter });
+  useEffect(() => {
+    const prev = prevFiltersRef.current;
+    const changed =
+      prev.departmentFilter !== departmentFilter ||
+      prev.jobTitleFilter !== jobTitleFilter ||
+      prev.functionFilter !== functionFilter;
+    prevFiltersRef.current = { departmentFilter, jobTitleFilter, functionFilter };
+    if (!changed) return;
+
+    if (!layout.nodes.size) return;
+
+    requestAnimationFrame(() => {
+      if (!departmentFilter && !jobTitleFilter && !functionFilter) {
+        const firstRootId = index.roots[0];
+        if (firstRootId) cameraToNodeRef.current(firstRootId, { zoom: ROOT_ENTRY_ZOOM });
+      } else {
+        if (!viewportRef.current || !layout.width || !layout.height) return;
+        const vw = viewportRef.current.clientWidth;
+        const vh = viewportRef.current.clientHeight || 600;
+        const z = Math.min((vw - 60) / layout.width, (vh - 60) / layout.height, 1);
+        const newZoom = Math.max(0.05, z);
+        zoomRef.current = newZoom;
+        panRef.current = { x: (vw - layout.width * newZoom) / 2, y: 20 };
+        setZoomLabel(newZoom);
+        applyTransform();
+      }
+    });
+  }, [departmentFilter, jobTitleFilter, functionFilter, layout, index.roots, applyTransform]);
 
   // Ctrl+Z keyboard shortcut for undo
   useEffect(() => {
@@ -1342,13 +1411,17 @@ export default function OrgChart({
         case "X":
           if (!e.ctrlKey && !e.metaKey) { e.preventDefault(); fitToView(); }
           break;
+        case "h":
+        case "H":
+          if (!e.ctrlKey && !e.metaKey) { e.preventDefault(); centerOnRoot(); }
+          break;
         default:
           break;
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [panBy, setZoomAt, fitToView]);
+  }, [panBy, setZoomAt, fitToView, centerOnRoot]);
 
   // --------------------------------------------------------------------
   // Scenario actions (Phase 5)
@@ -1776,10 +1849,10 @@ export default function OrgChart({
         style={{
           background: AM.navy,
           color: AM.white,
-          padding: "8px 16px",
+          padding: "8px 12px",
           display: "flex",
           alignItems: "center",
-          gap: 12,
+          gap: 8,
           flexShrink: 0,
           flexWrap: "nowrap",
           overflowX: "auto",
@@ -1853,8 +1926,8 @@ export default function OrgChart({
                 padding: "6px 28px 6px 28px",
                 fontSize: 12,
                 outline: "none",
-                width: 176,
-                minWidth: 100,
+                width: 160,
+                minWidth: 90,
                 flexShrink: 1,
               }}
             />
@@ -1969,14 +2042,14 @@ export default function OrgChart({
               color: AM.white,
               borderRadius: 6,
               padding: "6px 8px",
-              fontSize: 12,
+              fontSize: 11,
               outline: "none",
-              maxWidth: 140,
+              maxWidth: 120,
               flexShrink: 1,
               minWidth: 0,
             }}
           >
-            <option value="">All departments</option>
+            <option value="">Dept ▾</option>
             {departments.map((d) => (
               <option key={d} value={d}>{d}</option>
             ))}
@@ -1993,16 +2066,40 @@ export default function OrgChart({
               color: AM.white,
               borderRadius: 6,
               padding: "6px 8px",
-              fontSize: 12,
+              fontSize: 11,
               outline: "none",
-              maxWidth: 160,
+              maxWidth: 130,
               flexShrink: 1,
               minWidth: 0,
             }}
           >
-            <option value="">All job titles</option>
+            <option value="">Title ▾</option>
             {jobTitles.map((t) => (
               <option key={t} value={t}>{t}</option>
+            ))}
+          </select>
+        )}
+        {functions.length > 0 && (
+          <select
+            value={functionFilter}
+            onChange={(e) => setFunctionFilter(e.target.value)}
+            title="Filter by function"
+            style={{
+              background: "#0a3366",
+              border: "1px solid #1a4d7a",
+              color: AM.white,
+              borderRadius: 6,
+              padding: "6px 8px",
+              fontSize: 11,
+              outline: "none",
+              maxWidth: 120,
+              flexShrink: 1,
+              minWidth: 0,
+            }}
+          >
+            <option value="">Func ▾</option>
+            {functions.map((f) => (
+              <option key={f} value={f}>{f}</option>
             ))}
           </select>
         )}
@@ -2051,10 +2148,10 @@ export default function OrgChart({
             }}
             title="Zoom in"
           >+</ZoomBtn>
-          <ZoomBtn onClick={fitToView} title="Fit tree to view">⤢</ZoomBtn>
+          <ZoomBtn onClick={fitToView} title="Fit tree to view [X]">⤢</ZoomBtn>
           <ZoomBtn
             onClick={centerOnRoot}
-            title="Center on top-level position (zoomed in)"
+            title="Center on root [H]"
           >
             ⌂
           </ZoomBtn>
@@ -2536,6 +2633,7 @@ export default function OrgChart({
                       n.has(eid) ? n.delete(eid) : n.add(eid);
                       return n;
                     });
+                    pendingCollapseNodeRef.current = eid;
                   }}
                   collapsed={isCollapsed}
                   hasChildren={kids.length > 0}

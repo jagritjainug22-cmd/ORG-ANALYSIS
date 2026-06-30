@@ -7,6 +7,14 @@ import { dbListFormulas, dbCreateFormula, dbDeleteFormula } from "../api/backend
 // ---------------------------------------------------------------------------
 const BRACKET_RE = /\[([^\]]+)\]/g;
 
+function extractSourceColumns(expression) {
+  const cols = new Set();
+  let m;
+  const re = /\[([^\]]+)\]/g;
+  while ((m = re.exec(expression)) !== null) cols.add(m[1].trim());
+  return cols;
+}
+
 function clientEvaluate(expression, record) {
   if (!expression || !record) return { value: null, error: null };
   try {
@@ -284,6 +292,13 @@ export default function FormulaEditor({
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [globalError, setGlobalError] = useState(null);
+  const [tipOpen, setTipOpen] = useState(false);
+  const [previewRowIdx, setPreviewRowIdx] = useState(0);
+  const [selectedFormulaId, setSelectedFormulaId] = useState(null);
+  const [tablePage, setTablePage] = useState(0);
+  const [highlightNavIdx, setHighlightNavIdx] = useState(0);
+  const TABLE_PAGE_SIZE = 15;
+  const tableScrollRef = useRef(null);
 
   // Add-form state
   const [newColName, setNewColName] = useState("");
@@ -293,7 +308,7 @@ export default function FormulaEditor({
 
   const exprInputRef = useRef(null);
   const isDbMode = Boolean(datasetId);
-  const sampleRecord = validatedDf?.[0] || null;
+  const sampleRecord = validatedDf?.[previewRowIdx] || null;
   const availableColumns = columns.length > 0 ? columns : (sampleRecord ? Object.keys(sampleRecord) : []);
 
   // Live preview (re-evaluates on every expression change)
@@ -371,6 +386,22 @@ export default function FormulaEditor({
     }
   }, [datasetId, formulas, isDbMode, onFormulasChange]);
 
+  const scrollToColumn = useCallback((colName) => {
+    const container = tableScrollRef.current;
+    if (!container) return;
+    const th = container.querySelector(`th[data-col="${CSS.escape(colName)}"]`);
+    if (th) th.scrollIntoView({ inline: "center", block: "nearest", behavior: "smooth" });
+  }, []);
+
+  useEffect(() => {
+    if (!selectedFormulaId) return;
+    const f = formulas.find(x => x.id === selectedFormulaId);
+    if (f) {
+      setHighlightNavIdx(0);
+      setTimeout(() => scrollToColumn(f.col_name), 80);
+    }
+  }, [selectedFormulaId, formulas, scrollToColumn]);
+
   const previewValue = (formula) => {
     if (!sampleRecord) return null;
     return clientEvaluate(formula.expression, sampleRecord).value;
@@ -393,7 +424,7 @@ export default function FormulaEditor({
               <CalcIcon />
             </div>
             <div>
-              <h2 className="text-base font-bold text-gray-900 tracking-tight">Formula Columns</h2>
+              <h2 className="text-base font-bold text-gray-900 tracking-tight">Custom Metrics</h2>
               <p className="text-xs text-gray-500 mt-1 leading-relaxed">
                 Define derived metrics — like{" "}
                 <span className="font-mono text-xs bg-brand-100 text-brand-700 px-1.5 py-0.5 rounded">[Fully loaded cost] / [FTE]</span>
@@ -441,11 +472,42 @@ export default function FormulaEditor({
           <>
             {/* Table header */}
             <div className="grid grid-cols-[2fr_3fr_1fr_auto] gap-0 bg-gray-50 border-b border-gray-200">
-              {["Column Name", "Expression", "Preview (row 1)", ""].map((h, i) => (
+              {["Column Name", "Expression"].map((h, i) => (
                 <div key={i} className="px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">
                   {h}
                 </div>
               ))}
+              <div className="px-4 py-2 flex items-center gap-1.5">
+                <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Preview</span>
+                {validatedDf?.length > 0 && (
+                  <span className="flex items-center gap-1 ml-1">
+                    <button
+                      onClick={() => setPreviewRowIdx(i => Math.max(0, i - 1))}
+                      disabled={previewRowIdx === 0}
+                      className="w-5 h-5 flex items-center justify-center rounded hover:bg-gray-200 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                      title="Previous row"
+                    >
+                      <svg className="w-3 h-3 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                      </svg>
+                    </button>
+                    <span className="text-[10px] text-gray-500 tabular-nums whitespace-nowrap">
+                      {previewRowIdx + 1} / {validatedDf.length}
+                    </span>
+                    <button
+                      onClick={() => setPreviewRowIdx(i => Math.min(validatedDf.length - 1, i + 1))}
+                      disabled={previewRowIdx === validatedDf.length - 1}
+                      className="w-5 h-5 flex items-center justify-center rounded hover:bg-gray-200 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                      title="Next row"
+                    >
+                      <svg className="w-3 h-3 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                      </svg>
+                    </button>
+                  </span>
+                )}
+              </div>
+              <div className="px-4 py-3" />
             </div>
 
             {/* Rows */}
@@ -458,7 +520,7 @@ export default function FormulaEditor({
                   </svg>
                 </div>
                 <div>
-                  <p className="text-sm font-medium text-gray-600">No formula columns yet</p>
+                  <p className="text-sm font-medium text-gray-600">No custom metrics yet</p>
                   <p className="text-xs text-gray-400 mt-0.5">Click "New Formula" to get started</p>
                 </div>
               </div>
@@ -466,10 +528,14 @@ export default function FormulaEditor({
               <div className="divide-y divide-gray-100">
                 {formulas.map((formula) => {
                   const pv = previewValue(formula);
+                  const isSelected = selectedFormulaId === formula.id;
                   return (
                     <div
                       key={formula.id}
-                      className="grid grid-cols-[2fr_3fr_1fr_auto] gap-0 items-center hover:bg-gray-50 transition-colors group"
+                      onClick={() => setSelectedFormulaId(isSelected ? null : formula.id)}
+                      className={`grid grid-cols-[2fr_3fr_1fr_auto] gap-0 items-center cursor-pointer transition-colors group ${
+                        isSelected ? "bg-brand-50 ring-1 ring-inset ring-brand-300" : "hover:bg-gray-50"
+                      }`}
                     >
                       <div className="px-3 py-2.5">
                         <span className="text-sm font-semibold text-gray-900">{formula.col_name}</span>
@@ -549,7 +615,7 @@ export default function FormulaEditor({
                     <div className="mt-2">
                       {liveResult.value !== null ? (
                         <div className="flex items-center gap-2 text-xs">
-                          <span className="text-gray-400">Preview (row 1):</span>
+                          <span className="text-gray-400">Preview (row {previewRowIdx + 1}):</span>
                           <span className="inline-flex items-center gap-1 font-semibold px-2.5 py-1 bg-green-50 text-green-700 border border-green-200 rounded-full">
                             <CheckIcon />
                             {liveResult.value.toLocaleString()}
@@ -624,31 +690,276 @@ export default function FormulaEditor({
         </div>
       )}
 
-      {/* ── How-to tip card ── */}
-      <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
-        <p className="text-sm font-semibold text-blue-900 mb-2.5">How to write expressions</p>
-        <ul className="text-xs text-blue-700 space-y-2 leading-relaxed">
-          <li className="flex items-start gap-2">
-            <kbd className="mt-0.5 px-1.5 py-0.5 bg-white border border-blue-200 rounded text-[10px] font-mono font-semibold text-blue-600 shrink-0">[</kbd>
-            <span>Type <strong>[</strong> to open the column picker — start typing to filter, click or press Enter to insert</span>
-          </li>
-          <li className="flex items-start gap-2">
-            <span className="font-mono bg-blue-100 px-1.5 py-0.5 rounded shrink-0">ops</span>
-            <span>Operators: <span className="font-mono bg-blue-100 px-1 rounded">+</span> <span className="font-mono bg-blue-100 px-1 rounded">-</span> <span className="font-mono bg-blue-100 px-1 rounded">*</span> <span className="font-mono bg-blue-100 px-1 rounded">/</span> <span className="font-mono bg-blue-100 px-1 rounded">^</span> (power) and parentheses</span>
-          </li>
-          <li className="flex items-start gap-2">
-            <span className="font-mono bg-blue-100 px-1.5 py-0.5 rounded shrink-0">eg.</span>
-            <span>
-              <span className="font-mono bg-blue-100 px-1.5 py-0.5 rounded">[Fully loaded cost] / [FTE]</span>
-              {" "}· {" "}
-              <span className="font-mono bg-blue-100 px-1.5 py-0.5 rounded">([Basic Pay] + [Add ons]) * 12</span>
-            </span>
-          </li>
-          <li className="flex items-start gap-2">
-            <span className="font-mono bg-blue-100 px-1.5 py-0.5 rounded shrink-0">∞</span>
-            <span>Division by zero is handled automatically — it returns 0 instead of an error</span>
-          </li>
-        </ul>
+      {/* ── Data Preview Table ── */}
+      {validatedDf?.length > 0 && formulas.length > 0 && (() => {
+        const selectedFormula = formulas.find(f => f.id === selectedFormulaId);
+        const sourceCols = selectedFormula ? extractSourceColumns(selectedFormula.expression) : new Set();
+        const formulaColNames = formulas.map(f => f.col_name);
+        const baseCols = availableColumns.filter(c => !formulaColNames.includes(c));
+        const allCols = [...baseCols, ...formulaColNames];
+        const totalPages = Math.ceil(validatedDf.length / TABLE_PAGE_SIZE);
+        const safeTablePage = Math.min(tablePage, totalPages - 1);
+        const pageRows = validatedDf.slice(safeTablePage * TABLE_PAGE_SIZE, (safeTablePage + 1) * TABLE_PAGE_SIZE);
+
+        const highlightedCols = selectedFormula
+          ? [selectedFormula.col_name, ...Array.from(sourceCols)]
+          : [];
+        const safeNavIdx = highlightedCols.length > 0 ? Math.min(highlightNavIdx, highlightedCols.length - 1) : 0;
+
+        const navigateHighlight = (dir) => {
+          const next = Math.max(0, Math.min(highlightedCols.length - 1, safeNavIdx + dir));
+          setHighlightNavIdx(next);
+          scrollToColumn(highlightedCols[next]);
+        };
+
+        return (
+          <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
+            {/* Table toolbar */}
+            <div className="flex items-center justify-between px-4 py-2.5 bg-gray-50 border-b border-gray-200">
+              <div className="flex items-center gap-3">
+                <span className="text-xs font-semibold text-gray-700 uppercase tracking-wider">Data Preview</span>
+                <span className="text-[10px] text-gray-400">{validatedDf.length} records · {allCols.length} columns</span>
+                {selectedFormula && (
+                  <>
+                    <span className="inline-flex items-center gap-1.5 text-[10px] font-semibold text-brand-700 bg-brand-50 border border-brand-200 px-2 py-0.5 rounded-full">
+                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                      </svg>
+                      {selectedFormula.col_name}
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setSelectedFormulaId(null); }}
+                        className="ml-0.5 hover:text-brand-900 transition-colors"
+                      >
+                        ×
+                      </button>
+                    </span>
+                    {highlightedCols.length > 1 && (
+                      <span className="inline-flex items-center gap-1 border border-gray-200 rounded-md bg-white px-1 py-0.5">
+                        <button
+                          onClick={() => navigateHighlight(1)}
+                          disabled={safeNavIdx === highlightedCols.length - 1}
+                          className="w-5 h-5 flex items-center justify-center rounded hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                          title="Previous highlighted column"
+                        >
+                          <svg className="w-3 h-3 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                          </svg>
+                        </button>
+                        <span className="text-[10px] text-gray-500 tabular-nums whitespace-nowrap min-w-[60px] text-center truncate" title={highlightedCols[safeNavIdx]}>
+                          {highlightedCols[safeNavIdx]}
+                        </span>
+                        <button
+                          onClick={() => navigateHighlight(-1)}
+                          disabled={safeNavIdx === 0}
+                          className="w-5 h-5 flex items-center justify-center rounded hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                          title="Next highlighted column"
+                        >
+                          <svg className="w-3 h-3 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                          </svg>
+                        </button>
+                      </span>
+                    )}
+                  </>
+                )}
+              </div>
+              {/* Pagination controls */}
+              {totalPages > 1 && (
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setTablePage(0)}
+                    disabled={safeTablePage === 0}
+                    className="w-6 h-6 flex items-center justify-center rounded text-gray-500 hover:bg-gray-200 disabled:opacity-30 disabled:cursor-not-allowed transition-colors text-xs"
+                    title="First page"
+                  >
+                    «
+                  </button>
+                  <button
+                    onClick={() => setTablePage(p => Math.max(0, p - 1))}
+                    disabled={safeTablePage === 0}
+                    className="w-6 h-6 flex items-center justify-center rounded text-gray-500 hover:bg-gray-200 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                    title="Previous page"
+                  >
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                    </svg>
+                  </button>
+                  <span className="text-[11px] text-gray-500 tabular-nums whitespace-nowrap">
+                    {safeTablePage + 1} of {totalPages}
+                  </span>
+                  <button
+                    onClick={() => setTablePage(p => Math.min(totalPages - 1, p + 1))}
+                    disabled={safeTablePage === totalPages - 1}
+                    className="w-6 h-6 flex items-center justify-center rounded text-gray-500 hover:bg-gray-200 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                    title="Next page"
+                  >
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                    </svg>
+                  </button>
+                  <button
+                    onClick={() => setTablePage(totalPages - 1)}
+                    disabled={safeTablePage === totalPages - 1}
+                    className="w-6 h-6 flex items-center justify-center rounded text-gray-500 hover:bg-gray-200 disabled:opacity-30 disabled:cursor-not-allowed transition-colors text-xs"
+                    title="Last page"
+                  >
+                    »
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Scrollable table */}
+            <div ref={tableScrollRef} className="overflow-x-auto max-h-[520px] overflow-y-auto">
+              <table className="w-full text-xs">
+                <thead className="sticky top-0 z-10">
+                  <tr>
+                    <th className="px-3 py-2.5 text-left text-[10px] font-semibold text-white uppercase tracking-wider w-10 sticky left-0 bg-brand-600">#</th>
+                    {allCols.map(col => {
+                      const isFormulaCol = formulaColNames.includes(col);
+                      const isSourceCol = sourceCols.has(col);
+                      const isOutputCol = selectedFormula?.col_name === col;
+                      return (
+                        <th
+                          key={col}
+                          data-col={col}
+                          className={`px-3 py-2.5 text-left text-[10px] font-semibold uppercase tracking-wider whitespace-nowrap transition-colors ${
+                            isOutputCol
+                              ? "bg-brand-700 text-white ring-2 ring-inset ring-brand-300"
+                              : isSourceCol
+                                ? "bg-amber-500 text-white"
+                                : isFormulaCol
+                                  ? "bg-brand-500 text-white/90"
+                                  : "bg-brand-600 text-white"
+                          }`}
+                        >
+                          <span className="flex items-center gap-1">
+                            {isOutputCol && (
+                              <svg className="w-3 h-3 text-white shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                                <path fillRule="evenodd" d="M5 2a1 1 0 011 1v1h1a1 1 0 010 2H6v1a1 1 0 01-2 0V6H3a1 1 0 010-2h1V3a1 1 0 011-1zm0 10a1 1 0 011 1v1h1a1 1 0 110 2H6v1a1 1 0 11-2 0v-1H3a1 1 0 110-2h1v-1a1 1 0 011-1zM12 2a1 1 0 01.967.744L14.146 7.2 17.5 9.134a1 1 0 010 1.732l-3.354 1.935-1.18 4.455a1 1 0 01-1.933 0L9.854 12.8 6.5 10.866a1 1 0 010-1.732l3.354-1.935 1.18-4.455A1 1 0 0112 2z" clipRule="evenodd" />
+                              </svg>
+                            )}
+                            {isSourceCol && !isOutputCol && (
+                              <svg className="w-3 h-3 text-white shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                              </svg>
+                            )}
+                            {col}
+                          </span>
+                        </th>
+                      );
+                    })}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {pageRows.map((record, rowIdx) => {
+                    const globalIdx = safeTablePage * TABLE_PAGE_SIZE + rowIdx;
+                    return (
+                      <tr key={globalIdx} className="hover:bg-gray-50/60 transition-colors">
+                        <td className="px-3 py-2 text-[10px] text-gray-400 tabular-nums sticky left-0 bg-white">{globalIdx + 1}</td>
+                        {allCols.map(col => {
+                          const isFormulaCol = formulaColNames.includes(col);
+                          const isSourceCol = sourceCols.has(col);
+                          const isOutputCol = selectedFormula?.col_name === col;
+
+                          let cellValue;
+                          if (isFormulaCol) {
+                            const f = formulas.find(x => x.col_name === col);
+                            const result = f ? clientEvaluate(f.expression, record) : { value: null };
+                            cellValue = result.value !== null ? result.value.toLocaleString() : "—";
+                          } else {
+                            cellValue = record[col] ?? "";
+                          }
+
+                          return (
+                            <td
+                              key={col}
+                              className={`px-3 py-2 whitespace-nowrap tabular-nums transition-colors ${
+                                isOutputCol
+                                  ? "bg-brand-50/60 text-brand-800 font-semibold"
+                                  : isSourceCol
+                                    ? "bg-amber-50/40 text-amber-900"
+                                    : isFormulaCol
+                                      ? "text-brand-700 font-medium"
+                                      : "text-gray-700"
+                              }`}
+                            >
+                              {cellValue}
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Bottom bar */}
+            <div className="px-4 py-2 bg-gray-50 border-t border-gray-200 flex items-center justify-between">
+              <span className="text-[10px] text-gray-400">
+                Showing {safeTablePage * TABLE_PAGE_SIZE + 1}–{Math.min((safeTablePage + 1) * TABLE_PAGE_SIZE, validatedDf.length)} of {validatedDf.length}
+              </span>
+              {selectedFormula && (
+                <div className="flex items-center gap-3 text-[10px]">
+                  <span className="flex items-center gap-1 text-brand-700">
+                    <span className="w-2.5 h-2.5 rounded-sm bg-brand-500 inline-block" />
+                    Output
+                  </span>
+                  <span className="flex items-center gap-1 text-amber-700">
+                    <span className="w-2.5 h-2.5 rounded-sm bg-amber-500 inline-block" />
+                    Source
+                  </span>
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* ── How-to tip card (collapsible) ── */}
+      <div className="bg-blue-50 border border-blue-200 rounded-xl overflow-hidden">
+        <button
+          onClick={() => setTipOpen(o => !o)}
+          className="w-full flex items-center justify-between px-4 py-2.5 text-left hover:bg-blue-100 transition-colors"
+        >
+          <span className="text-xs font-semibold text-blue-800 flex items-center gap-2">
+            <svg className="w-3.5 h-3.5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            How to write expressions
+          </span>
+          <svg className={`w-3.5 h-3.5 text-blue-500 transition-transform duration-200 ${tipOpen ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+          </svg>
+        </button>
+        {tipOpen && (
+          <div className="px-4 pb-3 pt-1 border-t border-blue-200">
+            <ul className="text-xs text-blue-700 space-y-2 leading-relaxed">
+              <li className="flex items-start gap-2">
+                <kbd className="mt-0.5 px-1.5 py-0.5 bg-white border border-blue-200 rounded text-[10px] font-mono font-semibold text-blue-600 shrink-0">[</kbd>
+                <span>Type <strong>[</strong> to open the column picker — start typing to filter, click or press Enter to insert</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="bg-blue-100 px-1.5 py-0.5 rounded text-[10px] font-semibold text-blue-700 shrink-0">ops</span>
+                <span>Operators: <span className="font-mono bg-blue-100 px-1 rounded">+</span> <span className="font-mono bg-blue-100 px-1 rounded">-</span> <span className="font-mono bg-blue-100 px-1 rounded">*</span> <span className="font-mono bg-blue-100 px-1 rounded">/</span> <span className="font-mono bg-blue-100 px-1 rounded">^</span> (power) and parentheses</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="bg-blue-100 px-1.5 py-0.5 rounded text-[10px] font-semibold text-blue-700 shrink-0">eg.</span>
+                <span>
+                  <span className="font-mono bg-blue-100 px-1.5 py-0.5 rounded">[Fully loaded cost] / [FTE]</span>
+                  {" "}·{" "}
+                  <span className="font-mono bg-blue-100 px-1.5 py-0.5 rounded">([Basic Pay] + [Add ons]) * 12</span>
+                </span>
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="bg-blue-100 px-1.5 py-0.5 rounded text-[10px] font-semibold text-blue-700 shrink-0">∞</span>
+                <span>Division by zero is handled automatically — returns 0 instead of an error</span>
+              </li>
+            </ul>
+          </div>
+        )}
       </div>
     </div>
   );

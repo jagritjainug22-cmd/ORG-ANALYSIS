@@ -434,7 +434,7 @@ function OrgNodeCardImpl({
         )}
         {hasChildren && (
           <ToolbarBtn
-            title={collapsed ? "Expand" : "Collapse"}
+            title={collapsed ? "Expand children" : "Collapse children"}
             onClick={(e) => { e.stopPropagation(); onCollapseToggle?.(empId); }}
           >
             {collapsed ? <ExpandIcon /> : <CollapseIcon />}
@@ -447,6 +447,7 @@ function OrgNodeCardImpl({
       {collapsed && hiddenCount > 0 && (
         <div
           onClick={(e) => { e.stopPropagation(); onCollapseToggle?.(empId); }}
+          title="Expand children"
           style={{
             position: "absolute",
             left: "50%",
@@ -465,6 +466,34 @@ function OrgNodeCardImpl({
           }}
         >
           +{hiddenCount} hidden
+        </div>
+      )}
+
+      {/* View-mode collapse button — pill badge matching the +hidden style, sits below
+          the card so it never overlaps card body content. Only shown when expanded and
+          not in edit mode (the toolbar handles it there). */}
+      {hasChildren && !collapsed && !editMode && (
+        <div
+          onClick={(e) => { e.stopPropagation(); onCollapseToggle?.(empId); }}
+          title="Collapse children"
+          style={{
+            position: "absolute",
+            left: "50%",
+            bottom: -22,
+            transform: "translateX(-50%)",
+            background: AM.navy,
+            color: AM.white,
+            fontSize: 9,
+            fontWeight: 700,
+            padding: "2px 8px",
+            borderRadius: 8,
+            cursor: "pointer",
+            whiteSpace: "nowrap",
+            boxShadow: "0 1px 3px rgba(0,0,0,0.15)",
+            zIndex: 3,
+          }}
+        >
+          Collapse
         </div>
       )}
     </div>

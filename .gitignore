@@ -64,3 +64,10 @@ Fw_ G&A Tools (Org and Census Data Rationalization) Enhancement/
 
 #TRACKER
 OrgSight_Feature_Tracker.xlsx/
+
+# Excel files
+*.xlsx
+*.xls
+*.xlsm
+*.xlsb
+*.zip

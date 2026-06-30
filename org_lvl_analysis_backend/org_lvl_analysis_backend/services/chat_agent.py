@@ -1112,7 +1112,7 @@ _FOLLOWUP_INTENTS = {
     "span_control": [
         "How much does it cost to maintain managers with fewer than 4 direct reports?",
         "Which level has the lowest average span of control?",
-        "How does our average span compare to the industry benchmark of 6?",
+        "Which managers have the lowest span of control in the org?",
     ],
     "org_structure": [
         "What percentage of employees sit below layer 5?",

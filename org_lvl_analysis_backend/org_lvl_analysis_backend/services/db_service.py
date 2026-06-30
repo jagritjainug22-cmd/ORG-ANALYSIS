@@ -656,6 +656,25 @@ def _migrate_v11(conn: PgConnection) -> None:
             c.execute(f"ALTER TABLE datasets ADD COLUMN {col} TEXT")
 
 
+def _migrate_v12(conn: PgConnection) -> None:
+    """v12: last_seen_at on refresh_tokens for real-time online presence."""
+    c = conn.cursor()
+    existing = {
+        row["column_name"]
+        for row in c.execute(
+            """
+            SELECT column_name FROM information_schema.columns
+            WHERE table_schema = 'public' AND table_name = 'refresh_tokens'
+            """
+        ).fetchall()
+    }
+    if "last_seen_at" not in existing:
+        c.execute("ALTER TABLE refresh_tokens ADD COLUMN last_seen_at TEXT")
+    c.execute(
+        "CREATE INDEX IF NOT EXISTS idx_refresh_tokens_last_seen ON refresh_tokens(last_seen_at)"
+    )
+
+
 _MIGRATIONS = [
     (1, "projects + assignments + audit_log tables", _migrate_v1),
     (2, "project_id on datasets + Legacy project backfill", _migrate_v2),
@@ -668,6 +687,7 @@ _MIGRATIONS = [
     (9, "dataset_formulas table", _migrate_v9),
     (10, "rationalisation_cache table", _migrate_v10),
     (11, "extended column mappings + pipeline timestamps on datasets", _migrate_v11),
+    (12, "last_seen_at on refresh_tokens for online presence", _migrate_v12),
 ]
 
 
@@ -803,6 +823,24 @@ def revoke_all_user_tokens(user_id: int) -> None:
             (now, user_id),
         )
         conn.commit()
+
+
+def touch_user_last_seen(user_id: int) -> None:
+    """Update last_seen_at on all active tokens for user_id.
+
+    Called on every authenticated request to track real-time online presence.
+    Intentionally fire-and-forget — failures are swallowed so auth is unaffected.
+    """
+    try:
+        now = datetime.utcnow().isoformat()
+        with _connect() as conn:
+            conn.execute(
+                "UPDATE refresh_tokens SET last_seen_at = ? WHERE user_id = ? AND revoked_at IS NULL",
+                (now, user_id),
+            )
+            conn.commit()
+    except Exception:
+        pass
 
 
 # ---------------------------------------------------------------------------

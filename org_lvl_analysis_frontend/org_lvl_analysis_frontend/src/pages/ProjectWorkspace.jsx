@@ -25,6 +25,7 @@ import ActivityAnalysis from "../components/ActivityAnalysis";
 import ExportExcel from "../components/ExportExcel";
 import AskOrgSight from "../components/AskOrgSight";
 import RationaliseToast from "../components/RationaliseToast";
+import AMLogo from "../components/AMLogo";
 
 const MODULES = [
   {
@@ -34,6 +35,10 @@ const MODULES = [
   {
     id: "Rationalise", label: "Rationalise",
     icon: (<svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" /></svg>)
+  },
+  {
+    id: "Formulas", label: "Custom Metrics",
+    icon: (<svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 7H7a2 2 0 00-2 2v8a2 2 0 002 2h10a2 2 0 002-2V9a2 2 0 00-2-2h-2M9 7V5a2 2 0 012-2h2a2 2 0 012 2v2M9 7h6M9 12h.01M12 12h.01M15 12h.01M9 16h.01M12 16h.01M15 16h.01" /></svg>)
   },
   {
     id: "Hierarchy", label: "Hierarchy",
@@ -56,10 +61,6 @@ const MODULES = [
     icon: (<svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>)
   },
   {
-    id: "Formulas", label: "Formula Columns",
-    icon: (<svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 7H7a2 2 0 00-2 2v8a2 2 0 002 2h10a2 2 0 002-2V9a2 2 0 00-2-2h-2M9 7V5a2 2 0 012-2h2a2 2 0 012 2v2M9 7h6M9 12h.01M12 12h.01M15 12h.01M9 16h.01M12 16h.01M15 16h.01" /></svg>)
-  },
-  {
     id: "Ask OrgSight", label: "Ask OrgSight",
     icon: (<svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" /></svg>)
   }
@@ -71,6 +72,13 @@ export default function ProjectWorkspace() {
   const { user } = useAuth();
   const confirmLogout = useConfirmLogout();
   const pid = parseInt(projectId, 10);
+
+  const userInitials = (user?.display_name || user?.username || "")
+    .split(/[.\s_-]+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase())
+    .join("") || "U";
 
   // --- Project context ---
   const [project, setProject] = useState(null);
@@ -780,6 +788,7 @@ export default function ProjectWorkspace() {
             empCol={empCol} mgrCol={mgrCol}
             fteCol={fteCol} flcCol={flcCol}
             jobTitleCol={jobTitleCol} countryCol={countryCol}
+            funcCol={funcCol}
             datasetId={datasetId}
             scenarios={scenarios}
             activeScenarioId={activeScenarioId}
@@ -836,7 +845,7 @@ export default function ProjectWorkspace() {
       <header className="px-8 py-3 bg-brand-600 text-white border-b border-brand-700 shadow-sm">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3 min-w-0">
-            <span className="text-white font-bold text-xl tracking-tight">A&amp;M</span>
+            <AMLogo className="h-7" />
             <span className="h-5 w-px bg-white/30" />
             <button
               onClick={() => navigate("/projects")}
@@ -891,11 +900,11 @@ export default function ProjectWorkspace() {
               </>
             )}
           </div>
-          <div className="flex items-center gap-2 flex-shrink-0">
+          <div className="flex items-center gap-3 flex-shrink-0">
             {user?.role === "admin" && (
               <button
                 onClick={() => navigate("/admin")}
-                className="inline-flex items-center gap-2 px-3 py-1.5 bg-white text-brand-700 hover:bg-white/90 rounded-md text-sm font-semibold transition transform hover:-translate-y-0.5 shadow-md border border-white/20 focus:outline-none focus:ring-2 focus:ring-brand-300"
+                className="inline-flex items-center gap-2 px-4 py-2 bg-transparent border border-white/25 text-white hover:bg-white/10 hover:border-white/40 rounded-lg text-sm font-medium transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-white/30"
                 title="Open Admin Panel"
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -907,24 +916,35 @@ export default function ProjectWorkspace() {
             )}
             <button
               onClick={() => navigate("/projects")}
-              className="inline-flex items-center gap-2 px-3 py-1.5 bg-white/10 hover:bg-white/20 text-white/90 rounded-md text-sm font-medium transition"
+              className="inline-flex items-center gap-2 px-4 py-2 bg-transparent border border-white/25 text-white hover:bg-white/10 hover:border-white/40 rounded-lg text-sm font-medium transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-white/30"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
               </svg>
               Switch Project
             </button>
-            <div className="flex items-center gap-2 px-3 py-1.5 bg-white/10 rounded-full text-sm font-medium text-white/90 border border-white/10">
-              <div className="w-2 h-2 bg-brand-500 rounded-full"></div>
-              <span>{user?.username}{user?.role === "admin" ? " (Admin)" : ""}</span>
+
+            <div className="h-9 w-px bg-white/15"></div>
+
+            <div className="flex items-center gap-3">
+              <div className="relative">
+                <div className="w-10 h-10 rounded-full bg-white text-brand-700 flex items-center justify-center text-sm font-semibold shadow-md">
+                  {userInitials}
+                </div>
+                <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-emerald-500 rounded-full ring-2 ring-brand-600"></span>
+              </div>
+              <div className="leading-tight">
+                <p className="text-sm font-semibold text-white">{user?.username}</p>
+                <p className="text-xs text-white/60">{user?.role === "admin" ? "Administrator" : "Member"}</p>
+              </div>
             </div>
+
+            <div className="h-9 w-px bg-white/15"></div>
+
             <button
               onClick={doLogout}
-              className="inline-flex items-center gap-2 px-3 py-1.5 text-white/90 hover:text-white hover:bg-white/10 rounded-md text-sm font-medium transition"
+              className="inline-flex items-center justify-center px-5 py-2 rounded-lg text-sm font-medium text-red-400 bg-red-500/5 border border-red-500/40 backdrop-blur-sm hover:bg-red-500/10 hover:border-red-500/60 hover:text-red-300 transition-all duration-150"
             >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-              </svg>
               Logout
             </button>
           </div>

@@ -1,0 +1,113 @@
+ACTIVITY ANALYSIS — EXCEL UPLOAD GUIDE
+========================================
+
+Activity Analysis is a 4-step wizard. Only 3 Excel files are uploaded (Steps 2 and 3).
+Step 1 uses your existing people dataset — no Excel upload there.
+
+
+BEFORE YOU START
+----------------
+1. Upload your org/people census first (Upload & Prepare) and select that dataset in the project.
+2. In Step 1 (Setup), pick a Role Grouping Column (e.g. Grade, Job Title).
+   This defines the "roles" used in the allocation matrix.
+3. Role names in your Excel must exactly match the values in that column.
+
+
+THE 3 EXCEL FILES (IN ORDER)
+----------------------------
+
+Step 2 — Activities
+  File:     ActivityAnalysis_Activities.xlsx
+  Location: sample_data/ActivityAnalysis_Activities.xlsx
+  Upload:   Step 2 → cloud icon on the Activities panel (left)
+
+Step 2 — Allocation Matrix
+  File:     ActivityAnalysis_AllocationMatrix.xlsx
+  Location: sample_data/ActivityAnalysis_AllocationMatrix.xlsx
+  Upload:   Step 2 → "Upload Matrix" button (right)
+
+Step 3 — Savings Levers
+  File:     ActivityAnalysis_Levers.xlsx
+  Location: sample_data/ActivityAnalysis_Levers.xlsx
+  Upload:   Step 3 → upload button
+
+Step 4 is the impact report — no upload; it computes from the above.
+
+
+FILE 1: ACTIVITIES
+------------------
+Formats: .xlsx, .xls, .csv
+
+Required column:
+  Activity (or Name) — one row per activity
+
+Optional columns:
+  Process      — groups activities (e.g. "Reporting & Analysis")
+  Description  — free text notes
+
+Notes:
+  - Upload replaces the full activity list.
+  - Upload activities BEFORE the allocation matrix.
+
+
+FILE 2: ALLOCATION MATRIX
+-------------------------
+Formats: .xlsx, .xls
+
+Layout:
+  - Row 1 = headers
+  - Column 1 = role name (must match Step 1 grouping column values, e.g. E1, E2, M1)
+  - Other columns = activity names (must match Step 2 exactly)
+  - Cells = time % per role per activity (0–100, or 0.0–1.0)
+
+Notes:
+  - Each role row should sum to ~100%.
+  - Unknown activity columns are skipped — upload activities first.
+
+
+FILE 3: SAVINGS LEVERS
+----------------------
+Formats: .xlsx, .xls
+
+Required columns:
+  Activity        — must match an activity from Step 2
+  Lever Type      — one of: automation, ai, stop_work, bpo
+  Reduction %     — 0–100 (or decimal, e.g. 0.25 = 25%)
+  Effective Date  — when savings start (YYYY-MM-DD)
+
+Optional:
+  Process — ignored by parser; fine to keep for reference
+
+Notes:
+  - One row per lever entry.
+  - Multiple rows per activity are allowed (e.g. phased rollouts).
+
+
+QUICK WORKFLOW
+--------------
+People census (already in app)
+  → Step 1: pick role column (e.g. Grade)
+Activities.xlsx
+  → Step 2
+AllocationMatrix.xlsx
+  → Step 2 → Save & continue
+Levers.xlsx
+  → Step 3
+Step 4: Compute → Impact Report
+
+
+SAMPLE FILES THAT WORK TOGETHER
+-------------------------------
+People dataset:
+  sample_data/OrgSight_Sample_OrgChart_28rows.xlsx
+  Use "Grade" as the role column (E1, E2, M1, etc.)
+
+Activity files:
+  sample_data/ActivityAnalysis_Activities.xlsx
+  sample_data/ActivityAnalysis_AllocationMatrix.xlsx
+  sample_data/ActivityAnalysis_Levers.xlsx
+
+The allocation matrix roles (E1, E2, M1) match the Grade column in the sample org chart.
+Activity names are identical across all three Activity Analysis files.
+
+Use these as templates when building your own.

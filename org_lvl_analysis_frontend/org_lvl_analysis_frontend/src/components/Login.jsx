@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { login, changePassword as changePasswordApi } from "../api/backend";
+import AMLogo from "./AMLogo";
 
 export default function Login({ setToken, setUsername, onLoginComplete }) {
   const [user, setUser] = useState("");
@@ -46,8 +47,8 @@ export default function Login({ setToken, setUsername, onLoginComplete }) {
 
   const handleChangePassword = async (e) => {
     e.preventDefault();
-    if (newPass.length < 8) {
-      setError("New password must be at least 8 characters");
+    if (newPass.length < 5) {
+      setError("New password must be at least 5 characters");
       return;
     }
     if (newPass !== confirmPass) {
@@ -79,6 +80,11 @@ export default function Login({ setToken, setUsername, onLoginComplete }) {
 
   return (
     <div className="w-full max-w-sm">
+      <div className="flex items-center gap-3 mb-8">
+        <AMLogo className="h-7" />
+        <div className="h-5 w-px bg-gray-300" />
+        <span className="text-gray-600 text-sm font-medium">OrgSight</span>
+      </div>
       <div className="mb-8">
         <h2 className="text-3xl font-semibold font-display text-gray-900 tracking-tight">
           {mustChangePassword ? "Set a new password" : "Welcome back"}
@@ -104,7 +110,7 @@ export default function Login({ setToken, setUsername, onLoginComplete }) {
             </label>
             <input
               type="password"
-              placeholder="At least 8 characters"
+              placeholder="At least 5 characters"
               value={newPass}
               onChange={(e) => { setNewPass(e.target.value); setError(""); }}
               className="w-full px-4 py-2.5 border border-gray-300 rounded-md focus:ring-2 focus:border-brand-500 focus:border-brand-500 outline-none transition text-gray-900 placeholder-gray-400 text-sm"

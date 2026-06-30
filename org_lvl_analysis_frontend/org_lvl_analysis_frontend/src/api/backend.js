@@ -756,6 +756,9 @@ export const adminUpdateUser = (userId, body) =>
 export const adminDeactivateUser = (userId) =>
   axios.delete(`${BASE_URL}/admin/users/${userId}`, { headers: getHeaders() }).then(r => r.data);
 
+export const adminRevokeUserSessions = (userId) =>
+  axios.post(`${BASE_URL}/admin/users/${userId}/revoke-sessions`, {}, { headers: getHeaders() }).then(r => r.data);
+
 // --- Projects ---
 export const adminListProjects = () =>
   axios.get(`${BASE_URL}/admin/projects`, { headers: getHeaders() }).then(r => r.data);
@@ -792,6 +795,10 @@ export const adminDeleteProjectDataset = (projectId, datasetId) =>
 // --- Audit Log ---
 export const adminGetAuditLog = (params = {}) =>
   axios.get(`${BASE_URL}/admin/audit-log`, { headers: getHeaders(), params }).then(r => r.data);
+
+// --- Analytics Dashboard ---
+export const adminGetAnalytics = (range = "7d", force = false) =>
+  axios.get(`${BASE_URL}/admin/analytics`, { headers: getHeaders(), params: { range, force } }).then(r => r.data);
 
 
 // ===========================================================================

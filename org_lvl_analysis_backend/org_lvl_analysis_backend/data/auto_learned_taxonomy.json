@@ -16,7 +16,16 @@
     "Retail": "Sales & Marketing",
     "S&D": "Sales & Marketing",
     "Security": "Compliance and Legal",
-    "TRR": "Compliance and Legal"
+    "TRR": "Compliance and Legal",
+    "Business Analytics": "Finance",
+    "Commercial UK": "Sales & Marketing",
+    "Executive Office": "Compliance and Legal",
+    "Financial Control": "Finance",
+    "Quality Assurance": "R&D",
+    "Sales EU": "Sales & Marketing",
+    "Sales UK": "Sales & Marketing",
+    "Software Engineering": "R&D",
+    "Technology": "IT"
   },
   "subfunction_aliases": {
     "Legal": {
@@ -60,7 +69,8 @@
       "SA Corporate - Strategy": "Corporate Strategy",
       "General Manager: Finance": "Perform general accounting and reporting",
       "Manager,Fin.Governance,Risk &": "Manage internal controls",
-      "Head: Data": "Perform planning and management accounting"
+      "Head: Data": "Perform planning and management accounting",
+      "Finance": "Accounting and Finance"
     },
     "Human Resources": {
       "SA HR - Comp & Ben": "Reward and retain employees",
@@ -71,7 +81,8 @@
       "SA HR - Employee Relations": "Manage employee relations",
       "SA HR - Technology": "Manage employee information and analytics",
       "General Manager: Human Resourc": "Develop and manage human resources (HR) planning, policies, and strategies",
-      "Manager, Change Management & C": "Manage employee communication"
+      "Manager, Change Management & C": "Manage employee communication",
+      "Finance": "Accounting and Finance"
     },
     "ERA": {
       "SA ERA - Enterprise Risk": "Manage enterprise risk",
@@ -137,6 +148,33 @@
     },
     "C&P": {
       "Chief Procurement Officer": "Procure materials and services"
+    },
+    "Executive Office": {
+      "Corporate": "Business Resiliency"
+    },
+    "Commercial UK": {
+      "Commercial": "Sales and Marketing"
+    },
+    "Technology": {
+      "Technology": "Information Technology"
+    },
+    "Sales UK": {
+      "Commercial": "Sales and Marketing"
+    },
+    "Sales EU": {
+      "Commercial": "Sales and Marketing"
+    },
+    "Software Engineering": {
+      "Technology": "Information Technology"
+    },
+    "Business Analytics": {
+      "Technology": "Information Technology"
+    },
+    "Quality Assurance": {
+      "Technology": "Information Technology"
+    },
+    "Financial Control": {
+      "Finance": "Accounting and Finance"
     }
   },
   "title_aliases": {
@@ -161,7 +199,8 @@
       "Manager,Credit": "Finance Manager",
       "Manager,Planning,Performance": "Finance Manager",
       "Manager,Strategy": "Finance Manager",
-      "Head: Data": "Head"
+      "Head: Data": "Head",
+      "VP Finance & G&A": "Vice President Finance"
     },
     "Human Resources": {
       "General Manager: Human Resourc": "General Manager",
@@ -173,7 +212,8 @@
       "Manager,Employee Relations": "HR Generalist",
       "Manager, Change Management & C": "Organizational Development Manager",
       "Manager, HR Technology & Con": "HR Business Partner",
-      "Manager,Talent Attraction &": "Recruiter"
+      "Manager,Talent Attraction &": "Recruiter",
+      "HR Director": "Director"
     },
     "ERA": {
       "General Manager: ERA": "General Manager",
@@ -256,6 +296,37 @@
     },
     "Corporate": {
       "Managing Director and CEO": "Chief Executive Officer"
+    },
+    "Commercial UK": {
+      "UK CVP Commercial": "Vice President Commercial"
+    },
+    "Technology": {
+      "Global VP Technology": "Vice President Technology"
+    },
+    "Sales UK": {
+      "Head of Sales UK": "Head of Sales",
+      "Sales Manager - London": "Sales Manager"
+    },
+    "Sales EU": {
+      "Head of Sales Europe": "Head of Sales",
+      "Sales Manager - Berlin": "Sales Manager"
+    },
+    "Software Engineering": {
+      "Engineering Manager - Platform": "Engineering Manager",
+      "Director of Engineering": "Director"
+    },
+    "Quality Assurance": {
+      "Engineering Manager - QA": "Engineering Manager",
+      "QA Analyst": "Analyst"
+    },
+    "Business Analytics": {
+      "Data Science Lead": "Lead Data Scientist",
+      "Data Analyst": "Analyst",
+      "Junior Data Analyst": "Junior Analyst",
+      "Director Data & Analytics": "Director"
+    },
+    "Financial Control": {
+      "Financial Analyst": "Analyst"
     }
   },
   "disabled": []

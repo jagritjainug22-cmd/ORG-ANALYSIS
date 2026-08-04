@@ -41,6 +41,9 @@ dist-ssr/
 org_lvl_analysis_backend/org_lvl_analysis_backend/db/orgsight.db
 org_lvl_analysis_backend/org_lvl_analysis_backend/db/backups/
 
+# Runtime-learned taxonomy (per-environment, not source of truth)
+org_lvl_analysis_backend/org_lvl_analysis_backend/data/auto_learned_taxonomy.json
+
 # Logs
 logs/
 *.log

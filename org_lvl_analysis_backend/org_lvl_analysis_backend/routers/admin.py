@@ -113,13 +113,17 @@ async def create_user(
     if len(body.password) < 8:
         raise HTTPException(400, detail="Password must be at least 8 characters")
 
-    existing = db_service.get_user_by_username(body.username)
+    username = body.username.strip()
+    if not username:
+        raise HTTPException(400, detail="Username is required")
+
+    existing = db_service.get_user_by_username(username)
     if existing:
         raise HTTPException(409, detail="Username already exists")
 
     password_hash = user_service.hash_password(body.password)
     user_id = db_service.create_user(
-        username=body.username,
+        username=username,
         password_hash=password_hash,
         display_name=body.display_name,
         role=body.role,
@@ -130,7 +134,7 @@ async def create_user(
         action="user.create",
         resource_type="user",
         resource_id=user_id,
-        details={"username": body.username, "role": body.role},
+        details={"username": username, "role": body.role},
         ip_address=request.client.host if request.client else None,
     )
 

@@ -27,6 +27,7 @@ def verify_password(password: str, password_hash: str) -> bool:
 
 def authenticate(username: str, password: str) -> Optional[Dict[str, Any]]:
     """Validate credentials. Returns the user dict on success, None on failure."""
+    username = username.strip()
     user = db_service.get_user_by_username(username)
     if not user:
         return None

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { cleanup as cleanupApi, validate as validateApi, filterErrors as filterErrorsApi } from "../api/backend";
 import DataSourceSelector from "./DataSourceSelector";
+import ValidationDataTable from "./ValidationDataTable";
 
 function StatCard({ label, value, accent = false }) {
   return (
@@ -539,6 +540,7 @@ export default function UploadAndPrepare({
   const [filterFlags, setFilterFlags] = useState({});
   const [filtering, setFiltering] = useState(false);
   const [filterApplied, setFilterApplied] = useState(false);
+  const [revalidating, setRevalidating] = useState(false);
 
   const hasWorkingData = !uploading && Array.isArray(dfRecords) && dfRecords.length > 0;
   const showPreparePanel = hasWorkingData && !showSourcePicker;
@@ -685,10 +687,71 @@ export default function UploadAndPrepare({
         !!filterFlags.FLAG_MANAGER_ID_NOT_EMPLOYEE,
         !!filterFlags.FLAG_CIRCULAR_REFERENCE,
       );
-      if (res?.df) { setValidatedDf(res.df); setFilterApplied(true); }
+      if (!res?.df) return;
+
+      // Re-validate so error cards, readiness, and preview match remaining rows
+      const cleaned = res.df;
+      const valRes = await validateApi(cleaned, empCol, mgrCol, null, false, datasetId || null);
+      const parsed = parseValidationResponse(valRes);
+      const next = parsed.flaggedRecords.length ? parsed.flaggedRecords : cleaned;
+      const readiness = computeHierarchyReadiness(next, empCol, mgrCol, parsed);
+      setValidationResult({ ...parsed, readiness });
+      setValidatedDf(next);
+      setDfRecords?.(next);
+      setColumns?.(Object.keys(next[0] || {}).filter((k) => !k.startsWith("FLAG_")));
+      setFilterApplied(true);
+      setFilterFlags({});
     } catch (err) { console.error("Filter error:", err); }
     finally { setFiltering(false); }
   };
+
+  const handleValidationRecordsChange = useCallback((nextRecords) => {
+    setValidatedDf(nextRecords);
+    setDfRecords?.(nextRecords);
+    setColumns?.(Object.keys(nextRecords[0] || {}).filter((k) => !k.startsWith("FLAG_")));
+  }, [setValidatedDf, setDfRecords, setColumns]);
+
+  const handleRevalidate = useCallback(async () => {
+    if (!empCol || !mgrCol) return;
+    const source = validatedDf || dfRecords;
+    if (!source?.length) return;
+    setRevalidating(true);
+    try {
+      // Strip prior FLAG_ columns before re-running validation
+      const cleaned = source.map((row) => {
+        const next = { ...row };
+        Object.keys(next).forEach((k) => {
+          if (k.startsWith("FLAG_")) delete next[k];
+        });
+        return next;
+      });
+      const valRes = await validateApi(cleaned, empCol, mgrCol, null, false, datasetId || null);
+      const parsed = parseValidationResponse(valRes);
+      const readiness = computeHierarchyReadiness(
+        parsed.flaggedRecords,
+        empCol,
+        mgrCol,
+        parsed
+      );
+      setValidationResult({ ...parsed, readiness });
+      const next = parsed.flaggedRecords.length ? parsed.flaggedRecords : cleaned;
+      setValidatedDf(next);
+      setDfRecords?.(next);
+      setFilterApplied(false);
+      setFilterFlags({});
+    } catch (err) {
+      console.error("Re-validate error:", err);
+      setPipelineError(err.response?.data?.detail || "Re-validation failed.");
+    } finally {
+      setRevalidating(false);
+    }
+  }, [empCol, mgrCol, validatedDf, dfRecords, datasetId, setValidatedDf, setDfRecords]);
+
+  const tableRecords = (validatedDf?.length
+    ? validatedDf
+    : (validationResult?.flaggedRecords || dfRecords || []));
+  // Bump when validation is freshly run so the table resets navigation
+  const validationTableKey = `${validationResult?.flaggedRecords?.length ?? 0}:${totalFlagged}:${filterApplied}`;
 
   const pre = preprocessingSummary || {};
   const canRunPipeline = hasWorkingData && empCol && mgrCol;
@@ -1004,86 +1067,105 @@ export default function UploadAndPrepare({
                 </div>
               </div>
 
-              {/* Validation */}
+              {/* Validation — summary + dataset preview side by side */}
               {validationResult && (
                 <div className="space-y-3">
-                  <div>
-                    <h4 className="text-xs font-semibold text-brand-400 uppercase tracking-wide mb-2" style={{ fontFamily: "Manrope, Inter, sans-serif" }}>
-                      Validation
-                      {!hasValidationIssues && (
-                        <span className="ml-2 text-blue-600 normal-case">— All clear</span>
+                  <h4 className="text-xs font-semibold text-brand-400 uppercase tracking-wide" style={{ fontFamily: "Manrope, Inter, sans-serif" }}>
+                    Validation
+                    {!hasValidationIssues && (
+                      <span className="ml-2 text-blue-600 normal-case">— All clear</span>
+                    )}
+                    {hasValidationIssues && (
+                      <span className="ml-2 text-amber-600 normal-case">
+                        — {totalFlagged} flagged row{totalFlagged !== 1 ? "s" : ""}
+                      </span>
+                    )}
+                  </h4>
+
+                  <div className="space-y-4">
+                    {/* Error type summary + filter actions */}
+                    <div className="space-y-3">
+                      <div className="bg-white border border-brand-100 rounded-lg overflow-hidden shadow-sm divide-y divide-gray-100">
+                        {Object.entries(flagCounts).filter(([, count]) => count > 0).map(([flag, count]) => (
+                          <FlagRow
+                            key={flag}
+                            label={FLAG_LABELS[flag] || flag.replace("FLAG_", "").replace(/_/g, " ")}
+                            count={count}
+                            checked={!!filterFlags[flag]}
+                            onChange={() => setFilterFlags(prev => ({ ...prev, [flag]: !prev[flag] }))}
+                          />
+                        ))}
+                        {!hasValidationIssues && (
+                          <div className="px-4 py-3 text-sm text-blue-600 flex items-center gap-2">
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                            No validation issues found
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Sample invalid manager IDs */}
+                      {validationResult.invalid_manager_ids?.length > 0 && (
+                        <div className="bg-amber-50 border border-amber-100 rounded-lg px-3 py-2.5">
+                          <p className="text-xs font-semibold text-amber-900 mb-1.5">
+                            Sample external manager IDs ({validationResult.invalid_manager_ids.length} unique)
+                          </p>
+                          <div className="flex flex-wrap gap-1.5">
+                            {validationResult.invalid_manager_ids.slice(0, 8).map((id) => (
+                              <span key={id} className="px-2 py-0.5 bg-white border border-amber-200 text-amber-800 text-xs font-mono rounded">
+                                {id}
+                              </span>
+                            ))}
+                            {validationResult.invalid_manager_ids.length > 8 && (
+                              <span className="px-2 py-0.5 text-amber-600 text-xs">
+                                +{validationResult.invalid_manager_ids.length - 8} more
+                              </span>
+                            )}
+                          </div>
+                        </div>
                       )}
-                      {hasValidationIssues && (
-                        <span className="ml-2 text-amber-600 normal-case">
-                          — {totalFlagged} flagged row{totalFlagged !== 1 ? "s" : ""}
-                        </span>
+
+                      {totalFlagged > 0 && !filterApplied && (
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <p className="text-xs text-slate-400">
+                            {selectedRemoveCount > 0
+                              ? `${selectedRemoveCount} flagged row${selectedRemoveCount !== 1 ? "s" : ""} will be removed`
+                              : "Select error types to remove, or fix them in the table below"}
+                          </p>
+                          <button
+                            onClick={handleApplyFilters}
+                            disabled={selectedRemoveCount === 0 || filtering}
+                            className={`px-4 py-1.5 rounded-lg text-sm font-medium ${PRIMARY_BTN}`}
+                          >
+                            {filtering ? "Filtering..." : "Apply Filters (remove selected)"}
+                          </button>
+                        </div>
                       )}
-                    </h4>
-                    <div className="bg-white border border-brand-100 rounded-lg overflow-hidden shadow-sm divide-y divide-gray-100">
-                      {Object.entries(flagCounts).filter(([, count]) => count > 0).map(([flag, count]) => (
-                        <FlagRow
-                          key={flag}
-                          label={FLAG_LABELS[flag] || flag.replace("FLAG_", "").replace(/_/g, " ")}
-                          count={count}
-                          checked={!!filterFlags[flag]}
-                          onChange={() => setFilterFlags(prev => ({ ...prev, [flag]: !prev[flag] }))}
-                        />
-                      ))}
-                      {!hasValidationIssues && (
-                        <div className="px-4 py-3 text-sm text-blue-600 flex items-center gap-2">
+                      {filterApplied && (
+                        <div className="px-3 py-2 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-700 flex items-center gap-2">
                           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
-                          No validation issues found
+                          Filters applied — {(validatedDf || dfRecords)?.length} rows remaining
                         </div>
                       )}
                     </div>
 
-                    {/* Sample invalid manager IDs */}
-                    {validationResult.invalid_manager_ids?.length > 0 && (
-                      <div className="mt-2 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2.5">
-                        <p className="text-xs font-semibold text-amber-900 mb-1.5">
-                          Sample external manager IDs ({validationResult.invalid_manager_ids.length} unique)
-                        </p>
-                        <div className="flex flex-wrap gap-1.5">
-                          {validationResult.invalid_manager_ids.slice(0, 8).map((id) => (
-                            <span key={id} className="px-2 py-0.5 bg-white border border-amber-200 text-amber-800 text-xs font-mono rounded">
-                              {id}
-                            </span>
-                          ))}
-                          {validationResult.invalid_manager_ids.length > 8 && (
-                            <span className="px-2 py-0.5 text-amber-600 text-xs">
-                              +{validationResult.invalid_manager_ids.length - 8} more
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    )}
+                    {/* Dataset preview — directly under filter actions so it is not missed */}
+                    <div>
+                      <p className="text-[10px] font-bold text-brand-400 uppercase tracking-wider mb-2">
+                        Dataset preview
+                      </p>
+                      <ValidationDataTable
+                        key={validationTableKey}
+                        records={tableRecords}
+                        empCol={empCol}
+                        mgrCol={mgrCol}
+                        onRecordsChange={handleValidationRecordsChange}
+                        onRevalidate={handleRevalidate}
+                        revalidating={revalidating}
+                      />
+                    </div>
 
-                    {totalFlagged > 0 && !filterApplied && (
-                      <div className="mt-3 flex items-center justify-between">
-                        <p className="text-xs text-slate-400">
-                          {selectedRemoveCount > 0
-                            ? `${selectedRemoveCount} flagged row${selectedRemoveCount !== 1 ? "s" : ""} will be removed`
-                            : "Select error types above to filter them out (optional)"}
-                        </p>
-                        <button
-                          onClick={handleApplyFilters}
-                          disabled={selectedRemoveCount === 0 || filtering}
-                          className={`px-4 py-1.5 rounded-lg text-sm font-medium ${PRIMARY_BTN}`}
-                        >
-                          {filtering ? "Filtering..." : "Apply Filters"}
-                        </button>
-                      </div>
-                    )}
-                    {filterApplied && (
-                      <div className="mt-2 px-3 py-2 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-700 flex items-center gap-2">
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
-                        Filters applied — {(validatedDf || dfRecords)?.length} rows remaining
-                      </div>
-                    )}
+                    <HierarchyReadinessPanel readiness={readiness} />
                   </div>
-
-                  {/* Hierarchy readiness */}
-                  <HierarchyReadinessPanel readiness={readiness} />
                 </div>
               )}
 

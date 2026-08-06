@@ -75,9 +75,18 @@ OrgSight_Feature_Tracker.xlsx/
 *.xlsm
 *.xlsb
 *.zip
+# Keep small SAST/QA fixtures
+!testdata/
+!testdata/**/*.xlsx
+
 
 # VM-local backup copies (not source of truth)
 *.vm-backup
 
 # Deployment runtime output (scripts in deployment/ are tracked)
 deployment/logs/
+
+
+sast/
+Feedback/
+AGENTS.md

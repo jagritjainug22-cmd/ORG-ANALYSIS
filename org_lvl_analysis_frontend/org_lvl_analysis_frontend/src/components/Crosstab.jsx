@@ -336,7 +336,7 @@ export default function Crosstab({ df, fteCol, flcCol, formulas = [], datasetId 
         <div className="grid grid-cols-2 gap-6">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              Column X (Rows)
+              Rows
             </label>
             <select
               value={colX}
@@ -357,7 +357,7 @@ export default function Crosstab({ df, fteCol, flcCol, formulas = [], datasetId 
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              Column Y (Columns)
+              Columns
             </label>
             <select
               value={colY}
@@ -425,11 +425,11 @@ export default function Crosstab({ df, fteCol, flcCol, formulas = [], datasetId 
             </div>
 
             <div className="grid grid-cols-2 gap-4">
-              {/* Column X Threshold */}
+              {/* Rows Threshold */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Column X Threshold (%)
-                  {!colX && <span className="text-gray-400 ml-1">(Column X not selected)</span>}
+                  Rows Threshold (%)
+                  {!colX && <span className="text-gray-400 ml-1">(Rows not selected)</span>}
                 </label>
                 <input
                   type="number"
@@ -444,11 +444,11 @@ export default function Crosstab({ df, fteCol, flcCol, formulas = [], datasetId 
                 <p className="text-xs text-gray-500 mt-1">Group categories with less than this % as "Others"</p>
               </div>
 
-              {/* Column Y Threshold */}
+              {/* Columns Threshold */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Column Y Threshold (%)
-                  {!colY && <span className="text-gray-400 ml-1">(Column Y not selected)</span>}
+                  Columns Threshold (%)
+                  {!colY && <span className="text-gray-400 ml-1">(Columns not selected)</span>}
                 </label>
                 <input
                   type="number"
@@ -484,7 +484,7 @@ export default function Crosstab({ df, fteCol, flcCol, formulas = [], datasetId 
                 
                 {previewData.colX_categories && previewData.colX_categories.length > 0 && (
                   <div className="mb-4">
-                    <p className="text-sm font-medium text-gray-700 mb-2">Column X (Rows):</p>
+                    <p className="text-sm font-medium text-gray-700 mb-2">Rows:</p>
                     <div className="space-y-2">
                       {previewData.colX_categories
                         .filter(cat => cat.percentage < colXThreshold)
@@ -510,7 +510,7 @@ export default function Crosstab({ df, fteCol, flcCol, formulas = [], datasetId 
 
                 {previewData.colY_categories && previewData.colY_categories.length > 0 && (
                   <div>
-                    <p className="text-sm font-medium text-gray-700 mb-2">Column Y (Columns):</p>
+                    <p className="text-sm font-medium text-gray-700 mb-2">Columns:</p>
                     <div className="space-y-2">
                       {previewData.colY_categories
                         .filter(cat => cat.percentage < colYThreshold)
@@ -833,8 +833,8 @@ export default function Crosstab({ df, fteCol, flcCol, formulas = [], datasetId 
           About Crosstab Analysis
         </summary>
         <ul className="px-3 pb-2 text-[11px] text-blue-700 space-y-0.5 columns-2">
-          <li>• <strong>Column X:</strong> Creates rows in the crosstab table</li>
-          <li>• <strong>Column Y:</strong> Creates columns in the crosstab table</li>
+          <li>• <strong>Rows:</strong> Creates rows in the crosstab table</li>
+          <li>• <strong>Columns:</strong> Creates columns in the crosstab table</li>
           <li>• <strong>Metrics:</strong> Automatically calculates counts, sums, and averages</li>
           <li>• <strong>FTE/FLC:</strong> If columns are configured, additional cost metrics are included</li>
           <li>• <strong>"Others" Grouping:</strong> Combine minority categories below a threshold into a single "Others" row/column</li>

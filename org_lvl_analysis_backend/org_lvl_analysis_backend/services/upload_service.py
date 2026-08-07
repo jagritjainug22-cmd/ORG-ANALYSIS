@@ -95,6 +95,9 @@ def smart_read_excel(file_bytes: bytes, filename: str = "") -> tuple[pd.DataFram
     summary["duplicate_columns_renamed"] = dup_renames
 
     # ── Step 7: Drop fully empty columns ─────────────────────────────────
+    # Only drop columns that are 100% empty (no data at all). Non-empty
+    # columns — including those not mapped to OrgSight standard fields —
+    # are always preserved through processing, save, and export.
     empty_cols = [c for c in df.columns if df[c].isna().all()]
     if empty_cols:
         df.drop(columns=empty_cols, inplace=True)

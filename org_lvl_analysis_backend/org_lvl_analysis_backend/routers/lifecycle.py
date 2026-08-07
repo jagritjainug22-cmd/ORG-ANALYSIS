@@ -1593,31 +1593,52 @@ async def hierarchy_endpoint(
             except Exception:
                 pass  # Formula errors must not break the hierarchy result
 
+        df["Last_Employee"] = df["Chain_reversed"].apply(
+            lambda x: x[-1] if isinstance(x, list) and len(x) > 0 else None
+        )
+        level_cols = [f"L{i+1}" for i in range(max_depth)] if max_depth > 0 else []
+
+        # Compact preview columns (UI only) — system hierarchy view
         potential_base_cols = []
         if job_title_col and job_title_col in df.columns:
             potential_base_cols.append(job_title_col)
         elif "Job Title" in df.columns and not job_title_col:
             potential_base_cols.append("Job Title")
         for col in ["Division (Reporting Line)", "Country", "Level"]:
-            if col in df.columns:
+            if col in df.columns and col not in potential_base_cols:
                 potential_base_cols.append(col)
 
-        df["Last_Employee"] = df["Chain_reversed"].apply(
-            lambda x: x[-1] if isinstance(x, list) and len(x) > 0 else None
-        )
-        level_cols = [f"L{i+1}" for i in range(max_depth)] if max_depth > 0 else []
-        ordered_cols = level_cols + ["Last_Employee"] + potential_base_cols + ["Total_Reports", "Avg_FLC"]
-        df_final = df[ordered_cols].copy()
+        preview_cols = level_cols + ["Last_Employee"] + potential_base_cols + ["Total_Reports", "Avg_FLC"]
+        preview_cols = [c for c in preview_cols if c in df.columns]
+        df_preview = df[preview_cols].copy()
 
         from services.hierarchy_service import sort_hierarchy
-        df_final = sort_hierarchy(df_final, max_depth)
-        df_final = df_final.replace([pd.NA, np.nan, np.inf, -np.inf], "")
+        df_preview = sort_hierarchy(df_preview, max_depth)
+        df_preview = df_preview.replace([pd.NA, np.nan, np.inf, -np.inf], "")
+
+        # Full export: preserve ALL original columns, append system-generated ones
+        SYSTEM_COLS = (
+            ["Level", "Span", "Total_Reports", "Avg_FLC", "Last_Employee", "Chain", "Chain_reversed"]
+            + level_cols
+        )
+        original_cols = [c for c in df.columns if c not in SYSTEM_COLS]
+        # Prefer original order, then append any system cols that exist
+        export_cols = original_cols + [c for c in SYSTEM_COLS if c in df.columns]
+        df_export = df[export_cols].copy()
+        df_export = sort_hierarchy(df_export, max_depth)
+        # Excel-safe: stringify list columns (Chain / Chain_reversed)
+        for list_col in ("Chain", "Chain_reversed"):
+            if list_col in df_export.columns:
+                df_export[list_col] = df_export[list_col].apply(
+                    lambda v: " > ".join(str(x) for x in v) if isinstance(v, list) else v
+                )
+        df_export = df_export.replace([pd.NA, np.nan, np.inf, -np.inf], "")
 
         if download:
-            excel_bytes = export_excel(df_final, sheet_name="Hierarchy")
+            excel_bytes = export_excel(df_export, sheet_name="Hierarchy")
             write_activity_log(
                 username=username, action="download", module="Hierarchy",
-                rows_input=rows_input, rows_output=len(df_final),
+                rows_input=rows_input, rows_output=len(df_export),
                 status="success", details=f"Downloaded hierarchy with max depth {max_depth}",
             )
             return StreamingResponse(
@@ -1631,9 +1652,11 @@ async def hierarchy_endpoint(
             rows_input=rows_input, rows_output=len(df),
             status="success", details=f"Processed hierarchy with max depth {max_depth}",
         )
+        # df keeps every original column + appended system fields for downstream
+        # analysis/save; preview stays compact for the Hierarchy UI table.
         return ORJSONResponse({
-            "preview": df_final.head(20).to_dict(orient="records"),
-            "df": df.to_dict(orient="records"),
+            "preview": df_preview.head(20).to_dict(orient="records"),
+            "df": df.replace([pd.NA, np.nan, np.inf, -np.inf], "").to_dict(orient="records"),
             "rows_processed": len(df), "max_depth": max_depth,
         })
     except Exception as e:

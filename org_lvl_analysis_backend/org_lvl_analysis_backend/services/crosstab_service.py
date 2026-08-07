@@ -255,11 +255,12 @@ def generate_crosstab(df: pd.DataFrame, col_x=None, col_y=None, fte_col=None, fl
         flc_val_col = f"__flc_val__"
         pivot_df[flc_val_col] = pivot_df[flc]
 
+    # Rows dimension = col_x, Columns dimension = col_y (standard crosstab convention)
     pivot_values = [c for c in [fte_val_col, flc_val_col] if c]
     pivot_raw = pd.pivot_table(
         pivot_df,
-        index=col_y,
-        columns=col_x,
+        index=col_x,
+        columns=col_y,
         values=pivot_values,
         aggfunc="sum",
         fill_value=0
@@ -288,14 +289,14 @@ def generate_crosstab(df: pd.DataFrame, col_x=None, col_y=None, fte_col=None, fl
     flc_pivot = flc_pivot[final_col_order]
     avg = avg[final_col_order]
 
-    # MultiIndex columns: under each X: FTEs, FLC, Avg_FTE_cost
+    # MultiIndex columns: under each Columns-dimension value: FTEs, FLC, Avg_FTE_cost
     multi_cols = pd.MultiIndex.from_product([final_col_order, ["FTEs", "FLC", "Avg_FTE_cost"]],
-                                            names=["ColumnX", "Metric"])
+                                            names=["Columns", "Metric"])
     data = []
-    for y in fte_pivot.index:
+    for row_key in fte_pivot.index:
         row = []
-        for x in final_col_order:
-            row.extend([fte_pivot.loc[y, x], flc_pivot.loc[y, x], avg.loc[y, x]])
+        for col_key in final_col_order:
+            row.extend([fte_pivot.loc[row_key, col_key], flc_pivot.loc[row_key, col_key], avg.loc[row_key, col_key]])
         data.append(row)
     pivot = pd.DataFrame(data, columns=multi_cols, index=fte_pivot.index)
 

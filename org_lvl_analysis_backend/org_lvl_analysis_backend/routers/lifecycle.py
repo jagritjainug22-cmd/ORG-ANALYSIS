@@ -1614,6 +1614,32 @@ async def hierarchy_endpoint(
 
         from services.hierarchy_service import sort_hierarchy
         df_preview = sort_hierarchy(df_preview, max_depth)
+
+        # Level distribution across the FULL dataset (not just the preview) so the
+        # UI can show users that deeper levels (L4, L5, ...) exist even though the
+        # preview table below only has room for a small sample.
+        level_distribution = {}
+        if "Level" in df.columns:
+            level_distribution = {
+                int(lvl): int(cnt)
+                for lvl, cnt in df["Level"].value_counts().sort_index().items()
+                if pd.notna(lvl)
+            }
+
+        # The preview table is capped at 20 rows. Sampling straight off the top
+        # (ascending by Level) would only ever surface senior L1/L2 rows on any
+        # dataset with >20 people at the top of the org — making it look like
+        # deeper levels were never computed. Instead, spread the sample across
+        # every level that exists so L3/L4/L5 rows are visible too.
+        PREVIEW_LIMIT = 20
+        if "Level" in df_preview.columns and max_depth > 0:
+            levels_present = sorted(df_preview["Level"].dropna().unique())
+            per_level = max(1, PREVIEW_LIMIT // max(1, len(levels_present)))
+            sampled = [df_preview[df_preview["Level"] == lvl].head(per_level) for lvl in levels_present]
+            df_preview = pd.concat(sampled) if sampled else df_preview.head(PREVIEW_LIMIT)
+        else:
+            df_preview = df_preview.head(PREVIEW_LIMIT)
+
         df_preview = df_preview.replace([pd.NA, np.nan, np.inf, -np.inf], "")
 
         # Full export: preserve ALL original columns, append system-generated ones
@@ -1655,9 +1681,10 @@ async def hierarchy_endpoint(
         # df keeps every original column + appended system fields for downstream
         # analysis/save; preview stays compact for the Hierarchy UI table.
         return ORJSONResponse({
-            "preview": df_preview.head(20).to_dict(orient="records"),
+            "preview": df_preview.to_dict(orient="records"),
             "df": df.replace([pd.NA, np.nan, np.inf, -np.inf], "").to_dict(orient="records"),
             "rows_processed": len(df), "max_depth": max_depth,
+            "level_distribution": level_distribution,
         })
     except Exception as e:
         write_activity_log(
@@ -1910,7 +1937,13 @@ def crosstab_endpoint(
         result_df = generate_crosstab(df, col_x, col_y, fte_col, flc_col)
 
         if download:
-            excel_bytes = export_excel(result_df, sheet_name="Crosstab")
+            # Crosstab's index holds meaningful row-category labels (not a
+            # plain 0..n index), so it must be written out or the exported
+            # sheet loses which row each set of totals belongs to.
+            excel_bytes = export_excel(
+                result_df, sheet_name="Crosstab",
+                include_index=True, index_label=col_x or "Category",
+            )
             write_activity_log(
                 username=username, action="download", module="Crosstab",
                 rows_input=rows_input, rows_output=len(result_df),

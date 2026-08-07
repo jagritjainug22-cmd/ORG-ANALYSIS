@@ -68,6 +68,7 @@ import OrgScenarioBar from "./orgchart/OrgScenarioBar";
 import BulkActionBar from "./orgchart/BulkActionBar";
 import ValidationSidebar from "./orgchart/ValidationSidebar";
 import { validateRecordsClient } from "./orgchart/validateScenarioClient";
+import { useIgnoredIssues, useVisibleIssuesMap } from "./orgchart/useIgnoredIssues";
 import OrgCompareModal from "./orgchart/OrgCompareModal";
 import OrgAddChildModal from "./orgchart/OrgAddChildModal";
 import OrgMoveConfirmModal from "./orgchart/OrgMoveConfirmModal";
@@ -139,6 +140,15 @@ export default function OrgChart({
   const [selectedId, setSelectedId] = useState(null);
   const [multiSelectedIds, setMultiSelectedIds] = useState(() => new Set());
   const [nodeIssuesMap, setNodeIssuesMap] = useState(() => new Map());
+  const ignoreStorageKey = inDbMode ? `${datasetId}:${activeScenarioId}` : "legacy";
+  const { ignoreIssue, ignoreMany, restoreAll, filterIssuesMap } = useIgnoredIssues(ignoreStorageKey);
+  const visibleIssuesMap = useVisibleIssuesMap(nodeIssuesMap, filterIssuesMap);
+  const ignoredIssueCount = useMemo(() => {
+    let total = 0;
+    for (const issues of nodeIssuesMap.values()) total += issues.length;
+    for (const issues of visibleIssuesMap.values()) total -= issues.length;
+    return total;
+  }, [nodeIssuesMap, visibleIssuesMap]);
   const [cycleGroups, setCycleGroups] = useState(() => []);
   const [clonePromptFor, setClonePromptFor] = useState(null);
   const [collapsed, setCollapsed] = useState(() => new Set());
@@ -2603,7 +2613,7 @@ export default function OrgChart({
                   selected={selectedId === id}
                   focused={focusedNodeId === id}
                   isMultiSelected={multiSelectedIds.has(id)}
-                  issues={nodeIssuesMap.get(id) || null}
+                  issues={visibleIssuesMap.get(id) || null}
                   editMode={editMode}
                   empCol={empCol}
                   jobTitleCol={jobTitleCol}
@@ -2682,8 +2692,12 @@ export default function OrgChart({
 
           {/* Inline validation sidebar — navigation only; fix UI is in the detail panel */}
           <ValidationSidebar
-            nodeIssuesMap={nodeIssuesMap}
+            nodeIssuesMap={visibleIssuesMap}
             onJumpToNode={navigateToNode}
+            ignoredCount={ignoredIssueCount}
+            onIgnoreIssue={ignoreIssue}
+            onIgnoreMany={ignoreMany}
+            onRestoreAll={restoreAll}
           />
 
           {/* Bulk action bar — floats at bottom when multi-select is active */}
@@ -2713,6 +2727,16 @@ export default function OrgChart({
                 () => dbBulkMove(activeScenarioId, empIds, newMgrId)
               );
             }}
+            onBulkIgnoreIssues={(empIds) => {
+              const pairs = [];
+              for (const eid of empIds) {
+                for (const issue of visibleIssuesMap.get(eid) || []) {
+                  pairs.push({ empId: eid, issue });
+                }
+              }
+              if (pairs.length) ignoreMany(pairs);
+            }}
+            nodeIssuesMap={visibleIssuesMap}
             allRecords={records}
             empCol={empCol}
             jobTitleCol={jobTitleCol}
@@ -2766,7 +2790,8 @@ export default function OrgChart({
             onAutoCloneConsumed={() => setClonePromptFor(null)}
             rateCardActive={!!activeScenario?.rate_card_id}
             onApplyRateCard={handleApplyRateCard}
-            issues={nodeIssuesMap.get(String(idOf(selectedRecord))) || null}
+            issues={visibleIssuesMap.get(String(idOf(selectedRecord))) || null}
+            onIgnoreIssue={(issue) => ignoreIssue(String(idOf(selectedRecord)), issue)}
             cycleGroups={cycleGroups}
             records={records}
             onMoveEmployee={handleMove}

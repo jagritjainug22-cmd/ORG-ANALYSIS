@@ -3,15 +3,46 @@ import { cleanup as cleanupApi, validate as validateApi, filterErrors as filterE
 import DataSourceSelector from "./DataSourceSelector";
 import ValidationDataTable from "./ValidationDataTable";
 
-function StatCard({ label, value, accent = false }) {
+function StatCard({ label, value, accent = false, icon = null }) {
   return (
     <div className="relative overflow-hidden bg-white/90 backdrop-blur-sm border border-brand-100 rounded-xl p-4 shadow-card hover:shadow-panel hover:-translate-y-0.5 transition-all duration-300 flex flex-col justify-between">
       <div className={`absolute inset-0 bg-gradient-to-br ${accent ? 'from-[#c5a84a]/5' : 'from-brand-500/5'} to-transparent pointer-events-none`} />
-      <p className="relative text-[10px] font-bold text-brand-400 uppercase tracking-wider leading-none mb-2" style={{ fontFamily: "Manrope, Inter, sans-serif" }}>{label}</p>
+      <div className="relative flex items-center justify-between mb-2">
+        <p className="text-[10px] font-bold text-brand-400 uppercase tracking-wider leading-none" style={{ fontFamily: "Manrope, Inter, sans-serif" }}>{label}</p>
+        {icon && (
+          <span className={`flex-shrink-0 w-6 h-6 rounded-lg flex items-center justify-center ${accent ? "bg-[#c5a84a]/10 text-[#c5a84a]" : "bg-brand-500/10 text-brand-500"}`}>
+            {icon}
+          </span>
+        )}
+      </div>
       <p className={`relative text-xl font-extrabold leading-none ${accent ? "text-[#c5a84a]" : "text-[#01244a]"}`} style={{ fontFamily: "Manrope, Inter, sans-serif" }}>{value}</p>
     </div>
   );
 }
+
+const StatIcons = {
+  sheet: (
+    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-2m3 2v-4m3 4v-6M5 21h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v14a2 2 0 002 2z" />
+    </svg>
+  ),
+  headerRow: (
+    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 6v12a1 1 0 001 1h14a1 1 0 001-1V6M4 6l1.5-2h13L20 6" />
+    </svg>
+  ),
+  mergedCells: (
+    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4h7v7H4V4zm9 0h7v7h-7V4zM4 13h7v7H4v-7zm9 0h7v7h-7v-7z" />
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 9l6 6" />
+    </svg>
+  ),
+  floatIds: (
+    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 9h14M5 15h14M11 4L9 20m6-16l-2 16" />
+    </svg>
+  ),
+};
 
 
 function FlagRow({ label, count, checked, onChange }) {
@@ -478,6 +509,7 @@ export default function UploadAndPrepare({
   columnMappingSummary = null,
   columnReadiness = null,
   onPipelineComplete,
+  onDatasetStatsChange,
   dataSource = null,
   pipelineStatus = { cleanup: null, validate: null, rationalise: null },
   activeDatasetLabel = null,
@@ -542,6 +574,26 @@ export default function UploadAndPrepare({
   const [filterApplied, setFilterApplied] = useState(false);
   const [revalidating, setRevalidating] = useState(false);
 
+  // Row-count stats surfaced to the Export & Stats panel: how many rows we
+  // started with, how many have been removed by filtering so far, and how
+  // many remain. Reset whenever a fresh pipeline run starts.
+  const [rowStats, setRowStats] = useState(null);
+  const pushRowStats = useCallback((next) => {
+    setRowStats(next);
+    onDatasetStatsChange?.(next);
+  }, [onDatasetStatsChange]);
+
+  // Toast shown after a filter/re-validate pass so it's obvious the working
+  // dataset (and anything exported from it) has changed row count.
+  const [rowToast, setRowToast] = useState(null);
+  const rowToastTimerRef = useRef(null);
+  const showRowToast = useCallback((message, tone = "success") => {
+    if (rowToastTimerRef.current) clearTimeout(rowToastTimerRef.current);
+    setRowToast({ message, tone });
+    rowToastTimerRef.current = setTimeout(() => setRowToast(null), 4500);
+  }, []);
+  useEffect(() => () => { if (rowToastTimerRef.current) clearTimeout(rowToastTimerRef.current); }, []);
+
   const hasWorkingData = !uploading && Array.isArray(dfRecords) && dfRecords.length > 0;
   const showPreparePanel = hasWorkingData && !showSourcePicker;
   const isSavedSource = dataSource === "saved";
@@ -563,9 +615,10 @@ export default function UploadAndPrepare({
       setFilterFlags({});
       setPipelineError(null);
       setMappingBannerDismissed(false);
+      pushRowStats(null);
     }
     datasetKeyRef.current = key;
-  }, [hasWorkingData, dataSource, datasetId]);
+  }, [hasWorkingData, dataSource, datasetId, pushRowStats]);
 
   const handleSwitchDataset = () => {
     setShowSourcePicker(true);
@@ -576,6 +629,7 @@ export default function UploadAndPrepare({
     setFilterApplied(false);
     setFilterFlags({});
     setPipelineError(null);
+    pushRowStats(null);
   };
 
   const headerConfig = showPreparePanel
@@ -616,8 +670,9 @@ export default function UploadAndPrepare({
     setFilterFlags({});
     setPipelineError(null);
     setMappingBannerDismissed(false);
+    pushRowStats(null);
     onSmartUpload(file);
-  }, [onSmartUpload]);
+  }, [onSmartUpload, pushRowStats]);
 
   const handleDrop = (e) => { e.preventDefault(); setIsDragging(false); handleFile(e.dataTransfer.files[0]); };
   const handleDragOver = (e) => { e.preventDefault(); setIsDragging(true); };
@@ -634,6 +689,7 @@ export default function UploadAndPrepare({
     setFilterFlags({});
     try {
       let workingDf = dfRecords;
+      const uploadedCount = workingDf.length;
 
       // Cleanup
       const cleanRes = await cleanupApi(workingDf, true, countryCol || null, datasetId || null);
@@ -659,6 +715,17 @@ export default function UploadAndPrepare({
           setValidatedDf(parsed.flaggedRecords);
         }
       }
+
+      // Baseline row-count stats for the Export & Stats panel — reset on every fresh run
+      pushRowStats({
+        uploadedRows: uploadedCount,
+        exclusionsRemoved: cleanRes.removed || 0,
+        baselineRows: workingDf.length,
+        currentRows: workingDf.length,
+        filterRemovedTotal: 0,
+        lastFilterRemoved: 0,
+        newIssuesAfterFilter: 0,
+      });
 
       setPipelineComplete(true);
       onPipelineComplete?.();
@@ -688,6 +755,7 @@ export default function UploadAndPrepare({
         !!filterFlags.FLAG_CIRCULAR_REFERENCE,
       );
       if (!res?.df) return;
+      const removedThisPass = res.removed_count ?? ((res.original_count ?? 0) - (res.filtered_count ?? res.df.length));
 
       // Re-validate so error cards, readiness, and preview match remaining rows
       const cleaned = res.df;
@@ -701,7 +769,28 @@ export default function UploadAndPrepare({
       setColumns?.(Object.keys(next[0] || {}).filter((k) => !k.startsWith("FLAG_")));
       setFilterApplied(true);
       setFilterFlags({});
-    } catch (err) { console.error("Filter error:", err); }
+
+      // Re-validating after removing rows can surface *new* flags: if a removed
+      // row's employee ID was used as someone else's manager reference, those
+      // remaining rows now point at a manager that no longer exists.
+      const totalFlaggedAfter = Object.values(parsed.flag_counts || {}).reduce((s, c) => s + c, 0);
+      const base = rowStats || { uploadedRows: cleaned.length, exclusionsRemoved: 0, baselineRows: cleaned.length };
+      pushRowStats({
+        ...base,
+        currentRows: cleaned.length,
+        filterRemovedTotal: (base.filterRemovedTotal || 0) + removedThisPass,
+        lastFilterRemoved: removedThisPass,
+        newIssuesAfterFilter: totalFlaggedAfter,
+      });
+
+      showRowToast(
+        `Excel updated — ${cleaned.length.toLocaleString()} row${cleaned.length !== 1 ? "s" : ""} remaining after removing ${removedThisPass.toLocaleString()} flagged row${removedThisPass !== 1 ? "s" : ""}.`,
+        totalFlaggedAfter > 0 ? "warning" : "success"
+      );
+    } catch (err) {
+      console.error("Filter error:", err);
+      showRowToast("Filter failed — the working dataset was not changed.", "error");
+    }
     finally { setFiltering(false); }
   };
 
@@ -739,13 +828,30 @@ export default function UploadAndPrepare({
       setDfRecords?.(next);
       setFilterApplied(false);
       setFilterFlags({});
+
+      const totalFlaggedAfter = Object.values(parsed.flag_counts || {}).reduce((s, c) => s + c, 0);
+      if (rowStats) {
+        pushRowStats({
+          ...rowStats,
+          currentRows: cleaned.length,
+          newIssuesAfterFilter: totalFlaggedAfter,
+        });
+      }
+
+      showRowToast(
+        totalFlaggedAfter > 0
+          ? `Re-validated ${cleaned.length.toLocaleString()} rows — ${totalFlaggedAfter.toLocaleString()} still flagged.`
+          : `Re-validated ${cleaned.length.toLocaleString()} rows — no issues found.`,
+        totalFlaggedAfter > 0 ? "warning" : "success"
+      );
     } catch (err) {
       console.error("Re-validate error:", err);
       setPipelineError(err.response?.data?.detail || "Re-validation failed.");
+      showRowToast("Re-validation failed.", "error");
     } finally {
       setRevalidating(false);
     }
-  }, [empCol, mgrCol, validatedDf, dfRecords, datasetId, setValidatedDf, setDfRecords]);
+  }, [empCol, mgrCol, validatedDf, dfRecords, datasetId, setValidatedDf, setDfRecords, rowStats, pushRowStats]);
 
   const tableRecords = (validatedDf?.length
     ? validatedDf
@@ -950,10 +1056,10 @@ export default function UploadAndPrepare({
             <div>
               <h4 className="text-xs font-semibold text-brand-400 uppercase tracking-wide mb-2" style={{ fontFamily: "Manrope, Inter, sans-serif" }}>Preprocessing</h4>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                <StatCard label="Sheet used" value={pre.sheet_used || "—"} />
-                <StatCard label="Header row" value={pre.header_row_detected ?? "1"} />
-                <StatCard label="Merged cells fixed" value={pre.merged_cells_resolved ?? 0} accent={pre.merged_cells_resolved > 0} />
-                <StatCard label="Float IDs fixed" value={pre.float_ids_fixed ?? 0} accent={pre.float_ids_fixed > 0} />
+                <StatCard label="Sheet used" value={pre.sheet_used || "—"} icon={StatIcons.sheet} />
+                <StatCard label="Header row" value={pre.header_row_detected ?? "1"} icon={StatIcons.headerRow} />
+                <StatCard label="Merged cells fixed" value={pre.merged_cells_resolved ?? 0} accent={pre.merged_cells_resolved > 0} icon={StatIcons.mergedCells} />
+                <StatCard label="Float IDs fixed" value={pre.float_ids_fixed ?? 0} accent={pre.float_ids_fixed > 0} icon={StatIcons.floatIds} />
               </div>
             </div>
           )}
@@ -1124,7 +1230,34 @@ export default function UploadAndPrepare({
                         </div>
                       )}
 
-                      {totalFlagged > 0 && !filterApplied && (
+                      {filterApplied && (
+                        <div className="px-3 py-2 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-700 flex items-center gap-2">
+                          <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                          <span>
+                            Filters applied — removed {rowStats?.lastFilterRemoved ?? 0} row{(rowStats?.lastFilterRemoved ?? 0) !== 1 ? "s" : ""},{" "}
+                            {(validatedDf || dfRecords)?.length?.toLocaleString()} remaining
+                          </span>
+                        </div>
+                      )}
+
+                      {/* Explain new issues that surfaced as a side-effect of removing rows */}
+                      {filterApplied && totalFlagged > 0 && (
+                        <div className="px-3 py-2.5 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800 flex items-start gap-2">
+                          <svg className="w-4 h-4 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+                          <span>
+                            <strong>{totalFlagged} new issue{totalFlagged !== 1 ? "s" : ""} appeared after filtering.</strong>{" "}
+                            This happens when a row you just removed was itself used as someone
+                            else's manager ID — their direct reports are still valid employees,
+                            but now point to a manager that no longer exists in the file. Select
+                            an error type below and click <strong>Apply Filters</strong> again to
+                            resolve them, or fix them manually in the table below.
+                          </span>
+                        </div>
+                      )}
+
+                      {/* Always available while there are flagged rows — including new ones
+                          revealed by a previous filter pass, not just the first pass. */}
+                      {totalFlagged > 0 && (
                         <div className="flex flex-wrap items-center justify-between gap-2">
                           <p className="text-xs text-slate-400">
                             {selectedRemoveCount > 0
@@ -1138,12 +1271,6 @@ export default function UploadAndPrepare({
                           >
                             {filtering ? "Filtering..." : "Apply Filters (remove selected)"}
                           </button>
-                        </div>
-                      )}
-                      {filterApplied && (
-                        <div className="px-3 py-2 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-700 flex items-center gap-2">
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
-                          Filters applied — {(validatedDf || dfRecords)?.length} rows remaining
                         </div>
                       )}
                     </div>
@@ -1198,6 +1325,39 @@ export default function UploadAndPrepare({
               )}
             </div>
           )}
+        </div>
+      )}
+
+      {/* Toast: confirms the working dataset (and its Excel export) changed */}
+      {rowToast && (
+        <div
+          className="fixed bottom-6 right-6 z-[300] max-w-sm animate-fadeInUp"
+          role="status"
+        >
+          <div className={`flex items-start gap-3 rounded-lg shadow-xl border px-4 py-3 ${
+            rowToast.tone === "error"
+              ? "bg-red-50 border-red-200 text-red-800"
+              : rowToast.tone === "warning"
+                ? "bg-amber-50 border-amber-200 text-amber-800"
+                : "bg-emerald-50 border-emerald-200 text-emerald-800"
+          }`}>
+            <svg className="w-5 h-5 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              {rowToast.tone === "error" ? (
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M12 3a9 9 0 100 18 9 9 0 000-18z" />
+              ) : rowToast.tone === "warning" ? (
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              ) : (
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+              )}
+            </svg>
+            <p className="text-sm font-medium flex-1">{rowToast.message}</p>
+            <button
+              onClick={() => setRowToast(null)}
+              className="flex-shrink-0 text-current opacity-60 hover:opacity-100 transition-opacity"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+            </button>
+          </div>
         </div>
       )}
     </div>

@@ -124,8 +124,11 @@ export default function ProjectWorkspace() {
 
   // --- UI STATE ---
   const [activeModule, setActiveModule] = useState("Upload");
-  const [filteredRowCount, setFilteredRowCount] = useState(null);
+  // Row-count breakdown for the Export & Stats panel: uploaded / removed / remaining.
+  // Populated by UploadAndPrepare via onDatasetStatsChange as cleanup/validate/filter run.
+  const [datasetStats, setDatasetStats] = useState(null);
   const [colConfigCollapsed, setColConfigCollapsed] = useState(false);
+  const [rightPaneCollapsed, setRightPaneCollapsed] = useState(false);
   const [showRatToast, setShowRatToast] = useState(false);
   const [pipelineStatus, setPipelineStatus] = useState({ cleanup: null, validate: null, rationalise: null });
   const [configSaved, setConfigSaved] = useState(false);
@@ -497,7 +500,7 @@ export default function ProjectWorkspace() {
     setColumnMappingRequiresAttention(false);
     setColumnReadiness(null);
     setValidatedDf(null);
-    setFilteredRowCount(null);
+    setDatasetStats(null);
     setDataSource(null);
     
     // Clear previous column configurations immediately on new upload
@@ -620,7 +623,7 @@ export default function ProjectWorkspace() {
       setColConfigCollapsed(false);
       const autoMapCols = await fillMissingColumnsFromAutoMap(dataset, columnsOut, rec);
       refreshColumnReadiness(autoMapCols || columnStateFromDataset(dataset));
-      setFilteredRowCount(null);
+      setDatasetStats(null);
       const scenarioName = scenarios.find((s) => s.id === scenarioId)?.name || "Baseline";
       setActiveDatasetLabel(dataset.name + " — " + scenarioName);
       setActiveDatasetName(dataset.name);
@@ -646,7 +649,7 @@ export default function ProjectWorkspace() {
       setValidatedDf(records);
       setColumns(cols);
       setActiveScenarioId(scenarioId);
-      setFilteredRowCount(null);
+      setDatasetStats(null);
       const scenarioName = scenarios.find((s) => s.id === scenarioId)?.name || "Baseline";
       setActiveDatasetLabel((activeDatasetName || "Dataset") + " — " + scenarioName);
     } finally {
@@ -713,6 +716,7 @@ export default function ProjectWorkspace() {
                 validate: new Date().toISOString(),
               }))
             }
+            onDatasetStatsChange={setDatasetStats}
             dataSource={dataSource}
             pipelineStatus={pipelineStatus}
             activeDatasetLabel={activeDatasetLabel}
@@ -1184,32 +1188,95 @@ export default function ProjectWorkspace() {
           )}
         </main>
 
-        {/* RIGHT PANE */}
-        <aside
-          className="w-72 bg-white border-l border-gray-200 shadow-sm"
-          style={{ display: (activeModule === "Org Chart" || activeModule === "Activity Analysis" || activeModule === "Spans & Layers" || activeModule === "Rationalise" || activeModule === "Ask OrgSight" || activeModule === "Crosstab") ? "none" : "block" }}
-        >
-          <div className="p-4 border-b border-gray-200">
-            <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Export & Stats</h3>
-          </div>
-          <div className="p-4 space-y-4">
-            <div className="space-y-3">
-              <ExportExcel df={workingDf} />
+        {/* RIGHT PANE (collapsible) */}
+        {!(activeModule === "Org Chart" || activeModule === "Activity Analysis" || activeModule === "Spans & Layers" || activeModule === "Rationalise" || activeModule === "Ask OrgSight" || activeModule === "Crosstab") && (
+          rightPaneCollapsed ? (
+            /* Collapsed: a clearly-visible tab stuck to the right edge — always
+               clickable to bring the panel back, unlike the old 4px sliver. */
+            <div className="flex-shrink-0 flex items-stretch py-6 pr-1">
+              <button
+                onClick={() => setRightPaneCollapsed(false)}
+                title="Expand Export & Stats"
+                className="group flex flex-col items-center gap-2 w-9 rounded-l-xl bg-white hover:bg-brand-50 border border-gray-200 border-r-0 shadow-md hover:shadow-lg py-4 transition-all duration-200"
+              >
+                <svg className="w-3.5 h-3.5 text-gray-400 group-hover:text-brand-600 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 19l-7-7 7-7m8 14l-7-7 7-7" />
+                </svg>
+                <span
+                  className="text-[10px] font-semibold text-gray-500 group-hover:text-brand-600 uppercase tracking-wider"
+                  style={{ writingMode: "vertical-rl", transform: "rotate(180deg)" }}
+                >
+                  Export &amp; Stats
+                </span>
+                {datasetStats && (
+                  <span className="w-5 h-5 rounded-full bg-brand-100 text-brand-700 text-[10px] font-bold flex items-center justify-center flex-shrink-0">
+                    {(datasetStats.currentRows ?? datasetStats.baselineRows) > 999
+                      ? "9k+"
+                      : (datasetStats.currentRows ?? datasetStats.baselineRows)?.toLocaleString?.() ?? ""}
+                  </span>
+                )}
+              </button>
             </div>
-            {filteredRowCount !== null && (
-              <div className="mt-6 p-4 bg-brand-50 border border-brand-200 rounded-md">
-                <div className="flex items-center gap-2 mb-1">
-                  <svg className="w-4 h-4 text-brand-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+          ) : (
+            <aside className="w-72 flex-shrink-0 bg-white border-l border-gray-200 shadow-sm flex flex-col animate-fadeInUp">
+              <div className="p-4 border-b border-gray-200 flex items-center justify-between flex-shrink-0">
+                <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Export &amp; Stats</h3>
+                <button
+                  onClick={() => setRightPaneCollapsed(true)}
+                  title="Collapse panel"
+                  className="w-6 h-6 rounded-md flex items-center justify-center text-gray-400 hover:text-brand-600 hover:bg-brand-50 transition-colors"
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 5l7 7-7 7M6 5l7 7-7 7" />
                   </svg>
-                  <span className="text-xs font-semibold text-gray-600 uppercase">Row Count</span>
-                </div>
-                <p className="text-2xl font-bold text-brand-600">{filteredRowCount.toLocaleString()}</p>
-                <p className="text-xs text-gray-500 mt-1">rows after filtering</p>
+                </button>
               </div>
-            )}
-          </div>
-        </aside>
+              <div className="p-4 space-y-4 overflow-y-auto flex-1">
+                <div className="space-y-3">
+                  <ExportExcel df={workingDf} />
+                </div>
+                {datasetStats && (
+                  <div className="mt-2 p-4 bg-gradient-to-br from-brand-50 to-white border border-brand-200 rounded-xl shadow-sm space-y-3">
+                    <div className="flex items-center gap-2">
+                      <span className="w-6 h-6 rounded-lg bg-brand-500/10 text-brand-600 flex items-center justify-center flex-shrink-0">
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                        </svg>
+                      </span>
+                      <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Row Count</span>
+                    </div>
+
+                    <div className="flex items-baseline justify-between">
+                      <span className="text-xs text-gray-500">Uploaded</span>
+                      <span className="text-sm font-semibold text-gray-700">{datasetStats.uploadedRows?.toLocaleString() ?? "—"}</span>
+                    </div>
+                    {datasetStats.exclusionsRemoved > 0 && (
+                      <div className="flex items-baseline justify-between">
+                        <span className="text-xs text-gray-500">Excluded (cleanup)</span>
+                        <span className="text-sm font-semibold text-gray-700">−{datasetStats.exclusionsRemoved.toLocaleString()}</span>
+                      </div>
+                    )}
+                    {datasetStats.filterRemovedTotal > 0 && (
+                      <div className="flex items-baseline justify-between">
+                        <span className="text-xs text-gray-500">Removed (error filters)</span>
+                        <span className="text-sm font-semibold text-red-600">−{datasetStats.filterRemovedTotal.toLocaleString()}</span>
+                      </div>
+                    )}
+                    <div className="pt-2 border-t border-brand-200 flex items-baseline justify-between">
+                      <span className="text-xs font-semibold text-gray-600 uppercase">Remaining</span>
+                      <span className="text-2xl font-bold text-brand-600">{(datasetStats.currentRows ?? datasetStats.baselineRows)?.toLocaleString()}</span>
+                    </div>
+                    {datasetStats.newIssuesAfterFilter > 0 && (
+                      <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1.5">
+                        {datasetStats.newIssuesAfterFilter} row{datasetStats.newIssuesAfterFilter !== 1 ? "s" : ""} still flagged — see Upload &amp; Prepare for details.
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+            </aside>
+          )
+        )}
       </div>
 
       <RationaliseToast

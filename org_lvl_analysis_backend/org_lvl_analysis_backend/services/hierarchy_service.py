@@ -114,12 +114,18 @@ def compute_total_reports(df, emp_col, mgr_col):
 def compute_avg_flc(df, flc_col, fte_col):
     df = df.copy()
     if flc_col in df.columns and fte_col in df.columns:
-        def safe_calc(r):
-            fte = r[fte_col]
-            if pd.isna(fte) or fte in (0, 0.0, None):
+        # FLC/FTE columns can contain blanks or non-numeric text (e.g. "N/A",
+        # stray strings from Excel); coerce to numeric first so the division
+        # below never sees a str and NaNs from bad values are treated as 0.
+        flc_numeric = pd.to_numeric(df[flc_col], errors="coerce")
+        fte_numeric = pd.to_numeric(df[fte_col], errors="coerce")
+
+        def safe_calc(flc, fte):
+            if pd.isna(fte) or fte == 0 or pd.isna(flc):
                 return 0
-            return round(r[flc_col] / fte, 1)
-        df["Avg_FLC"] = df.apply(safe_calc, axis=1)
+            return round(flc / fte, 1)
+
+        df["Avg_FLC"] = [safe_calc(f, t) for f, t in zip(flc_numeric, fte_numeric)]
     else:
         df["Avg_FLC"] = 0
     return df

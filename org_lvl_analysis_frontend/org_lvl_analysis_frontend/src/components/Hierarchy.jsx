@@ -65,6 +65,7 @@ export default function Hierarchy({
       setResult({
         rowsProcessed: res.rows_processed || res.df?.length || 0,
         maxDepth: res.max_depth || 0,
+        levelDistribution: res.level_distribution || {},
       });
 
       // Auto-save the processed dataset to the database as the baseline
@@ -347,6 +348,33 @@ export default function Hierarchy({
               </p>
             </div>
           </div>
+
+          {/* Level distribution — proves deeper levels (L3+) were computed even
+              though the preview table below can only show a small sample. */}
+          {result.levelDistribution && Object.keys(result.levelDistribution).length > 0 && (
+            <div className="bg-white rounded-lg p-4 border border-green-200 mt-4">
+              <div className="flex items-center gap-2 mb-3">
+                <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 3.055A9.001 9.001 0 1020.945 13H11V3.055z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.488 9H15V3.512A9.025 9.025 0 0120.488 9z" />
+                </svg>
+                <span className="text-xs font-medium text-gray-600">Headcount by Level (full dataset)</span>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {Object.entries(result.levelDistribution)
+                  .sort((a, b) => Number(a[0]) - Number(b[0]))
+                  .map(([lvl, count]) => (
+                    <div key={lvl} className="flex-1 min-w-[64px] bg-brand-50 border border-brand-100 rounded-md px-2 py-1.5 text-center">
+                      <div className="text-[10px] font-semibold text-brand-700 uppercase">L{lvl}</div>
+                      <div className="text-sm font-bold text-gray-900">{count.toLocaleString()}</div>
+                    </div>
+                  ))}
+              </div>
+              <p className="text-[11px] text-gray-500 mt-2">
+                These counts come from the full processed dataset — the preview table below only samples up to 20 rows, so it won't show every level if your org is large.
+              </p>
+            </div>
+          )}
         </div>
       )}
 
@@ -376,9 +404,12 @@ export default function Hierarchy({
               </svg>
               Data Preview
               <span className="text-sm font-normal text-gray-600 ml-2">
-                (First {preview.length} rows)
+                ({preview.length} rows sampled across all levels)
               </span>
             </h4>
+            <p className="text-[11px] text-gray-500 mt-1">
+              A small sample from every hierarchy level, not just the top — see "Headcount by Level" above for full counts, or export/open the Org Chart for the complete dataset.
+            </p>
           </div>
 
           <div className="overflow-x-auto max-h-96">

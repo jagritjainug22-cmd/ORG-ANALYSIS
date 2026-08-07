@@ -27,6 +27,7 @@ export default function OrgDetailPanel({
   rateCardActive = false,
   onApplyRateCard,
   issues = null,
+  onIgnoreIssue,
   cycleGroups = [],
   records = [],
   onMoveEmployee,
@@ -368,6 +369,7 @@ export default function OrgDetailPanel({
             onMoveEmployee={onMoveEmployee}
             onEditEmployee={onEditEmployee}
             onFlagToggle={onFlagToggle}
+            onIgnoreIssue={onIgnoreIssue}
             empId={empId}
           />
         )}
@@ -890,6 +892,7 @@ function ValidationIssueBanner({
   onMoveEmployee,
   onEditEmployee,
   onFlagToggle,
+  onIgnoreIssue,
   empId,
 }) {
   const hasError = issues.some((i) => i.severity === "error");
@@ -932,8 +935,24 @@ function ValidationIssueBanner({
         fontFamily: "Inter, system-ui, sans-serif",
       }}
     >
-      <div style={{ fontWeight: 700, color: titleClr, marginBottom: 8, fontSize: 10, textTransform: "uppercase", letterSpacing: "0.5px" }}>
-        {issues.length} Validation Issue{issues.length !== 1 ? "s" : ""}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+        <span style={{ fontWeight: 700, color: titleClr, fontSize: 10, textTransform: "uppercase", letterSpacing: "0.5px" }}>
+          {issues.length} Validation Issue{issues.length !== 1 ? "s" : ""}
+        </span>
+        {onIgnoreIssue && (
+          <button
+            onClick={() => issues.forEach((issue) => onIgnoreIssue(issue))}
+            title="Hide all validation issues on this position (data isn't changed)"
+            style={{
+              background: "none", border: `1px solid ${border}`, borderRadius: 6,
+              color: titleClr, cursor: "pointer",
+              fontSize: 9, fontWeight: 700, padding: "2px 7px", lineHeight: 1.4,
+              textTransform: "uppercase", letterSpacing: "0.3px",
+            }}
+          >
+            Ignore all
+          </button>
+        )}
       </div>
       {issues.map((issue, i) => (
         <IssueFixRow
@@ -949,6 +968,7 @@ function ValidationIssueBanner({
           onMoveEmployee={onMoveEmployee}
           onEditEmployee={onEditEmployee}
           onFlagToggle={onFlagToggle}
+          onIgnoreIssue={onIgnoreIssue}
         />
       ))}
     </div>
@@ -967,6 +987,7 @@ function IssueFixRow({
   onMoveEmployee,
   onEditEmployee,
   onFlagToggle,
+  onIgnoreIssue,
 }) {
   const [newReason, setNewReason] = useState("");
   const [newMgr, setNewMgr] = useState("");
@@ -1016,10 +1037,26 @@ function IssueFixRow({
     <div style={{ marginBottom: 10, paddingBottom: 10, borderBottom: `1px solid rgba(0,0,0,0.07)` }}>
       <div style={{ display: "flex", alignItems: "flex-start", gap: 7, marginBottom: 5 }}>
         <span style={{ width: 6, height: 6, borderRadius: "50%", background: dotColor, flexShrink: 0, marginTop: 5 }} />
-        <div>
+        <div style={{ flex: 1 }}>
           <div style={{ fontWeight: 700, fontSize: 11, color: AM.textPrimary, fontFamily: "Inter, system-ui, sans-serif" }}>{label}</div>
           <div style={{ fontSize: 10, color: AM.textSecondary, marginTop: 1, fontFamily: "Inter, system-ui, sans-serif" }}>{issue.description}</div>
         </div>
+        {onIgnoreIssue && (
+          <button
+            onClick={() => onIgnoreIssue(issue)}
+            title="Ignore this issue"
+            style={{
+              flexShrink: 0,
+              background: "none", border: `1px solid ${AM.border}`, borderRadius: 6,
+              color: AM.textMuted, cursor: "pointer",
+              fontSize: 9, fontWeight: 700, padding: "2px 6px", lineHeight: 1.4,
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.color = AM.textPrimary; e.currentTarget.style.borderColor = AM.textMuted; }}
+            onMouseLeave={(e) => { e.currentTarget.style.color = AM.textMuted; e.currentTarget.style.borderColor = AM.border; }}
+          >
+            Ignore
+          </button>
+        )}
       </div>
 
       {issue.type === "missing_change_reason" && (

@@ -21,6 +21,8 @@ export default function BulkActionBar({
   onBulkFlag,
   onBulkEditProperty,
   onBulkMove,
+  onBulkIgnoreIssues,
+  nodeIssuesMap = null,
   allRecords = [],
   empCol = "__emp_id",
   jobTitleCol,
@@ -59,6 +61,15 @@ export default function BulkActionBar({
     const reason = (r["Change Reason"] || r["change_reason"] || "").toString().trim();
     return !reason;
   }), [selectedNodes]);
+  // How many currently-visible validation issues sit on the selected nodes —
+  // drives the "Clear validation flags" button (available regardless of
+  // edit mode, since ignoring is a display-only, non-destructive action).
+  const selectedIssueCount = useMemo(() => {
+    if (!nodeIssuesMap) return 0;
+    let total = 0;
+    for (const id of multiSelectedIds) total += (nodeIssuesMap.get(id) || []).length;
+    return total;
+  }, [nodeIssuesMap, multiSelectedIds]);
 
   // Build a searchable list of potential target nodes (exclude selected nodes themselves)
   const targetOptions = useMemo(() => {
@@ -120,6 +131,10 @@ export default function BulkActionBar({
   const handleCloseReason = () => {
     setReasonOpen(false);
     setChangeReason("");
+  };
+
+  const handleIgnoreIssues = () => {
+    onBulkIgnoreIssues?.(Array.from(multiSelectedIds));
   };
 
   // Only one panel open at a time
@@ -328,6 +343,18 @@ export default function BulkActionBar({
         </BarBtn>
       ) : null}
 
+      {/* Clear validation flags — display-only, so available whether or not
+          edit mode is on */}
+      {selectedIssueCount > 0 && (
+        <BarBtn
+          onClick={handleIgnoreIssues}
+          disabled={loading}
+          title="Hide validation issues on the selected positions (data isn't changed)"
+        >
+          <IgnoreIcon /> Clear {selectedIssueCount} Validation Flag{selectedIssueCount !== 1 ? "s" : ""}
+        </BarBtn>
+      )}
+
       <div style={{ width: 1, background: "rgba(255,255,255,0.18)", height: 20, marginLeft: 4 }} />
 
       {/* Clear */}
@@ -402,6 +429,9 @@ function RestoreIcon() {
 }
 function ReasonIcon() {
   return <SVG><path d="M12 20h9" /><path d="M16.5 3.5a2.121 2.121 0 1 1 3 3L7 19l-4 1 1-4Z" /></SVG>;
+}
+function IgnoreIcon() {
+  return <SVG><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z" /><path d="M4 4l16 16" /></SVG>;
 }
 function MoveIcon(props) {
   return (

@@ -18,11 +18,30 @@ const ISSUE_LABELS = {
  * selects it so the user can open the detail panel on the right to fix it.
  * All fix UI lives in OrgDetailPanel, not here.
  *
+ * Issues can be individually dismissed ("Ignore") or dismissed in bulk
+ * ("Ignore all") so the chart/badge can be made to look clean without
+ * requiring every underlying data issue to be fixed first. The same
+ * ignore/restore actions are also available on the employee detail card and
+ * via multi-select — this component doesn't own the ignore state itself,
+ * it's lifted up to OrgChart (see useIgnoredIssues) so it stays in sync
+ * everywhere.
+ *
  * Props:
- *   nodeIssuesMap  Map<empId, Issue[]>   — from validateRecordsClient
+ *   nodeIssuesMap  Map<empId, Issue[]>   — already filtered to VISIBLE (non-ignored) issues
  *   onJumpToNode   (empId) => void       — pan + select the node
+ *   ignoredCount   number                — how many issues are currently hidden
+ *   onIgnoreIssue  (empId, issue) => void
+ *   onIgnoreMany   (pairs: {empId, issue}[]) => void
+ *   onRestoreAll   () => void
  */
-export default function ValidationSidebar({ nodeIssuesMap, onJumpToNode }) {
+export default function ValidationSidebar({
+  nodeIssuesMap,
+  onJumpToNode,
+  ignoredCount = 0,
+  onIgnoreIssue,
+  onIgnoreMany,
+  onRestoreAll,
+}) {
   const [expanded, setExpanded] = useState(false);
 
   const issues = useMemo(() => flattenIssues(nodeIssuesMap), [nodeIssuesMap]);
@@ -31,18 +50,40 @@ export default function ValidationSidebar({ nodeIssuesMap, onJumpToNode }) {
   const warningCount = issues.filter((i) => i.severity === "warning").length;
   const total        = issues.length;
 
+  const ignoreAll = () => {
+    onIgnoreMany?.(issues.map((i) => ({ empId: i.empId, issue: i })));
+  };
+
   if (total === 0) {
     return (
       <div style={{
         position: "absolute", top: 16, left: 16, zIndex: 200,
-        background: AM.success, color: "#fff", borderRadius: 12,
-        padding: "4px 12px", fontSize: 11, fontWeight: 700,
-        fontFamily: "Inter, system-ui, sans-serif",
-        boxShadow: "0 2px 8px rgba(22,163,74,0.3)",
         display: "flex", alignItems: "center", gap: 6,
-        pointerEvents: "none", opacity: 0.85,
+        fontFamily: "Inter, system-ui, sans-serif",
       }}>
-        <CheckIcon /> No issues
+        <div style={{
+          background: AM.success, color: "#fff", borderRadius: 12,
+          padding: "4px 12px", fontSize: 11, fontWeight: 700,
+          boxShadow: "0 2px 8px rgba(22,163,74,0.3)",
+          display: "flex", alignItems: "center", gap: 6,
+          opacity: 0.9,
+        }}>
+          <CheckIcon /> No issues
+        </div>
+        {ignoredCount > 0 && (
+          <button
+            onClick={onRestoreAll}
+            title="Show ignored validation issues again"
+            style={{
+              background: AM.white, color: AM.textSecondary,
+              border: `1px solid ${AM.border}`, borderRadius: 12,
+              padding: "4px 10px", fontSize: 10, fontWeight: 700,
+              cursor: "pointer", boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
+            }}
+          >
+            {ignoredCount} ignored · Restore
+          </button>
+        )}
       </div>
     );
   }
@@ -74,7 +115,7 @@ export default function ValidationSidebar({ nodeIssuesMap, onJumpToNode }) {
   return (
     <div style={{
       position: "absolute", top: 16, left: 16, zIndex: 200,
-      width: 280, maxHeight: "calc(100% - 48px)",
+      width: 300, maxHeight: "calc(100% - 48px)",
       background: AM.white, border: `1px solid ${AM.border}`,
       borderRadius: 12, boxShadow: "0 4px 24px rgba(1,36,74,0.15)",
       display: "flex", flexDirection: "column",
@@ -105,6 +146,42 @@ export default function ValidationSidebar({ nodeIssuesMap, onJumpToNode }) {
         >×</button>
       </div>
 
+      {/* Bulk actions */}
+      <div style={{
+        display: "flex", alignItems: "center", justifyContent: "space-between",
+        padding: "6px 14px", borderBottom: `1px solid ${AM.borderLight}`,
+        background: "#fafbfc", flexShrink: 0,
+      }}>
+        <span style={{ fontSize: 10, color: AM.textMuted }}>
+          {ignoredCount > 0 ? `${ignoredCount} ignored` : "Dismiss issues to hide them"}
+        </span>
+        <div style={{ display: "flex", gap: 10 }}>
+          {ignoredCount > 0 && (
+            <button
+              onClick={onRestoreAll}
+              style={{
+                background: "none", border: "none", cursor: "pointer",
+                fontSize: 10, fontWeight: 700, color: AM.blue,
+                padding: 0,
+              }}
+            >
+              Restore all
+            </button>
+          )}
+          <button
+            onClick={ignoreAll}
+            title="Ignore all current issues so the chart looks clean"
+            style={{
+              background: "none", border: "none", cursor: "pointer",
+              fontSize: 10, fontWeight: 700, color: AM.textSecondary,
+              padding: 0,
+            }}
+          >
+            Ignore all
+          </button>
+        </div>
+      </div>
+
       {/* Issue list */}
       <div style={{ flex: 1, overflowY: "auto" }}>
         {issues.map((issue, i) => (
@@ -112,6 +189,7 @@ export default function ValidationSidebar({ nodeIssuesMap, onJumpToNode }) {
             key={`${issue.empId}-${issue.type}-${i}`}
             issue={issue}
             onJump={() => onJumpToNode?.(issue.empId)}
+            onIgnore={() => onIgnoreIssue?.(issue.empId, issue)}
           />
         ))}
       </div>
@@ -129,7 +207,7 @@ export default function ValidationSidebar({ nodeIssuesMap, onJumpToNode }) {
   );
 }
 
-function IssueRow({ issue, onJump }) {
+function IssueRow({ issue, onJump, onIgnore }) {
   const isError  = issue.severity === "error";
   const color    = isError ? AM.danger : "#d97706";
   const label    = ISSUE_LABELS[issue.type] || issue.type;
@@ -162,6 +240,20 @@ function IssueRow({ issue, onJump }) {
           {issue.empId}
         </div>
       </div>
+      <button
+        onClick={(e) => { e.stopPropagation(); onIgnore(); }}
+        title="Ignore this issue"
+        style={{
+          flexShrink: 0, marginTop: 2,
+          background: "none", border: `1px solid ${AM.border}`, borderRadius: 6,
+          color: AM.textMuted, cursor: "pointer",
+          fontSize: 9, fontWeight: 700, padding: "2px 6px", lineHeight: 1.4,
+        }}
+        onMouseEnter={(e) => { e.currentTarget.style.color = AM.textPrimary; e.currentTarget.style.borderColor = AM.textMuted; }}
+        onMouseLeave={(e) => { e.currentTarget.style.color = AM.textMuted; e.currentTarget.style.borderColor = AM.border; }}
+      >
+        Ignore
+      </button>
       <svg width={10} height={10} viewBox="0 0 24 24" fill="none"
         stroke={AM.textMuted} strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round"
         style={{ flexShrink: 0, marginTop: 4 }}

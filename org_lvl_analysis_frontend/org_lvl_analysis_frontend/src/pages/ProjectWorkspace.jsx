@@ -3,7 +3,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import { useConfirmLogout } from "../hooks/useConfirmLogout";
 import { useWorkGuard } from "../contexts/WorkGuardContext";
-import { setCurrentProjectId, fetchProjectDetail, orgchart, acquireLock, lockHeartbeat, releaseLock, dbPromoteScenario, dbResetScenario, releaseDatasetLock, dbListDatasets, dbGetDatasetRecords, dbListFormulas, smartUpload, autoMapColumns, autoMapColumnsWithFeedback, dbUpdateColumnConfig } from "../api/backend";
+import { setCurrentProjectId, fetchProjectDetail, orgchart, acquireLock, lockHeartbeat, releaseLock, dbPromoteScenario, dbResetScenario, releaseDatasetLock, dbListDatasets, dbGetDatasetRecords, dbListFormulas, dbSaveBaseline, smartUpload, autoMapColumns, autoMapColumnsWithFeedback, dbUpdateColumnConfig } from "../api/backend";
 import ActiveDatasetDropdown from "../components/ActiveDatasetDropdown";
 import FormulaEditor from "../components/FormulaEditor";
 import WorkspaceLoader from "../components/WorkspaceLoader";
@@ -26,6 +26,7 @@ import ExportExcel from "../components/ExportExcel";
 import AskOrgSight from "../components/AskOrgSight";
 import RationaliseToast from "../components/RationaliseToast";
 import AMLogo from "../components/AMLogo";
+import SearchableColumnSelect from "../components/SearchableColumnSelect";
 
 const MODULES = [
   {
@@ -130,7 +131,7 @@ export default function ProjectWorkspace() {
   const [colConfigCollapsed, setColConfigCollapsed] = useState(false);
   const [rightPaneCollapsed, setRightPaneCollapsed] = useState(false);
   const [showRatToast, setShowRatToast] = useState(false);
-  const [pipelineStatus, setPipelineStatus] = useState({ cleanup: null, validate: null, rationalise: null });
+  const [pipelineStatus, setPipelineStatus] = useState({ cleanup: null, validate: null, rationalise: null, hierarchy: null });
   const [configSaved, setConfigSaved] = useState(false);
   const [treeData, setTreeData] = useState(null);
   const [errorMsg, setErrorMsg] = useState(null);
@@ -502,7 +503,15 @@ export default function ProjectWorkspace() {
     setValidatedDf(null);
     setDatasetStats(null);
     setDataSource(null);
-    
+
+    // A brand-new file is a brand-new dataset — clear any dataset/scenario
+    // identity carried over from a previously loaded/saved dataset so the
+    // next pipeline save can't silently overwrite unrelated saved data.
+    setDatasetId(null);
+    setScenarios([]);
+    setActiveScenarioId(null);
+    setPipelineStatus({ cleanup: null, validate: null, rationalise: null, hierarchy: null });
+
     // Clear previous column configurations immediately on new upload
     setEmpCol("");
     setMgrCol("");
@@ -546,6 +555,65 @@ export default function ProjectWorkspace() {
       setUploadStep("");
     }
   }, [hydrateColumnSelections, refreshColumnReadiness]);
+
+  // Centralized pipeline-stage persistence: called after Cleanup+Validate,
+  // Apply Filters, Rationalise-apply, and Hierarchy all complete, so a
+  // dataset's progress survives closing the tab/reopening the project
+  // instead of only existing in memory until Hierarchy is (re-)run.
+  //
+  // Must stay above any early returns — React requires hooks to run in the
+  // same order every render (including while project is still loading).
+  //
+  // Creates the dataset on first save (whichever stage happens first — a
+  // user can jump straight to Rationalise or Hierarchy), then updates that
+  // same dataset in place on every later save. This intentionally never
+  // creates a second dataset row for an in-progress session, which is what
+  // previously caused Hierarchy re-runs to orphan the dataset that held the
+  // real pipeline-stage timestamps.
+  const persistPipelineStage = useCallback(async (records, stage) => {
+    if (!records?.length || !empCol || !mgrCol) return null;
+    try {
+      const saved = await dbSaveBaseline({
+        name: uploadedFileName || activeDatasetName || `Dataset ${new Date().toLocaleString()}`,
+        records, empCol, mgrCol,
+        fteCol: fteCol || null, flcCol: flcCol || null,
+        jobTitleCol: jobTitleCol || null, countryCol: countryCol || null,
+        funcCol: funcCol || null, subfuncCol: subfuncCol || null,
+        gradeCol: gradeCol || null, divisionCol: divisionCol || null,
+        entityCol: entityCol || null, startDateCol: startDateCol || null,
+        basicPayCol: basicPayCol || null, contractTypeCol: contractTypeCol || null,
+        statusCol: statusCol || null,
+        datasetId: datasetId || null,
+        stage,
+      });
+      setDatasetId(saved.dataset_id);
+      setScenarios(saved.scenarios || []);
+      setActiveScenarioId((prev) => {
+        if (prev) return prev;
+        const defaultScenario = (saved.scenarios || []).find((s) => s.name === "Baseline")
+          || (saved.scenarios || [])[0];
+        return defaultScenario?.id ?? null;
+      });
+      if (saved.dataset) {
+        setPipelineStatus({
+          cleanup: saved.dataset.last_cleanup_at || null,
+          validate: saved.dataset.last_validate_at || null,
+          rationalise: saved.dataset.last_rationalise_at || null,
+          hierarchy: saved.dataset.last_hierarchy_at || null,
+        });
+      }
+      dbListFormulas(saved.dataset_id).then((d) => setFormulas(d?.formulas || [])).catch(() => {});
+      return saved;
+    } catch (err) {
+      console.warn(`Persisting "${stage}" stage failed (work continues unsaved):`, err);
+      return null;
+    }
+  }, [
+    empCol, mgrCol, fteCol, flcCol, jobTitleCol, countryCol,
+    funcCol, subfuncCol, gradeCol, divisionCol, entityCol,
+    startDateCol, basicPayCol, contractTypeCol, statusCol,
+    datasetId, uploadedFileName, activeDatasetName,
+  ]);
 
   const doLogout = (e) => {
     confirmLogout(e);
@@ -619,6 +687,7 @@ export default function ProjectWorkspace() {
         cleanup: dataset.last_cleanup_at || null,
         validate: dataset.last_validate_at || null,
         rationalise: dataset.last_rationalise_at || null,
+        hierarchy: dataset.last_hierarchy_at || null,
       });
       setColConfigCollapsed(false);
       const autoMapCols = await fillMissingColumnsFromAutoMap(dataset, columnsOut, rec);
@@ -709,13 +778,7 @@ export default function ProjectWorkspace() {
             onDatasetPicked={({ dataset, scenarios: scs, activeScenarioId: sid }) =>
               activateDataset(dataset, scs, sid)
             }
-            onPipelineComplete={() =>
-              setPipelineStatus(prev => ({
-                ...prev,
-                cleanup: new Date().toISOString(),
-                validate: new Date().toISOString(),
-              }))
-            }
+            onPipelineComplete={(records) => persistPipelineStage(records, "validate")}
             onDatasetStatsChange={setDatasetStats}
             dataSource={dataSource}
             pipelineStatus={pipelineStatus}
@@ -737,9 +800,10 @@ export default function ProjectWorkspace() {
             columns={columns}
             setColumns={setColumns}
             datasetId={datasetId}
-            onApplySuccess={() => {
+            pipelineStatus={pipelineStatus}
+            onApplySuccess={(records) => {
               setShowRatToast(true);
-              setPipelineStatus(prev => ({ ...prev, rationalise: new Date().toISOString() }));
+              persistPipelineStage(records, "rationalise");
             }}
           />
         );
@@ -752,16 +816,9 @@ export default function ProjectWorkspace() {
             empCol={empCol} mgrCol={mgrCol}
             fteCol={fteCol} flcCol={flcCol}
             jobTitleCol={jobTitleCol} countryCol={countryCol}
-            uploadedFileName={uploadedFileName}
             formulas={formulas}
             datasetId={datasetId}
-            onBaselineSaved={({ datasetId: did, scenarios: scs, activeScenarioId: sid }) => {
-              setDatasetId(did);
-              setScenarios(scs);
-              setActiveScenarioId(sid);
-              // Load formulas for the newly created baseline
-              dbListFormulas(did).then((d) => setFormulas(d?.formulas || [])).catch(() => {});
-            }}
+            onSaveStage={(records) => persistPipelineStage(records, "hierarchy")}
           />
         );
       case "Spans & Layers":
@@ -1007,22 +1064,61 @@ export default function ProjectWorkspace() {
         {/* Header row — always visible, acts as toggle */}
         <button
           onClick={() => setColConfigCollapsed((v) => !v)}
-          className="w-full px-8 py-3 flex items-center gap-2 hover:bg-gray-50 transition-colors group"
+          className="w-full px-8 py-2.5 flex items-center gap-2.5 hover:bg-gray-50 transition-colors group"
         >
-            <svg className="w-4 h-4 text-brand-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg className="w-4 h-4 text-brand-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
           </svg>
-          <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">Column Configuration</h2>
-          {/* Collapsed summary pills */}
-          {colConfigCollapsed && columns && (
-            <div className="flex items-center gap-1.5 ml-3 flex-wrap">
-              {[empCol, mgrCol, fteCol, flcCol, countryCol, jobTitleCol, funcCol, subfuncCol, gradeCol].filter(Boolean).map(c => (
-                <span key={c} className="px-2 py-0.5 bg-brand-50 text-brand-700 rounded text-xs font-medium border border-brand-200">{c}</span>
-              ))}
-            </div>
+          <h2 className="text-sm font-bold text-brand-800 uppercase tracking-wide flex-shrink-0">Column Configuration</h2>
+          {/* Collapsed: single-line summary (no wrapping pills) */}
+          {colConfigCollapsed && (() => {
+            const mappedFields = [
+              { label: "Employee", value: empCol },
+              { label: "Manager", value: mgrCol },
+              { label: "FTE", value: fteCol },
+              { label: "FLC", value: flcCol },
+              { label: "Country", value: countryCol },
+              { label: "Job Title", value: jobTitleCol },
+              { label: "Function", value: funcCol },
+              { label: "Sub-Function", value: subfuncCol },
+              { label: "Grade", value: gradeCol },
+              { label: "Division", value: divisionCol },
+              { label: "Entity", value: entityCol },
+              { label: "Start Date", value: startDateCol },
+              { label: "Basic Pay", value: basicPayCol },
+              { label: "Contract", value: contractTypeCol },
+              { label: "Status", value: statusCol },
+            ].filter((f) => f.value);
+            return (
+              <div className="ml-2 flex items-center gap-2 min-w-0 flex-1 overflow-hidden">
+                {columns ? (
+                  <>
+                    <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-brand-50 border border-brand-200 text-xs font-bold text-brand-700 whitespace-nowrap flex-shrink-0">
+                      {mappedFields.length} mapped
+                    </span>
+                    <span className="text-slate-300 flex-shrink-0">·</span>
+                    <span className="text-xs font-semibold text-slate-600 truncate text-left">
+                      {mappedFields.length > 0
+                        ? mappedFields.map((f) => f.label).join(" · ")
+                        : "No columns mapped yet"}
+                    </span>
+                    <span className="text-xs font-semibold text-slate-400 whitespace-nowrap flex-shrink-0 ml-auto group-hover:text-brand-600 transition-colors">
+                      Open to edit
+                    </span>
+                  </>
+                ) : (
+                  <span className="text-xs font-medium text-slate-400">Upload data to configure</span>
+                )}
+              </div>
+            );
+          })()}
+          {!colConfigCollapsed && (
+            <span className="ml-auto text-xs font-semibold text-slate-400 group-hover:text-brand-600 transition-colors flex-shrink-0">
+              Collapse
+            </span>
           )}
           <svg
-            className={`w-4 h-4 text-gray-400 ml-auto flex-shrink-0 transition-transform duration-200 ${colConfigCollapsed ? "-rotate-90" : "rotate-0"}`}
+            className={`w-4 h-4 text-gray-400 flex-shrink-0 transition-transform duration-200 ${colConfigCollapsed ? "-rotate-90" : "rotate-0"} ${colConfigCollapsed ? "" : "ml-1"}`}
             fill="none" stroke="currentColor" viewBox="0 0 24 24"
           >
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
@@ -1033,7 +1129,7 @@ export default function ProjectWorkspace() {
         <div
           style={{
             overflow: "hidden",
-            maxHeight: colConfigCollapsed ? "0px" : "300px",
+            maxHeight: colConfigCollapsed ? "0px" : "480px",
             transition: "max-height 0.25s ease",
           }}
         >
@@ -1047,44 +1143,68 @@ export default function ProjectWorkspace() {
                 if (m.method === "llm") return "bg-amber-400";
                 return "bg-gray-400";
               };
-              const sel = "w-full border border-gray-300 rounded-lg px-2.5 py-2 text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition-all bg-white hover:border-gray-400";
-              const ColSel = ({ label, targetKey, value, onChange, opt }) => (
-                <div>
-                  <label className="flex items-center gap-1 text-[11px] font-medium text-gray-600 mb-1">
-                    {confDot(targetKey) && <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${confDot(targetKey)}`} />}
-                    {label} {opt && <span className="text-gray-400">(Opt)</span>}
-                  </label>
-                  <select className={sel} value={value} onChange={onChange}>
-                    <option value="">Select...</option>
-                    {columns.map((c) => <option key={c}>{c}</option>)}
-                  </select>
-                </div>
-              );
+              const mappingFields = [
+                { label: "Employee", targetKey: "employee_id", value: empCol, set: setEmpCol, opt: false },
+                { label: "Manager", targetKey: "manager_id", value: mgrCol, set: setMgrCol, opt: false },
+                { label: "FTE", targetKey: "fte", value: fteCol, set: setFteCol, opt: false },
+                { label: "FLC", targetKey: "flc", value: flcCol, set: setFlcCol, opt: false },
+                { label: "Country", targetKey: "country", value: countryCol, set: setCountryCol, opt: true },
+                { label: "Job Title", targetKey: "job_title", value: jobTitleCol, set: setJobTitleCol, opt: true },
+                { label: "Function", targetKey: "function", value: funcCol, set: setFuncCol, opt: true },
+                { label: "Sub-Function", targetKey: "subfunction", value: subfuncCol, set: setSubfuncCol, opt: true },
+                { label: "Grade", targetKey: "grade", value: gradeCol, set: setGradeCol, opt: true },
+                { label: "Division", targetKey: "division", value: divisionCol, set: setDivisionCol, opt: true },
+                { label: "Entity", targetKey: "entity", value: entityCol, set: setEntityCol, opt: true },
+                { label: "Start Date", targetKey: "start_date", value: startDateCol, set: setStartDateCol, opt: true },
+                { label: "Basic Pay", targetKey: "basic_pay", value: basicPayCol, set: setBasicPayCol, opt: true },
+                { label: "Contract", targetKey: "contract_type", value: contractTypeCol, set: setContractTypeCol, opt: true },
+                { label: "Status", targetKey: "status", value: statusCol, set: setStatusCol, opt: true },
+              ];
+              const mappedCount = mappingFields.filter((f) => f.value).length;
               return (
                 <div className="space-y-3">
-                  <div className="grid grid-cols-6 gap-3">
-                    <ColSel label="Employee" targetKey="employee_id" value={empCol} onChange={e => setEmpCol(e.target.value)} />
-                    <ColSel label="Manager" targetKey="manager_id" value={mgrCol} onChange={e => setMgrCol(e.target.value)} />
-                    <ColSel label="FTE" targetKey="fte" value={fteCol} onChange={e => setFteCol(e.target.value)} />
-                    <ColSel label="FLC" targetKey="flc" value={flcCol} onChange={e => setFlcCol(e.target.value)} />
-                    <ColSel label="Country" targetKey="country" value={countryCol} onChange={e => setCountryCol(e.target.value)} opt />
-                    <ColSel label="Job Title" targetKey="job_title" value={jobTitleCol} onChange={e => setJobTitleCol(e.target.value)} opt />
+                  <div className="rounded-lg border border-brand-100 bg-brand-50/40 px-3 py-2.5">
+                    <div className="flex items-center justify-between gap-2 mb-2">
+                      <p className="text-[11px] font-bold uppercase tracking-wider text-brand-700">Current mappings</p>
+                      <span className="text-[11px] font-bold text-brand-600">{mappedCount} of {mappingFields.length} set</span>
+                    </div>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-1.5">
+                      {mappingFields.map((f) => {
+                        const dot = confDot(f.targetKey);
+                        return (
+                          <div
+                            key={f.targetKey}
+                            className={`min-w-0 rounded-md border px-2 py-1.5 ${
+                              f.value
+                                ? "bg-white border-brand-100"
+                                : "bg-white/70 border-dashed border-brand-200/80"
+                            }`}
+                          >
+                            <div className="flex items-center gap-1 mb-1">
+                              {dot && <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${dot}`} />}
+                              <p className="text-[10px] font-bold uppercase tracking-wide text-brand-500 truncate">
+                                {f.label}
+                                {f.opt && <span className="text-slate-400 font-semibold normal-case tracking-normal"> (Opt)</span>}
+                              </p>
+                            </div>
+                            <SearchableColumnSelect
+                              value={f.value || ""}
+                              options={columns}
+                              onChange={(v) => f.set(v)}
+                              placeholder="Select…"
+                            />
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
-                  <div className="grid grid-cols-9 gap-3">
-                    <ColSel label="Function" targetKey="function" value={funcCol} onChange={e => setFuncCol(e.target.value)} opt />
-                    <ColSel label="Sub-Function" targetKey="subfunction" value={subfuncCol} onChange={e => setSubfuncCol(e.target.value)} opt />
-                    <ColSel label="Grade" targetKey="grade" value={gradeCol} onChange={e => setGradeCol(e.target.value)} opt />
-                    <ColSel label="Division" targetKey="division" value={divisionCol} onChange={e => setDivisionCol(e.target.value)} opt />
-                    <ColSel label="Entity" targetKey="entity" value={entityCol} onChange={e => setEntityCol(e.target.value)} opt />
-                    <ColSel label="Start Date" targetKey="start_date" value={startDateCol} onChange={e => setStartDateCol(e.target.value)} opt />
-                    <ColSel label="Basic Pay" targetKey="basic_pay" value={basicPayCol} onChange={e => setBasicPayCol(e.target.value)} opt />
-                    <ColSel label="Contract" targetKey="contract_type" value={contractTypeCol} onChange={e => setContractTypeCol(e.target.value)} opt />
-                    <ColSel label="Status" targetKey="status" value={statusCol} onChange={e => setStatusCol(e.target.value)} opt />
-                  </div>
+
                   {datasetId && (
-                    <div className="flex items-center gap-2 mt-3 pt-3 border-t border-gray-100">
+                    <div className="flex items-center gap-2 pt-1">
                       <button
-                        onClick={async () => {
+                        type="button"
+                        onClick={async (e) => {
+                          e.stopPropagation();
                           try {
                             await dbUpdateColumnConfig(datasetId, {
                               emp_col: empCol || null, mgr_col: mgrCol || null, fte_col: fteCol || null,
@@ -1096,14 +1216,14 @@ export default function ProjectWorkspace() {
                             refreshColumnReadinessFromWorkspace();
                             setConfigSaved(true);
                             setTimeout(() => { setConfigSaved(false); setColConfigCollapsed(true); }, 1500);
-                          } catch (e) { console.error("Save config failed:", e); }
+                          } catch (err) { console.error("Save config failed:", err); }
                         }}
-                        className="px-3 py-1.5 text-xs font-semibold text-white bg-brand-500 rounded-lg hover:bg-brand-600 transition-colors"
+                        className="px-3 py-1.5 text-xs font-bold text-white bg-brand-500 rounded-lg hover:bg-brand-600 transition-colors"
                       >
                         {configSaved ? "Saved" : "Save Config"}
                       </button>
                       {configSaved && (
-                        <span className="text-xs text-brand-600 font-medium animate-pulse">Configuration saved</span>
+                        <span className="text-xs text-brand-600 font-semibold animate-pulse">Configuration saved</span>
                       )}
                     </div>
                   )}
@@ -1127,7 +1247,10 @@ export default function ProjectWorkspace() {
             {MODULES.map((m) => {
               const isOrgChart = m.id === "Org Chart";
               const isAskOrgSight = m.id === "Ask OrgSight";
-              const isMenuDisabled = (isOrgChart || isAskOrgSight) && !datasetId;
+              // Org Chart / Ask OrgSight need Level/Span/Chain from Hierarchy,
+              // not merely a dataset row (a dataset can now exist earlier,
+              // right after Cleanup/Validate, before Hierarchy ever runs).
+              const isMenuDisabled = (isOrgChart || isAskOrgSight) && !pipelineStatus.hierarchy;
 
               return (
                 <button
@@ -1149,7 +1272,7 @@ export default function ProjectWorkspace() {
                 >
                   {m.icon}
                   <span>{m.label}</span>
-                  {(isOrgChart || isAskOrgSight) && datasetId && !visitedModules[m.id] && (
+                  {(isOrgChart || isAskOrgSight) && pipelineStatus.hierarchy && !visitedModules[m.id] && (
                     <span className={`ml-auto w-2 h-2 rounded-full shadow-sm transition-colors flex-shrink-0 ${
                       activeModule === m.id ? "bg-white" : "bg-brand-500 border border-brand-400/25"
                     }`} />
@@ -1161,6 +1284,11 @@ export default function ProjectWorkspace() {
                   )}
                   {activeModule !== m.id && m.id === "Rationalise" && pipelineStatus.rationalise && (
                     <span className="ml-auto w-5 h-5 bg-brand-600 rounded-full flex items-center justify-center flex-shrink-0 animate-fadeInUp" title="Rationalisation complete">
+                      <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>
+                    </span>
+                  )}
+                  {activeModule !== m.id && m.id === "Hierarchy" && pipelineStatus.hierarchy && (
+                    <span className="ml-auto w-5 h-5 bg-brand-600 rounded-full flex items-center justify-center flex-shrink-0 animate-fadeInUp" title="Hierarchy complete">
                       <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>
                     </span>
                   )}

@@ -87,7 +87,7 @@ def _get_pool() -> ConnectionPool:
         if _pool is None:
             _pool = ConnectionPool(
                 conninfo=_conninfo(),
-                min_size=2,
+                min_size=5,
                 max_size=20,
                 kwargs={"row_factory": dict_row},
                 # Azure PG closes idle connections; recycle aggressively.

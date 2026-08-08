@@ -675,6 +675,62 @@ def _migrate_v12(conn: PgConnection) -> None:
     )
 
 
+def _migrate_v13(conn: PgConnection) -> None:
+    """v13: last_hierarchy_at on datasets — completes the pipeline-stage
+    timestamps (cleanup/validate/rationalise/hierarchy) so the UI can show
+    accurate progress for a dataset that was fully processed in an earlier
+    session, instead of only tracking hierarchy via row presence."""
+    c = conn.cursor()
+    existing = {
+        row["column_name"]
+        for row in c.execute(
+            """
+            SELECT column_name FROM information_schema.columns
+            WHERE table_schema = 'public' AND table_name = 'datasets'
+            """
+        ).fetchall()
+    }
+    if "last_hierarchy_at" not in existing:
+        c.execute("ALTER TABLE datasets ADD COLUMN last_hierarchy_at TEXT")
+
+
+def _migrate_v14(conn: PgConnection) -> None:
+    """v14: dataset_rationalisation_state table — persists the full Rationalise
+    mapping table (proposals + accept/reject + overrides) per dataset, so
+    reopening a dataset can show a real read-only review of what was mapped
+    instead of just a "ran previously" timestamp banner."""
+    c = conn.cursor()
+    c.execute(
+        f"""
+        CREATE TABLE IF NOT EXISTS dataset_rationalisation_state (
+            id          {_ID_PK},
+            dataset_id  INTEGER NOT NULL UNIQUE REFERENCES datasets(id) ON DELETE CASCADE,
+            state_json  TEXT NOT NULL,
+            updated_at  TEXT NOT NULL
+        )
+        """
+    )
+
+
+def _migrate_v15(conn: PgConnection) -> None:
+    """v15: dataset_hierarchy_snapshot table — persists the curated Hierarchy
+    preview (indented L1..Ln rows) + summary stats (max depth, level
+    distribution, rows processed) per dataset, so reopening the Hierarchy tab
+    can restore instantly from a DB read instead of re-running the full
+    Level/Span/Chain computation on every tab switch."""
+    c = conn.cursor()
+    c.execute(
+        f"""
+        CREATE TABLE IF NOT EXISTS dataset_hierarchy_snapshot (
+            id          {_ID_PK},
+            dataset_id  INTEGER NOT NULL UNIQUE REFERENCES datasets(id) ON DELETE CASCADE,
+            snapshot_json TEXT NOT NULL,
+            updated_at  TEXT NOT NULL
+        )
+        """
+    )
+
+
 _MIGRATIONS = [
     (1, "projects + assignments + audit_log tables", _migrate_v1),
     (2, "project_id on datasets + Legacy project backfill", _migrate_v2),
@@ -688,6 +744,9 @@ _MIGRATIONS = [
     (10, "rationalisation_cache table", _migrate_v10),
     (11, "extended column mappings + pipeline timestamps on datasets", _migrate_v11),
     (12, "last_seen_at on refresh_tokens for online presence", _migrate_v12),
+    (13, "last_hierarchy_at on datasets to complete pipeline timestamps", _migrate_v13),
+    (14, "dataset_rationalisation_state table", _migrate_v14),
+    (15, "dataset_hierarchy_snapshot table", _migrate_v15),
 ]
 
 
@@ -698,10 +757,28 @@ DATASET_COLUMN_FIELDS = (
     "start_date_col", "basic_pay_col", "contract_type_col", "status_col",
 )
 
+# System columns appended by the Hierarchy stage (see hierarchy_endpoint in
+# lifecycle.py). If an upstream stage (cleanup/validate/rationalise) is
+# re-run or edited AFTER Hierarchy already ran, these become stale/incorrect
+# — they're stripped before re-persisting so the UI can't silently show an
+# outdated Level/Chain view for data that has since changed underneath it.
+HIERARCHY_SYSTEM_COLS = (
+    "Level", "Span", "Total_Reports", "Avg_FLC", "Last_Employee", "Chain", "Chain_reversed",
+)
+
+
+def _strip_hierarchy_columns(records: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    return [
+        {k: v for k, v in row.items() if k not in HIERARCHY_SYSTEM_COLS}
+        for row in records
+    ]
+
+
 PIPELINE_TIMESTAMP_FIELDS = {
     "cleanup": "last_cleanup_at",
     "validate": "last_validate_at",
     "rationalise": "last_rationalise_at",
+    "hierarchy": "last_hierarchy_at",
 }
 
 
@@ -941,6 +1018,300 @@ def save_baseline(
 
         conn.commit()
         return dataset_id
+
+
+def save_dataset_stage(
+    dataset_id: Optional[int],
+    stage: str,
+    name: str,
+    username: str,
+    records: List[Dict[str, Any]],
+    emp_col: str,
+    mgr_col: str,
+    fte_col: Optional[str] = None,
+    flc_col: Optional[str] = None,
+    job_title_col: Optional[str] = None,
+    country_col: Optional[str] = None,
+    func_col: Optional[str] = None,
+    subfunc_col: Optional[str] = None,
+    grade_col: Optional[str] = None,
+    division_col: Optional[str] = None,
+    entity_col: Optional[str] = None,
+    start_date_col: Optional[str] = None,
+    basic_pay_col: Optional[str] = None,
+    contract_type_col: Optional[str] = None,
+    status_col: Optional[str] = None,
+    project_id: Optional[int] = None,
+) -> Dict[str, Any]:
+    """Create-or-update the persisted snapshot for a dataset at one pipeline
+    stage ("cleanup" | "validate" | "rationalise" | "hierarchy").
+
+    - dataset_id is None: creates a brand-new dataset row + baseline_records,
+      then stamps that stage's timestamp. A pipeline stage can legitimately
+      be the *first* thing persisted for a dataset (a user can jump straight
+      to Rationalise or Hierarchy without running Cleanup/Validate first), so
+      only the exact stage passed in is stamped — earlier stages are never
+      guessed at.
+    - dataset_id is given: UPDATEs that same dataset's metadata, REPLACES its
+      baseline_records with the current working records, and stamps the
+      stage timestamp. No new dataset row is ever created for an
+      already-persisted dataset_id: this replaces the old "always insert"
+      behavior that produced an orphan dataset on every Hierarchy re-run.
+
+    The mirrored "Baseline" scenario (used by Org Chart / modeling) is only
+    created/refreshed when stage == "hierarchy" — that's the earliest point
+    Level/Span/Chain columns exist and the only point downstream features
+    read from it. It's created if missing, and refreshed if it already
+    exists but has no user edits yet (no change_log rows), so re-running
+    Hierarchy never clobbers in-progress modeling on that scenario.
+
+    Editing/re-running any *upstream* stage (cleanup/validate/rationalise)
+    after Hierarchy already ran invalidates that Hierarchy snapshot — the
+    org structure was computed off data that has since changed, so
+    last_hierarchy_at is cleared, its stale Level/Chain/etc. columns are
+    stripped from the records being saved, and the mirrored "Baseline"
+    scenario's snapshot (records + change log) is wiped so Org Chart can't
+    show an outdated view. The scenario row itself is kept so
+    activeScenarioId stays valid — the next Hierarchy run repopulates it.
+
+    Returns {"dataset_id", "dataset", "scenarios", "is_new"}.
+    """
+    now = datetime.utcnow().isoformat()
+    ts_col = PIPELINE_TIMESTAMP_FIELDS.get(stage)
+
+    with _connect() as conn:
+        c = conn.cursor()
+        is_new = dataset_id is None
+
+        # Editing/re-running an *upstream* stage invalidates anything
+        # downstream that was computed on the old data:
+        #   cleanup/validate -> invalidates Rationalise (new/changed unique
+        #     values may need re-mapping) and, transitively, Hierarchy.
+        #   rationalise       -> invalidates Hierarchy (org structure was
+        #     computed on Function/Subfunction/Title values that have since
+        #     changed).
+        rationalise_invalidated = False
+        hierarchy_invalidated = False
+        if not is_new:
+            existing_ds = c.execute(
+                "SELECT last_rationalise_at, last_hierarchy_at FROM datasets WHERE id = ?",
+                (dataset_id,),
+            ).fetchone()
+            if existing_ds:
+                if stage in ("cleanup", "validate") and existing_ds["last_rationalise_at"]:
+                    rationalise_invalidated = True
+                if stage != "hierarchy" and existing_ds["last_hierarchy_at"]:
+                    hierarchy_invalidated = True
+                    records = _strip_hierarchy_columns(records)
+
+        if is_new:
+            c.execute(
+                """
+                INSERT INTO datasets
+                    (name, username, upload_time, emp_col, mgr_col, fte_col, flc_col,
+                     job_title_col, country_col, func_col, subfunc_col, grade_col,
+                     division_col, entity_col, start_date_col, basic_pay_col,
+                     contract_type_col, status_col, row_count, project_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (name, username, now, emp_col, mgr_col, fte_col, flc_col,
+                 job_title_col, country_col, func_col, subfunc_col, grade_col,
+                 division_col, entity_col, start_date_col, basic_pay_col,
+                 contract_type_col, status_col, len(records), project_id),
+            )
+            dataset_id = c.lastrowid
+        else:
+            c.execute(
+                """
+                UPDATE datasets SET
+                    name = ?, emp_col = ?, mgr_col = ?, fte_col = ?, flc_col = ?,
+                    job_title_col = ?, country_col = ?, func_col = ?, subfunc_col = ?,
+                    grade_col = ?, division_col = ?, entity_col = ?, start_date_col = ?,
+                    basic_pay_col = ?, contract_type_col = ?, status_col = ?, row_count = ?
+                WHERE id = ?
+                """,
+                (name, emp_col, mgr_col, fte_col, flc_col,
+                 job_title_col, country_col, func_col, subfunc_col,
+                 grade_col, division_col, entity_col, start_date_col,
+                 basic_pay_col, contract_type_col, status_col, len(records),
+                 dataset_id),
+            )
+
+        if ts_col:
+            c.execute(f"UPDATE datasets SET {ts_col} = ? WHERE id = ?", (now, dataset_id))
+
+        if rationalise_invalidated:
+            c.execute("UPDATE datasets SET last_rationalise_at = NULL WHERE id = ?", (dataset_id,))
+            c.execute("DELETE FROM dataset_rationalisation_state WHERE dataset_id = ?", (dataset_id,))
+
+        if hierarchy_invalidated:
+            c.execute("UPDATE datasets SET last_hierarchy_at = NULL WHERE id = ?", (dataset_id,))
+            stale_scenario = c.execute(
+                """
+                SELECT id FROM scenarios WHERE dataset_id = ? AND name = 'Baseline'
+                ORDER BY created_at LIMIT 1
+                """,
+                (dataset_id,),
+            ).fetchone()
+            if stale_scenario:
+                sid = stale_scenario["id"]
+                c.execute("DELETE FROM change_log WHERE scenario_id = ?", (sid,))
+                c.execute("DELETE FROM scenario_records WHERE scenario_id = ?", (sid,))
+                c.execute("UPDATE scenarios SET updated_at = ? WHERE id = ?", (now, sid))
+            c.execute("DELETE FROM dataset_hierarchy_snapshot WHERE dataset_id = ?", (dataset_id,))
+
+        def _row_tuple(container_id: int, row: Dict[str, Any]) -> Tuple[Any, ...]:
+            emp_id = _to_str(row.get(emp_col))
+            mgr_id = _to_str(row.get(mgr_col))
+            level = _to_int(row.get("Level"))
+            fte = _to_float(row.get(fte_col)) if fte_col else None
+            flc = _to_float(row.get(flc_col)) if flc_col else None
+            return (container_id, emp_id, mgr_id, level, fte, flc, json.dumps(row, default=str))
+
+        baseline_rows = [_row_tuple(dataset_id, row) for row in records]
+
+        if not is_new:
+            c.execute("DELETE FROM baseline_records WHERE dataset_id = ?", (dataset_id,))
+        c.executemany(
+            """
+            INSERT INTO baseline_records
+                (dataset_id, emp_id, mgr_id, level, fte, flc, data_json)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            baseline_rows,
+        )
+
+        baseline_scenario_id = None
+        if stage == "hierarchy":
+            existing_scenario = c.execute(
+                """
+                SELECT id FROM scenarios WHERE dataset_id = ? AND name = 'Baseline'
+                ORDER BY created_at LIMIT 1
+                """,
+                (dataset_id,),
+            ).fetchone()
+            if existing_scenario is None:
+                c.execute(
+                    """
+                    INSERT INTO scenarios (dataset_id, name, description, created_at, updated_at, is_promoted)
+                    VALUES (?, ?, ?, ?, ?, 0)
+                    """,
+                    (dataset_id, "Baseline", "Default working scenario (mirrors baseline)", now, now),
+                )
+                baseline_scenario_id = c.lastrowid
+            else:
+                has_edits = c.execute(
+                    "SELECT 1 FROM change_log WHERE scenario_id = ? LIMIT 1",
+                    (existing_scenario["id"],),
+                ).fetchone()
+                if not has_edits:
+                    baseline_scenario_id = existing_scenario["id"]
+                # else: leave the scenario and its records alone — don't
+                # clobber in-progress modeling just because Hierarchy re-ran.
+
+        if baseline_scenario_id is not None:
+            # De-dupe by emp_id (keep last occurrence) — scenario_records has
+            # a UNIQUE(scenario_id, emp_id) constraint and unresolved
+            # duplicate-employee-ID rows could otherwise crash the insert.
+            by_emp_id: Dict[str, Dict[str, Any]] = {}
+            for i, row in enumerate(records):
+                key = _to_str(row.get(emp_col)) or f"__row_{i}"
+                by_emp_id[key] = row
+            scenario_rows = [
+                (baseline_scenario_id, *_row_tuple(dataset_id, row)[1:-1], 0, 0, json.dumps(row, default=str))
+                for row in by_emp_id.values()
+            ]
+            c.execute("DELETE FROM scenario_records WHERE scenario_id = ?", (baseline_scenario_id,))
+            c.executemany(
+                """
+                INSERT INTO scenario_records
+                    (scenario_id, emp_id, mgr_id, level, fte, flc,
+                     is_flagged_removed, is_added, data_json)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                scenario_rows,
+            )
+            c.execute(
+                "UPDATE scenarios SET updated_at = ? WHERE id = ?",
+                (now, baseline_scenario_id),
+            )
+
+        conn.commit()
+
+    dataset = get_dataset(dataset_id)
+    scenarios = list_scenarios(dataset_id)
+    return {"dataset_id": dataset_id, "dataset": dataset, "scenarios": scenarios, "is_new": is_new}
+
+
+def get_rationalisation_state(dataset_id: int) -> Optional[Dict[str, Any]]:
+    """Return the persisted Rationalise mapping table (proposals + accept/
+    reject + overrides) for a dataset, or None if it was never saved."""
+    with _connect_ro() as conn:
+        row = conn.execute(
+            "SELECT state_json, updated_at FROM dataset_rationalisation_state WHERE dataset_id = ?",
+            (dataset_id,),
+        ).fetchone()
+    if not row:
+        return None
+    state = json.loads(row["state_json"])
+    state["updated_at"] = row["updated_at"]
+    return state
+
+
+def save_rationalisation_state(dataset_id: int, state: Dict[str, Any]) -> Dict[str, Any]:
+    """Upsert the full Rationalise mapping table for a dataset, so reopening
+    it can show a real read-only review instead of just a timestamp badge."""
+    now = datetime.utcnow().isoformat()
+    state_json = json.dumps(state, default=str)
+    with _connect() as conn:
+        c = conn.cursor()
+        c.execute(
+            """
+            INSERT INTO dataset_rationalisation_state (dataset_id, state_json, updated_at)
+            VALUES (?, ?, ?)
+            ON CONFLICT (dataset_id)
+                DO UPDATE SET state_json = EXCLUDED.state_json, updated_at = EXCLUDED.updated_at
+            """,
+            (dataset_id, state_json, now),
+        )
+        conn.commit()
+    return {"dataset_id": dataset_id, "updated_at": now}
+
+
+def get_hierarchy_snapshot(dataset_id: int) -> Optional[Dict[str, Any]]:
+    """Return the persisted Hierarchy preview + summary stats for a dataset,
+    or None if never saved (or invalidated by an upstream stage edit)."""
+    with _connect_ro() as conn:
+        row = conn.execute(
+            "SELECT snapshot_json, updated_at FROM dataset_hierarchy_snapshot WHERE dataset_id = ?",
+            (dataset_id,),
+        ).fetchone()
+    if not row:
+        return None
+    snapshot = json.loads(row["snapshot_json"])
+    snapshot["updated_at"] = row["updated_at"]
+    return snapshot
+
+
+def save_hierarchy_snapshot(dataset_id: int, snapshot: Dict[str, Any]) -> Dict[str, Any]:
+    """Upsert the curated Hierarchy preview + stats for a dataset, so
+    reopening the Hierarchy tab can restore instantly from the DB instead of
+    re-running the full Level/Span/Chain computation on every tab switch."""
+    now = datetime.utcnow().isoformat()
+    snapshot_json = json.dumps(snapshot, default=str)
+    with _connect() as conn:
+        c = conn.cursor()
+        c.execute(
+            """
+            INSERT INTO dataset_hierarchy_snapshot (dataset_id, snapshot_json, updated_at)
+            VALUES (?, ?, ?)
+            ON CONFLICT (dataset_id)
+                DO UPDATE SET snapshot_json = EXCLUDED.snapshot_json, updated_at = EXCLUDED.updated_at
+            """,
+            (dataset_id, snapshot_json, now),
+        )
+        conn.commit()
+    return {"dataset_id": dataset_id, "updated_at": now}
 
 
 def list_datasets(username: Optional[str] = None, project_id: Optional[int] = None) -> List[Dict[str, Any]]:

@@ -465,6 +465,10 @@ export const dbSaveBaseline = async ({
   funcCol = null, subfuncCol = null, gradeCol = null, divisionCol = null,
   entityCol = null, startDateCol = null, basicPayCol = null,
   contractTypeCol = null, statusCol = null,
+  // datasetId: pass the current dataset id to update it in place instead of
+  // creating a new one. stage: which pipeline step this snapshot represents
+  // ("cleanup" | "validate" | "rationalise" | "hierarchy").
+  datasetId = null, stage = "hierarchy",
 }) => {
   const body = {
     name, records,
@@ -476,6 +480,8 @@ export const dbSaveBaseline = async ({
     entity_col: entityCol, start_date_col: startDateCol,
     basic_pay_col: basicPayCol, contract_type_col: contractTypeCol,
     status_col: statusCol,
+    dataset_id: datasetId,
+    stage,
   };
   const res = await axios.post(`${getProjectUrl()}/db/save_baseline`, body, { headers: jsonHeaders() });
   return res.data;
@@ -506,6 +512,34 @@ export const dbGetDataset = async (datasetId) => {
 export const dbGetDatasetRecords = async (datasetId, scenarioId = null) => {
   const params = scenarioId != null ? `?scenario_id=${scenarioId}` : "";
   const res = await axios.get(`${getProjectUrl()}/db/datasets/${datasetId}/records${params}`, { headers: getHeaders() });
+  return res.data;
+};
+
+export const dbGetRationalisationState = async (datasetId) => {
+  const res = await axios.get(`${getProjectUrl()}/db/datasets/${datasetId}/rationalisation_state`, { headers: getHeaders() });
+  return res.data;
+};
+
+export const dbSaveRationalisationState = async (datasetId, state) => {
+  const res = await axios.post(
+    `${getProjectUrl()}/db/datasets/${datasetId}/rationalisation_state`,
+    { state },
+    { headers: jsonHeaders() }
+  );
+  return res.data;
+};
+
+export const dbGetHierarchySnapshot = async (datasetId) => {
+  const res = await axios.get(`${getProjectUrl()}/db/datasets/${datasetId}/hierarchy_snapshot`, { headers: getHeaders() });
+  return res.data;
+};
+
+export const dbSaveHierarchySnapshot = async (datasetId, snapshot) => {
+  const res = await axios.post(
+    `${getProjectUrl()}/db/datasets/${datasetId}/hierarchy_snapshot`,
+    { snapshot },
+    { headers: jsonHeaders() }
+  );
   return res.data;
 };
 

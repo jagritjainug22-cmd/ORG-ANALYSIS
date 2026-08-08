@@ -1,5 +1,5 @@
-import React, { useState } from "react";
-import { hierarchy as hierarchyBackend, dbSaveBaseline } from "../api/backend";
+import React, { useState, useEffect, useRef } from "react";
+import { hierarchy as hierarchyBackend, dbGetHierarchySnapshot, dbSaveHierarchySnapshot } from "../api/backend";
 
 export default function Hierarchy({
   validatedDf,
@@ -11,39 +11,36 @@ export default function Hierarchy({
   fteCol,
   jobTitleCol,
   countryCol,
-  funcCol,
-  subfuncCol,
-  gradeCol,
-  divisionCol,
-  entityCol,
-  startDateCol,
-  basicPayCol,
-  contractTypeCol,
-  statusCol,
-  onBaselineSaved,
-  uploadedFileName,
+  onSaveStage,
   formulas = [],
   datasetId = null,
 }) {
   const [loading, setLoading] = useState(false);
+  const [hydrating, setHydrating] = useState(false);
   const [preview, setPreview] = useState([]);
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
   const [saveStatus, setSaveStatus] = useState(null);
+  const [restored, setRestored] = useState(false);
 
   const columns = validatedDf?.length ? Object.keys(validatedDf[0]) : [];
   const canRun = validatedDf?.length > 0 && empCol && mgrCol;
 
-  const runPreview = async () => {
+  // Shared by both the "Run" button and the silent restore-on-load below.
+  // Recomputing Level/Chain/Span from the same emp/mgr relationships is
+  // idempotent, so calling this again on an already-processed dataset
+  // reproduces the exact same backend-built preview (the indented L1..Ln /
+  // Last_Employee / Total_Reports view) instead of a rough approximation.
+  const computeHierarchy = async ({ persist, silent }) => {
     if (!canRun) {
-      setError("Please ensure data is loaded and Employee/Manager columns are selected.");
+      if (!silent) setError("Please ensure data is loaded and Employee/Manager columns are selected.");
       return;
     }
 
-    setLoading(true);
+    if (silent) setHydrating(true); else setLoading(true);
     setError(null);
-    setResult(null);
-    setSaveStatus(null);
+    if (!silent) { setResult(null); setSaveStatus(null); }
+    setRestored(!!silent);
 
     try {
       const res = await hierarchyBackend(
@@ -57,7 +54,10 @@ export default function Hierarchy({
         datasetId || null
       );
 
-      if (res.df) {
+      // Silent restore only refreshes the display (preview + stats) — the
+      // data is already what's persisted, so there's nothing new to save
+      // back into working state or the database.
+      if (!silent && res.df) {
         setValidatedDf(res.df);
         setDfRecords?.(res.df);
       }
@@ -68,50 +68,93 @@ export default function Hierarchy({
         levelDistribution: res.level_distribution || {},
       });
 
-      // Auto-save the processed dataset to the database as the baseline
-      // for the OrgSight 2.0 modelling workflow.
-      if (res.df && onBaselineSaved) {
+      // Persist the curated preview + stats as a snapshot so reopening this
+      // tab can restore instantly (DB read) instead of recomputing
+      // Level/Span/Chain from scratch on every tab switch.
+      if (datasetId) {
+        dbSaveHierarchySnapshot(datasetId, {
+          preview: res.preview || [],
+          max_depth: res.max_depth || 0,
+          level_distribution: res.level_distribution || {},
+          rows_processed: res.rows_processed || res.df?.length || 0,
+        }).catch((err) => console.warn("Failed to persist hierarchy snapshot:", err));
+      }
+
+      // Persist the processed dataset (updates the current dataset in place
+      // if one already exists, so re-running Hierarchy never orphans a
+      // duplicate dataset row) — this is what powers the OrgSight 2.0
+      // modelling workflow (Org Chart, scenarios, etc).
+      if (persist && res.df && onSaveStage) {
         try {
           setSaveStatus({ state: "saving" });
-          const saved = await dbSaveBaseline({
-            name: uploadedFileName || `Dataset ${new Date().toLocaleString()}`,
-            records: res.df,
-            empCol,
-            mgrCol,
-            fteCol: fteCol || null,
-            flcCol: flcCol || null,
-            jobTitleCol: jobTitleCol || null,
-            countryCol: countryCol || null,
-            funcCol: funcCol || null,
-            subfuncCol: subfuncCol || null,
-            gradeCol: gradeCol || null,
-            divisionCol: divisionCol || null,
-            entityCol: entityCol || null,
-            startDateCol: startDateCol || null,
-            basicPayCol: basicPayCol || null,
-            contractTypeCol: contractTypeCol || null,
-            statusCol: statusCol || null,
-          });
-          const defaultScenario = (saved.scenarios || []).find((s) => s.name === "Baseline")
-            || (saved.scenarios || [])[0];
-          onBaselineSaved({
-            datasetId: saved.dataset_id,
-            scenarios: saved.scenarios || [],
-            activeScenarioId: defaultScenario?.id ?? null,
-          });
-          setSaveStatus({ state: "saved", datasetId: saved.dataset_id });
+          const saved = await onSaveStage(res.df);
+          if (saved?.dataset_id) {
+            setSaveStatus({ state: "saved", datasetId: saved.dataset_id });
+          } else {
+            setSaveStatus({ state: "error", message: "Save failed" });
+          }
         } catch (saveErr) {
           console.warn("Baseline save failed (org chart will still work in legacy mode):", saveErr);
           setSaveStatus({ state: "error", message: saveErr.message });
         }
       }
     } catch (err) {
-      console.error("Hierarchy preview failed:", err);
-      setError(err.response?.data?.detail || "Failed to compute hierarchy preview. Please try again.");
+      if (silent) {
+        console.warn("Silent hierarchy restore failed — falling back to the Run prompt:", err);
+        setRestored(false);
+      } else {
+        console.error("Hierarchy preview failed:", err);
+        setError(err.response?.data?.detail || "Failed to compute hierarchy preview. Please try again.");
+      }
     } finally {
-      setLoading(false);
+      if (silent) setHydrating(false); else setLoading(false);
     }
   };
+
+  const runPreview = () => computeHierarchy({ persist: true, silent: false });
+
+  // Reopening a dataset that already has a Level column from a prior
+  // Hierarchy run — restore the previously-persisted preview + stats
+  // straight from the DB (instant, no computation) instead of re-running
+  // the full Level/Span/Chain pipeline on every tab switch. Only falls back
+  // to a silent live recompute if no snapshot was ever saved (e.g. this
+  // dataset's Hierarchy ran before this feature existed) — that recompute
+  // then backfills the snapshot for next time via computeHierarchy above.
+  const hydratedKeyRef = useRef(null);
+  useEffect(() => {
+    const key = datasetId ?? "mem";
+    if (hydratedKeyRef.current === key) return;
+    hydratedKeyRef.current = key;
+    if (!canRun || !Object.prototype.hasOwnProperty.call(validatedDf[0], "Level")) return;
+
+    let cancelled = false;
+    (async () => {
+      if (datasetId) {
+        setHydrating(true);
+        try {
+          const { snapshot } = await dbGetHierarchySnapshot(datasetId);
+          if (cancelled) return;
+          if (snapshot) {
+            setPreview(snapshot.preview || []);
+            setResult({
+              rowsProcessed: snapshot.rows_processed || 0,
+              maxDepth: snapshot.max_depth || 0,
+              levelDistribution: snapshot.level_distribution || {},
+            });
+            setRestored(true);
+            setHydrating(false);
+            return;
+          }
+        } catch (err) {
+          console.warn("Failed to load hierarchy snapshot:", err);
+        }
+        if (!cancelled) setHydrating(false);
+      }
+      if (!cancelled) computeHierarchy({ persist: false, silent: true });
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [validatedDf, datasetId, canRun]);
 
   const downloadExcel = async () => {
     if (!canRun) return;
@@ -168,7 +211,7 @@ export default function Hierarchy({
       <div className="flex gap-4">
         <button
           onClick={runPreview}
-          disabled={!canRun || loading}
+          disabled={!canRun || loading || hydrating}
           className="flex-1 px-4 py-2 bg-brand-500 hover:bg-brand-600 text-white rounded-md font-semibold shadow-sm hover:shadow-md transition-all duration-150 disabled:bg-gray-200 disabled:text-gray-500 disabled:cursor-not-allowed flex items-center justify-center gap-2 text-sm"
         >
           {loading ? (
@@ -210,14 +253,14 @@ export default function Hierarchy({
                   d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"
                 />
               </svg>
-              <span className="text-sm">Run Hierarchy Analysis</span>
+              <span className="text-sm">{restored ? "Re-run Hierarchy Analysis" : "Run Hierarchy Analysis"}</span>
             </>
           )}
         </button>
 
         <button
           onClick={downloadExcel}
-          disabled={!canRun || !preview || preview.length === 0}
+          disabled={!canRun || !preview || preview.length === 0 || hydrating}
           className="px-4 py-2 bg-brand-500 hover:bg-brand-600 text-white rounded-md font-semibold shadow-sm hover:shadow-md transition-all duration-150 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 text-sm"
         >
           <svg
@@ -236,6 +279,14 @@ export default function Hierarchy({
           <span>Download Excel</span>
         </button>
       </div>
+
+      {/* Silent restore in progress */}
+      {hydrating && (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-2.5 flex items-center gap-2 text-xs font-medium text-blue-800">
+          <svg className="w-3.5 h-3.5 animate-spin flex-shrink-0" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
+          Loading previous hierarchy results...
+        </div>
+      )}
 
       {/* Error Message */}
       {error && (
@@ -282,7 +333,9 @@ export default function Hierarchy({
                 Hierarchy Analysis Complete!
               </h4>
               <p className="text-xs text-brand-700">
-                Organizational structure has been computed successfully
+                {restored
+                  ? "Restored from a previous run — Levels, chains, and spans are already computed on this dataset."
+                  : "Organizational structure has been computed successfully"}
               </p>
             </div>
           </div>

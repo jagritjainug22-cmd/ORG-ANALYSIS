@@ -71,6 +71,7 @@ export default function ValidationDataTable({
   onRecordsChange,
   onRevalidate,
   revalidating = false,
+  readOnly = false,
 }) {
   const [viewMode, setViewMode] = useState("errors"); // "errors" | "all"
   const [page, setPage] = useState(1);
@@ -242,7 +243,7 @@ export default function ValidationDataTable({
         </div>
 
         <div className="flex items-center gap-2">
-          {dirty && onRevalidate && (
+          {!readOnly && dirty && onRevalidate && (
             <button
               type="button"
               onClick={onRevalidate}
@@ -253,7 +254,7 @@ export default function ValidationDataTable({
             </button>
           )}
           <span className="text-[11px] text-slate-600 font-medium hidden sm:inline">
-            Click a row for details · Double-click ID cells to edit
+            {readOnly ? "Click a row for details (read-only)" : "Click a row for details · Double-click ID cells to edit"}
           </span>
         </div>
       </div>
@@ -359,7 +360,7 @@ export default function ValidationDataTable({
                     {displayCols.map((col, colIdx) => {
                       const isEmp = col === empCol;
                       const isMgr = col === mgrCol;
-                      const editable = isEmp || isMgr;
+                      const editable = !readOnly && (isEmp || isMgr);
                       const isEditingThis =
                         editing?.globalIdx === globalIdx &&
                         editing?.field === (isEmp ? "emp" : isMgr ? "mgr" : null);

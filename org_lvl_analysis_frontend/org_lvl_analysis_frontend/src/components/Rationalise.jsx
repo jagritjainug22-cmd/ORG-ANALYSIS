@@ -1,8 +1,23 @@
 import React, { useState, useEffect, useMemo, useCallback } from "react";
-import { rationalisePropose, rationaliseApply } from "../api/backend";
+import { rationalisePropose, rationaliseApply, dbGetRationalisationState, dbSaveRationalisationState } from "../api/backend";
 import MappingRegistry from "./MappingRegistry";
 import ExportExcel from "./ExportExcel";
 import Paginator from "./Paginator";
+import ConfirmDialog from "./ConfirmDialog";
+
+// Columns appended by the Hierarchy stage (mirrors HIERARCHY_SYSTEM_COLS in
+// db_service.py). Rationalise only ever touches Function/Subfunction/Title,
+// so any of these carried over from an earlier Hierarchy run are stale the
+// moment mappings change — stripped client-side too so the Hierarchy tab
+// can't silently restore outdated Level/Chain data.
+const HIERARCHY_SYSTEM_COLS = ["Level", "Span", "Total_Reports", "Avg_FLC", "Last_Employee", "Chain", "Chain_reversed"];
+function stripHierarchyColumns(records) {
+  return (records || []).map((r) => {
+    const clean = { ...r };
+    HIERARCHY_SYSTEM_COLS.forEach((c) => delete clean[c]);
+    return clean;
+  });
+}
 
 const RAT_PAGE_SIZE = 15;
 
@@ -183,7 +198,8 @@ function MappingTable({
   selected,
   setSelected,
   datalistId,
-  showFuncCol = false
+  showFuncCol = false,
+  readOnly = false,
 }) {
   const [page, setPage] = useState(1);
   const [flashedIdxs, setFlashedIdxs] = useState(new Set());
@@ -199,9 +215,10 @@ function MappingTable({
     return <p className="text-sm text-slate-400 italic py-6 text-center">No mappings to review</p>;
   }
 
-  const toggleAccept = (idx) => setAccepted(prev => ({ ...prev, [idx]: prev[idx] === false ? true : false }));
+  const toggleAccept = (idx) => { if (readOnly) return; setAccepted(prev => ({ ...prev, [idx]: prev[idx] === false ? true : false })); };
 
   const handleOverrideChange = (m, val) => {
+    if (readOnly) return;
     // Clear flash when user manually edits again
     if (flashedIdxs.has(m.originalIdx)) {
       setFlashedIdxs(prev => { const next = new Set(prev); next.delete(m.originalIdx); return next; });
@@ -211,6 +228,7 @@ function MappingTable({
 
   // Apply a value to all sibling rows that still have a different current value
   const applyToSiblings = (m, val) => {
+    if (readOnly) return;
     const allSibs = (allMappings || mappings).filter(
       s => s.originalIdx !== m.originalIdx && s.resolved === m.resolved
     );
@@ -231,6 +249,7 @@ function MappingTable({
 
   const allSelected = paged.length > 0 && paged.every(m => !!selected[m.originalIdx]);
   const toggleSelectAll = () => {
+    if (readOnly) return;
     setSelected(prev => {
       const next = { ...prev };
       if (allSelected) {
@@ -247,21 +266,23 @@ function MappingTable({
     <div className="overflow-x-auto">
       <table className="w-full text-sm">
         <thead>
-          <tr className="bg-brand-50 text-brand-700 text-xs uppercase tracking-wide">
-            <th className="w-10 text-center px-3 py-2.5">
-              <input
-                type="checkbox"
-                checked={allSelected}
-                onChange={toggleSelectAll}
-                className="rounded border-gray-300 text-brand-500 focus:ring-brand-500 h-4 w-4 cursor-pointer"
-                title="Select all for Accept / Reject"
-              />
-            </th>
-            {showFuncCol && <th className="text-left px-3 py-2.5 font-semibold">Function</th>}
-            <th className="text-left px-3 py-2.5 font-semibold">Input</th>
-            <th className="text-left px-3 py-2.5 font-semibold">Proposed</th>
-            <th className="text-left px-3 py-2.5 font-semibold w-24">Method</th>
-            <th className="text-center px-3 py-2.5 font-semibold w-20">Accept</th>
+          <tr className="bg-brand-50 text-brand-800 text-xs uppercase tracking-wide font-bold">
+            {!readOnly && (
+              <th className="w-10 text-center px-3 py-2.5">
+                <input
+                  type="checkbox"
+                  checked={allSelected}
+                  onChange={toggleSelectAll}
+                  className="rounded border-gray-300 text-brand-500 focus:ring-brand-500 h-4 w-4 cursor-pointer"
+                  title="Select all for Accept / Reject"
+                />
+              </th>
+            )}
+            {showFuncCol && <th className="text-left px-3 py-2.5 font-bold">Function</th>}
+            <th className="text-left px-3 py-2.5 font-bold">Input</th>
+            <th className="text-left px-3 py-2.5 font-bold">Proposed</th>
+            <th className="text-left px-3 py-2.5 font-bold w-24">Method</th>
+            <th className="text-center px-3 py-2.5 font-bold w-20">{readOnly ? "Status" : "Accept"}</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-gray-100">
@@ -297,28 +318,34 @@ function MappingTable({
                     : "bg-gray-50 opacity-60"
                 }`}
               >
-                <td className="px-3 py-2 text-center">
-                  <input
-                    type="checkbox"
-                    checked={isSelected}
-                    onChange={() => setSelected(prev => ({ ...prev, [m.originalIdx]: !prev[m.originalIdx] }))}
-                    className="rounded border-gray-300 text-brand-500 focus:ring-brand-500 h-4 w-4 cursor-pointer"
-                    title="Select for Accept / Reject"
-                  />
-                </td>
-                {showFuncCol && <td className="px-3 py-2 text-slate-500 text-xs">{m.function}</td>}
-                <td className="px-3 py-2 text-slate-700 font-medium">{m.input}</td>
+                {!readOnly && (
+                  <td className="px-3 py-2 text-center">
+                    <input
+                      type="checkbox"
+                      checked={isSelected}
+                      onChange={() => setSelected(prev => ({ ...prev, [m.originalIdx]: !prev[m.originalIdx] }))}
+                      className="rounded border-gray-300 text-brand-500 focus:ring-brand-500 h-4 w-4 cursor-pointer"
+                      title="Select for Accept / Reject"
+                    />
+                  </td>
+                )}
+                {showFuncCol && <td className="px-3 py-2 text-slate-700 text-xs font-semibold">{m.function}</td>}
+                <td className="px-3 py-2 text-slate-800 font-semibold">{m.input}</td>
                 <td className="px-3 py-2">
                   <div className="flex items-center gap-1.5">
-                    <input
-                      type="text"
-                      list={datalistId}
-                      value={currentVal}
-                      onChange={(e) => handleOverrideChange(m, e.target.value)}
-                      className={`flex-1 border rounded px-2 py-1 text-sm focus:ring-1 focus:ring-brand-500 focus:border-brand-500 outline-none bg-white hover:border-gray-300 transition ${
-                        isDirty ? "border-amber-400" : "border-gray-200"
-                      }`}
-                    />
+                    {readOnly ? (
+                      <span className="flex-1 text-sm font-semibold text-slate-800">{currentVal}</span>
+                    ) : (
+                      <input
+                        type="text"
+                        list={datalistId}
+                        value={currentVal}
+                        onChange={(e) => handleOverrideChange(m, e.target.value)}
+                        className={`flex-1 border rounded px-2 py-1 text-sm font-semibold text-slate-800 focus:ring-1 focus:ring-brand-500 focus:border-brand-500 outline-none bg-white hover:border-gray-300 transition ${
+                          isDirty ? "border-amber-400" : "border-gray-200"
+                        }`}
+                      />
+                    )}
                   {/* Badge: show how many share same proposed value (only when not dirty) */}
                   {siblingCount > 0 && !isDirty && (
                     <span className="flex-shrink-0 text-[10px] font-semibold text-slate-400 bg-gray-100 rounded-full px-1.5 py-0.5" title={`${siblingCount + 1} rows share this proposed value`}>
@@ -327,7 +354,7 @@ function MappingTable({
                   )}
                   </div>
                   {/* Show apply link only when siblings still have a different current value */}
-                  {isDirty && outOfSyncCount > 0 && !isFlashed && (
+                  {!readOnly && isDirty && outOfSyncCount > 0 && !isFlashed && (
                     <button
                       onClick={() => applyToSiblings(m, currentVal)}
                       className="mt-1 text-[11px] text-brand-600 hover:text-brand-800 font-semibold flex items-center gap-1"
@@ -339,7 +366,7 @@ function MappingTable({
                       Apply to {outOfSyncCount} other{outOfSyncCount > 1 ? "s" : ""} still showing "{m.resolved}"
                     </button>
                   )}
-                  {isFlashed && (
+                  {!readOnly && isFlashed && (
                     <span className="mt-1 text-[11px] text-brand-500 flex items-center gap-1 font-medium">
                       <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" /></svg>
                       Updated
@@ -348,15 +375,27 @@ function MappingTable({
                 </td>
                 <td className="px-3 py-2"><Badge method={m.method} /></td>
                 <td className="px-3 py-2 text-center">
-                  <button onClick={() => toggleAccept(m.originalIdx)} className={`w-7 h-7 rounded-full flex items-center justify-center mx-auto transition ${
-                    isAccepted ? "bg-green-100 text-green-600 hover:bg-green-200" : "bg-gray-100 text-gray-400 hover:bg-gray-200"
-                  }`}>
-                    {isAccepted ? (
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" /></svg>
-                    ) : (
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-                    )}
-                  </button>
+                  {readOnly ? (
+                    <span className={`inline-flex w-7 h-7 rounded-full items-center justify-center ${
+                      isAccepted ? "bg-green-100 text-green-600" : "bg-gray-100 text-gray-400"
+                    }`} title={isAccepted ? "Accepted" : "Rejected"}>
+                      {isAccepted ? (
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" /></svg>
+                      ) : (
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                      )}
+                    </span>
+                  ) : (
+                    <button onClick={() => toggleAccept(m.originalIdx)} className={`w-7 h-7 rounded-full flex items-center justify-center mx-auto transition ${
+                      isAccepted ? "bg-green-100 text-green-600 hover:bg-green-200" : "bg-gray-100 text-gray-400 hover:bg-gray-200"
+                    }`}>
+                      {isAccepted ? (
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" /></svg>
+                      ) : (
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                      )}
+                    </button>
+                  )}
                 </td>
               </tr>
             );
@@ -379,6 +418,26 @@ function MappingTable({
   );
 }
 
+function formatRelative(iso) {
+  if (!iso) return "";
+  try {
+    const then = new Date(iso.endsWith("Z") ? iso : iso + "Z");
+    const now = new Date();
+    const diffMs = now - then;
+    const sec = Math.max(0, Math.round(diffMs / 1000));
+    if (sec < 60) return `${sec}s ago`;
+    const min = Math.round(sec / 60);
+    if (min < 60) return `${min}m ago`;
+    const hr = Math.round(min / 60);
+    if (hr < 24) return `${hr}h ago`;
+    const day = Math.round(hr / 24);
+    if (day < 7) return day === 1 ? "yesterday" : `${day}d ago`;
+    return then.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+  } catch {
+    return "";
+  }
+}
+
 export default function Rationalise({
   dfRecords,
   setDfRecords,
@@ -389,9 +448,18 @@ export default function Rationalise({
   columns,
   setColumns,
   datasetId = null,
+  pipelineStatus = { rationalise: null, hierarchy: null },
   onApplySuccess,
 }) {
   const [viewMode, setViewMode] = useState("run");
+  // Read-only restore: true once a persisted mapping table has been loaded
+  // back for this dataset and hasn't been explicitly unlocked for editing.
+  const [locked, setLocked] = useState(false);
+  const [stateLoading, setStateLoading] = useState(!!datasetId);
+  const [stateUpdatedAt, setStateUpdatedAt] = useState(null);
+  // null | "edit" | "run" — which action is pending confirmation that it
+  // will invalidate an already-completed Hierarchy Analysis for this dataset.
+  const [pendingHierarchyWarning, setPendingHierarchyWarning] = useState(null);
   const [activeTab, setActiveTab] = useState("functions");
   const [useLearnedAliases, setUseLearnedAliases] = useState(false);
 
@@ -445,6 +513,36 @@ export default function Rationalise({
   const [funcAccepted, setFuncAccepted] = useState({});
   const [subfuncAccepted, setSubfuncAccepted] = useState({});
   const [titleAccepted, setTitleAccepted] = useState({});
+
+  // Restore a previously-persisted mapping table for this dataset, read-only,
+  // instead of prompting the user to run rationalisation from scratch again.
+  useEffect(() => {
+    if (!datasetId) { setStateLoading(false); return; }
+    let cancelled = false;
+    setStateLoading(true);
+    dbGetRationalisationState(datasetId)
+      .then((data) => {
+        if (cancelled) return;
+        const state = data?.state;
+        if (!state) return;
+        setRationalisationResult({
+          function_mappings: state.function_mappings || [],
+          subfunction_mappings: state.subfunction_mappings || [],
+          title_mappings: state.title_mappings || [],
+        });
+        setFuncAccepted(state.func_accepted || {});
+        setSubfuncAccepted(state.subfunc_accepted || {});
+        setTitleAccepted(state.title_accepted || {});
+        setFuncOverrides(state.func_overrides || {});
+        setSubfuncOverrides(state.subfunc_overrides || {});
+        setTitleOverrides(state.title_overrides || {});
+        setStateUpdatedAt(state.updated_at || null);
+        setLocked(true);
+      })
+      .catch((err) => console.warn("Failed to load persisted rationalisation mappings:", err))
+      .finally(() => { if (!cancelled) setStateLoading(false); });
+    return () => { cancelled = true; };
+  }, [datasetId]);
 
   const tabs = [
     { key: "functions", label: "Functions", count: funcMappings.length },
@@ -524,11 +622,30 @@ export default function Rationalise({
       };
       const res = await rationaliseApply(body);
       if (res?.records) {
-        setDfRecords(res.records);
-        setValidatedDf?.(res.records);
-        setColumns(Object.keys(res.records[0] || {}));
+        // Strip any stale Level/Chain/etc. columns carried over from an
+        // earlier Hierarchy run — the backend already invalidated that
+        // snapshot (cleared last_hierarchy_at + wiped the Baseline scenario)
+        // since mappings changed, so the working data must match.
+        const cleanedRecords = stripHierarchyColumns(res.records);
+        setDfRecords(cleanedRecords);
+        setValidatedDf?.(cleanedRecords);
+        setColumns(Object.keys(cleanedRecords[0] || {}));
         setApplied(true);
-        onApplySuccess?.();
+        onApplySuccess?.(cleanedRecords);
+
+        if (datasetId) {
+          dbSaveRationalisationState(datasetId, {
+            function_mappings: funcMappings,
+            subfunction_mappings: subfuncMappings,
+            title_mappings: titleMappings,
+            func_accepted: funcAccepted,
+            subfunc_accepted: subfuncAccepted,
+            title_accepted: titleAccepted,
+            func_overrides: funcOverrides,
+            subfunc_overrides: subfuncOverrides,
+            title_overrides: titleOverrides,
+          }).catch((err) => console.warn("Failed to persist rationalisation mapping table:", err));
+        }
       }
     } catch (err) {
       console.error("Apply error:", err);
@@ -536,6 +653,34 @@ export default function Rationalise({
     } finally {
       setApplying(false);
     }
+  };
+
+  const handleEditClick = () => {
+    if (pipelineStatus?.hierarchy) {
+      setPendingHierarchyWarning("edit");
+    } else {
+      setLocked(false);
+    }
+  };
+
+  // "Run"/"Re-run Rationalisation" also invalidates an already-completed
+  // Hierarchy Analysis once applied (save_dataset_stage clears it server-side
+  // regardless of which button triggered the apply) — warn here too, not
+  // just on the "Edit Mappings" path, so a fresh re-run can't silently blow
+  // away Hierarchy/Org Chart without the user knowing.
+  const handleRunClick = () => {
+    if (pipelineStatus?.hierarchy) {
+      setPendingHierarchyWarning("run");
+    } else {
+      handleRun();
+    }
+  };
+
+  const confirmHierarchyWarning = () => {
+    const action = pendingHierarchyWarning;
+    setPendingHierarchyWarning(null);
+    if (action === "edit") setLocked(false);
+    else if (action === "run") handleRun();
   };
 
   const handleTabChange = (tabKey) => {
@@ -623,36 +768,37 @@ export default function Rationalise({
     <div className="space-y-5 pb-20">
       {/* Header */}
       <div className="bg-brand-50 border border-brand-100 rounded-lg p-5">
-        <div className="flex items-start justify-between gap-4 flex-wrap">
-          <div className="flex items-start gap-3">
+        <div className="flex items-center justify-between gap-4 flex-wrap">
+          <div className="flex items-start gap-3 min-w-0">
             <div className="w-10 h-10 bg-brand-500 rounded-lg flex items-center justify-center flex-shrink-0">
               <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" /></svg>
             </div>
             <div>
               <h3 className="text-lg font-bold text-brand-800" style={{ fontFamily: "Manrope, Inter, sans-serif" }}>Rationalise</h3>
-              <p className="text-sm text-slate-500">Map your titles, functions, and subfunctions to standard categories. Review AI proposals, override where needed, then apply.</p>
+              <p className="text-sm text-slate-600 font-medium">Map your titles, functions, and subfunctions to standard categories. Review AI proposals, override where needed, then apply.</p>
             </div>
           </div>
-          <ExportExcel df={dfRecords} compact />
-        </div>
-
-        <div className="flex mt-4 p-1 bg-white/80 border border-brand-100 rounded-lg w-fit">
-          <button
-            onClick={() => setViewMode("run")}
-            className={`px-4 py-2 text-sm font-medium rounded-md transition ${
-              viewMode === "run" ? "bg-brand-500 text-white shadow-sm" : "text-slate-600 hover:text-brand-700"
-            }`}
-          >
-            Run Rationalisation
-          </button>
-          <button
-            onClick={() => setViewMode("registry")}
-            className={`px-4 py-2 text-sm font-medium rounded-md transition ${
-              viewMode === "registry" ? "bg-brand-500 text-white shadow-sm" : "text-slate-600 hover:text-brand-700"
-            }`}
-          >
-            Mapping Registry
-          </button>
+          <div className="flex items-center gap-3 flex-shrink-0 flex-wrap">
+            <div className="flex p-1 bg-white/80 border border-brand-100 rounded-lg">
+              <button
+                onClick={() => setViewMode("run")}
+                className={`px-4 py-2 text-sm font-bold rounded-md transition ${
+                  viewMode === "run" ? "bg-brand-500 text-white shadow-sm" : "text-slate-700 hover:text-brand-800"
+                }`}
+              >
+                Run Rationalisation
+              </button>
+              <button
+                onClick={() => setViewMode("registry")}
+                className={`px-4 py-2 text-sm font-bold rounded-md transition ${
+                  viewMode === "registry" ? "bg-brand-500 text-white shadow-sm" : "text-slate-700 hover:text-brand-800"
+                }`}
+              >
+                Mapping Registry
+              </button>
+            </div>
+            <ExportExcel df={dfRecords} compact />
+          </div>
         </div>
       </div>
 
@@ -699,8 +845,29 @@ export default function Rationalise({
         </div>
       )}
 
+      {/* Restoring a persisted mapping table for this dataset */}
+      {stateLoading && !applied && !running && (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-2.5 flex items-center gap-2 text-xs font-medium text-blue-800">
+          <svg className="w-3.5 h-3.5 animate-spin flex-shrink-0" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
+          Loading previous rationalisation mappings...
+        </div>
+      )}
+
+      {/* Previously rationalised, but no persisted mapping table found (e.g. ran before this feature existed) */}
+      {pipelineStatus?.rationalise && !rationalisationResult && !applied && !running && !stateLoading && (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-3 flex items-start gap-2.5">
+          <svg className="w-4 h-4 text-blue-600 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+          <p className="text-sm text-blue-800">
+            <span className="font-semibold">Already rationalised</span>
+            {formatRelative(pipelineStatus.rationalise) && ` — ${formatRelative(pipelineStatus.rationalise)}`}.
+            This dataset's Function, Subfunction, and Title columns are already standardised. You can proceed
+            to Hierarchy, or run rationalisation again below to redo the mapping.
+          </p>
+        </div>
+      )}
+
       {/* Run button (before proposals are generated) */}
-      {!rationalisationResult && !applied && !running && (
+      {!rationalisationResult && !applied && !running && !stateLoading && (
         <div className="space-y-3">
           {!hasRequiredCols && (
             <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 text-sm text-amber-700">
@@ -728,11 +895,11 @@ export default function Rationalise({
             </span>
           </label>
           <button
-            onClick={handleRun}
+            onClick={handleRunClick}
             disabled={!hasRequiredCols}
             className="w-full py-3 bg-brand-500 text-white rounded-lg text-sm font-semibold hover:bg-brand-600 disabled:bg-gray-200 disabled:text-gray-500 disabled:cursor-not-allowed transition shadow-sm"
           >
-            Run Rationalisation
+            {pipelineStatus?.rationalise ? "Re-run Rationalisation" : "Run Rationalisation"}
           </button>
         </div>
       )}
@@ -741,9 +908,19 @@ export default function Rationalise({
         <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm text-red-700">{runError}</div>
       )}
 
-      {/* Proposals table (after run completes) */}
+      {/* Proposals table (after run completes, or restored read-only) */}
       {rationalisationResult && !applied && !running && (
         <>
+          {locked && (
+            <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-3 flex items-start gap-2.5">
+              <svg className="w-4 h-4 text-blue-600 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+              <p className="text-sm text-blue-800">
+                <span className="font-semibold">Already rationalised</span>
+                {formatRelative(stateUpdatedAt || pipelineStatus?.rationalise) && ` — ${formatRelative(stateUpdatedAt || pipelineStatus?.rationalise)}`}.
+                Reviewing the mappings that were applied below (read-only). Click <span className="font-semibold">Edit Mappings</span> to make changes.
+              </p>
+            </div>
+          )}
           <div className="bg-white border border-brand-100 rounded-lg shadow-sm overflow-hidden">
             {/* Tab bar */}
             <div className="flex border-b border-brand-100">
@@ -751,15 +928,15 @@ export default function Rationalise({
                 <button
                   key={t.key}
                   onClick={() => handleTabChange(t.key)}
-                  className={`flex-1 px-4 py-3 text-sm font-medium transition border-b-2 ${
+                  className={`flex-1 px-4 py-3 text-sm font-bold transition border-b-2 ${
                     activeTab === t.key
-                      ? "border-brand-500 text-brand-600 bg-brand-50/50"
-                      : "border-transparent text-slate-500 hover:text-slate-700 hover:bg-gray-50"
+                      ? "border-brand-500 text-brand-700 bg-brand-50/50"
+                      : "border-transparent text-slate-600 hover:text-slate-800 hover:bg-gray-50"
                   }`}
                 >
                   {t.label}
-                  <span className={`ml-1.5 text-xs px-1.5 py-0.5 rounded-full ${
-                    activeTab === t.key ? "bg-brand-100 text-brand-700" : "bg-gray-100 text-gray-500"
+                  <span className={`ml-1.5 text-xs font-bold px-1.5 py-0.5 rounded-full ${
+                    activeTab === t.key ? "bg-brand-100 text-brand-800" : "bg-gray-100 text-gray-600"
                   }`}>{t.count}</span>
                 </button>
               ))}
@@ -811,7 +988,9 @@ export default function Rationalise({
             {/* Summary bar */}
             <div className="px-4 py-2.5 bg-gray-50 border-b border-gray-100 flex items-center justify-between">
               <SummaryBar mappings={filteredMappings} />
-              <button onClick={handleAcceptAll} className="text-xs text-brand-500 hover:text-brand-700 font-medium">Accept All</button>
+              {!locked && (
+                <button onClick={handleAcceptAll} className="text-xs text-brand-500 hover:text-brand-700 font-medium">Accept All</button>
+              )}
             </div>
 
             {/* Datalist Suggestions */}
@@ -833,6 +1012,7 @@ export default function Rationalise({
                 selected={funcSelected}
                 setSelected={setFuncSelected}
                 datalistId="suggestions-datalist"
+                readOnly={locked}
               />
             )}
             {activeTab === "subfunctions" && (
@@ -847,6 +1027,7 @@ export default function Rationalise({
                 setSelected={setSubfuncSelected}
                 datalistId="suggestions-datalist"
                 showFuncCol
+                readOnly={locked}
               />
             )}
             {activeTab === "titles" && (
@@ -861,35 +1042,49 @@ export default function Rationalise({
                 setSelected={setTitleSelected}
                 datalistId="suggestions-datalist"
                 showFuncCol
+                readOnly={locked}
               />
             )}
           </div>
 
-          {/* Apply bar */}
-          <div className="flex items-center justify-between bg-white border border-brand-100 rounded-lg px-4 py-3 shadow-sm">
-            <p className="text-sm text-slate-500">
-              <span className="font-semibold text-brand-700">{totalAccepted}</span> of {totalMappings} mappings accepted
-            </p>
-            <button
-              onClick={handleApply}
-              disabled={applying || totalAccepted === 0}
-              className="px-6 py-2.5 bg-brand-500 text-white rounded-lg text-sm font-semibold hover:bg-brand-600 disabled:bg-gray-200 disabled:text-gray-500 disabled:cursor-not-allowed transition shadow-sm"
-            >
-              {applying ? (
-                <span className="flex items-center gap-2">
-                  <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
-                  Applying...
-                </span>
-              ) : "Apply to Data"}
-            </button>
-          </div>
+          {/* Apply bar (editing) or Edit-Mappings bar (read-only restored view) */}
+          {locked ? (
+            <div className="flex items-center justify-between bg-white border border-brand-100 rounded-lg px-4 py-3 shadow-sm">
+              <p className="text-sm text-slate-500">Read-only review of the mappings applied to this dataset.</p>
+              <button
+                onClick={handleEditClick}
+                className="px-6 py-2.5 bg-white border border-brand-300 text-brand-700 rounded-lg text-sm font-semibold hover:bg-brand-50 transition shadow-sm flex items-center gap-2"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+                Edit Mappings
+              </button>
+            </div>
+          ) : (
+            <div className="flex items-center justify-between bg-white border border-brand-100 rounded-lg px-4 py-3 shadow-sm">
+              <p className="text-sm text-slate-500">
+                <span className="font-semibold text-brand-700">{totalAccepted}</span> of {totalMappings} mappings accepted
+              </p>
+              <button
+                onClick={handleApply}
+                disabled={applying || totalAccepted === 0}
+                className="px-6 py-2.5 bg-brand-500 text-white rounded-lg text-sm font-semibold hover:bg-brand-600 disabled:bg-gray-200 disabled:text-gray-500 disabled:cursor-not-allowed transition shadow-sm"
+              >
+                {applying ? (
+                  <span className="flex items-center gap-2">
+                    <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
+                    Applying...
+                  </span>
+                ) : "Apply to Data"}
+              </button>
+            </div>
+          )}
 
           {applyError && (
             <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm text-red-700">{applyError}</div>
           )}
 
           {/* Floating Bulk Action Bar — selection used for Accept / Reject only */}
-          {selectedCount > 0 && (
+          {!locked && selectedCount > 0 && (
             <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2 bg-[#01244a] border border-[#08304a] text-white rounded-xl px-5 py-3 shadow-2xl flex items-center gap-3 z-50 animate-bounceOnce select-none">
               <span className="text-xs font-semibold text-gray-200">
                 {selectedCount} row{selectedCount > 1 ? "s" : ""} selected
@@ -921,6 +1116,21 @@ export default function Rationalise({
       )}
       </>
       )}
+
+      <ConfirmDialog
+        open={!!pendingHierarchyWarning}
+        title={pendingHierarchyWarning === "run" ? "Re-run rationalisation?" : "Edit rationalisation mappings?"}
+        message={
+          pendingHierarchyWarning === "run"
+            ? "This dataset's Hierarchy Analysis was already run on top of the current mappings. Re-running rationalisation and applying new mappings will clear that Hierarchy snapshot (and the Org Chart baseline built from it) — you'll need to re-run Hierarchy Analysis afterward to rebuild it from the updated data. Continue?"
+            : "This dataset's Hierarchy Analysis was already run on top of these mappings. Editing and re-applying will clear that Hierarchy snapshot (and the Org Chart baseline built from it) — you'll need to re-run Hierarchy Analysis afterward to rebuild it from the updated data. Continue?"
+        }
+        confirmLabel={pendingHierarchyWarning === "run" ? "Yes, re-run" : "Yes, edit mappings"}
+        cancelLabel="Cancel"
+        destructive
+        onConfirm={confirmHierarchyWarning}
+        onCancel={() => setPendingHierarchyWarning(null)}
+      />
     </div>
   );
 }

@@ -253,13 +253,13 @@ export default function MappingRegistry() {
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="sticky top-0 z-10">
-                <tr className="bg-brand-50 text-brand-700 text-xs uppercase tracking-wide">
-                  <th className="text-left px-3 py-2.5 font-semibold w-28">Type</th>
-                  <th className="text-left px-3 py-2.5 font-semibold w-36">Function</th>
-                  <th className="text-left px-3 py-2.5 font-semibold">Input</th>
-                  <th className="text-left px-3 py-2.5 font-semibold min-w-[200px]">Resolved</th>
-                  <th className="text-center px-3 py-2.5 font-semibold w-20">Status</th>
-                  <th className="text-right px-3 py-2.5 font-semibold w-44">Actions</th>
+                <tr className="bg-brand-50 text-brand-800 text-xs uppercase tracking-wide font-bold">
+                  <th className="text-left px-3 py-2.5 font-bold w-28">Type</th>
+                  <th className="text-left px-3 py-2.5 font-bold w-36">Function</th>
+                  <th className="text-left px-3 py-2.5 font-bold">Input</th>
+                  <th className="text-left px-3 py-2.5 font-bold min-w-[200px]">Resolved</th>
+                  <th className="text-center px-3 py-2.5 font-bold w-20">Status</th>
+                  <th className="text-right px-3 py-2.5 font-bold w-44">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
@@ -274,15 +274,15 @@ export default function MappingRegistry() {
                           {TYPE_LABELS[entry.type]}
                         </span>
                       </td>
-                      <td className="px-3 py-2 text-slate-500 text-xs">{entry.function || "—"}</td>
-                      <td className="px-3 py-2 font-medium text-slate-700">{entry.input}</td>
+                      <td className="px-3 py-2 text-slate-700 text-xs font-semibold">{entry.function || "—"}</td>
+                      <td className="px-3 py-2 font-semibold text-slate-800">{entry.input}</td>
                       <td className="px-3 py-2">
                         <input
                           type="text"
                           value={edited}
                           disabled={entry.disabled}
                           onChange={e => setEdits(prev => ({ ...prev, [entry.id]: e.target.value }))}
-                          className="w-full border border-gray-200 rounded px-2 py-1 text-sm focus:ring-1 focus:ring-brand-500 outline-none disabled:bg-gray-100"
+                          className="w-full border border-gray-200 rounded px-2 py-1 text-sm font-semibold text-slate-800 focus:ring-1 focus:ring-brand-500 outline-none disabled:bg-gray-100"
                         />
                         {isDirty && matchN > 1 && (
                           <label className="flex items-center gap-1.5 mt-1 cursor-pointer">

@@ -93,6 +93,12 @@ class SaveBaselineBody(BaseModel):
     basic_pay_col: Optional[str] = None
     contract_type_col: Optional[str] = None
     status_col: Optional[str] = None
+    # dataset_id: when provided, updates that dataset in place instead of
+    # creating a new one (prevents an orphan dataset row on every re-run).
+    dataset_id: Optional[int] = None
+    # stage: which pipeline step this snapshot represents. Defaults to
+    # "hierarchy" to match this endpoint's original (Hierarchy-only) use.
+    stage: str = "hierarchy"
 
 
 class ColumnConfigBody(BaseModel):
@@ -2204,9 +2210,21 @@ def db_save_baseline(
     project_id: int,
     user: dict = Depends(require_project_access()),
 ):
+    """Persist the current working dataset for one pipeline stage
+    (cleanup/validate/rationalise/hierarchy).
+
+    If body.dataset_id is given, updates that dataset in place (verifying it
+    belongs to this project first) instead of creating a new one — so
+    re-running a stage never orphans a duplicate dataset row. If omitted, a
+    new dataset is created (e.g. the first stage ever saved this session).
+    """
     username = user["username"]
     try:
-        dataset_id = db_service.save_baseline(
+        if body.dataset_id is not None:
+            _require_dataset_in_project(body.dataset_id, project_id)
+
+        result = db_service.save_dataset_stage(
+            dataset_id=body.dataset_id, stage=body.stage,
             name=body.name, username=username, records=body.records,
             emp_col=body.emp_col, mgr_col=body.mgr_col,
             fte_col=body.fte_col, flc_col=body.flc_col,
@@ -2218,11 +2236,14 @@ def db_save_baseline(
             status_col=body.status_col,
             project_id=project_id,
         )
-        scenarios = db_service.list_scenarios(dataset_id)
+        dataset_id = result["dataset_id"]
+        scenarios = result["scenarios"]
 
-        # Auto-load into DuckDB for the "Ask OrgSight" analytical layer
+        # Auto-load into DuckDB for the "Ask OrgSight" analytical layer —
+        # only meaningful once Hierarchy has produced Level/Span/Chain, and
+        # only once a Baseline scenario actually exists to load.
         baseline_scenario = scenarios[0] if scenarios else None
-        if baseline_scenario is not None:
+        if body.stage == "hierarchy" and baseline_scenario is not None:
             try:
                 duckdb_manager.load(
                     user_id=user["id"],
@@ -2238,15 +2259,81 @@ def db_save_baseline(
         write_activity_log(
             username=username, action="db_save_baseline", module="Org Chart",
             rows_input=len(body.records), rows_output=len(body.records),
-            status="success", details=f"Saved dataset id={dataset_id} ({body.name}) in project {project_id}",
+            status="success",
+            details=f"Saved dataset id={dataset_id} ({body.name}) stage={body.stage} in project {project_id}",
         )
-        return {"dataset_id": dataset_id, "scenarios": scenarios}
+        return {"dataset_id": dataset_id, "dataset": result["dataset"], "scenarios": scenarios}
+    except HTTPException:
+        raise
     except Exception as e:
         write_activity_log(
             username=username, action="db_save_baseline", module="Org Chart",
             status="error", details=str(e),
         )
         raise HTTPException(status_code=500, detail=str(e))
+
+
+class RationalisationStateBody(BaseModel):
+    # Freeform blob: {function_mappings, subfunction_mappings, title_mappings,
+    # func_accepted, subfunc_accepted, title_accepted, func_overrides,
+    # subfunc_overrides, title_overrides}. Kept schema-less here since it's
+    # only ever read back by the same frontend that wrote it.
+    state: Dict[str, Any]
+
+
+@router.get("/db/datasets/{dataset_id}/rationalisation_state")
+def db_get_rationalisation_state(
+    dataset_id: int,
+    project_id: int,
+    _user: dict = Depends(require_project_access()),
+):
+    """Return the persisted Rationalise mapping table for this dataset (the
+    full proposal + accept/reject + override state), so reopening it can
+    show a real read-only review instead of just a "ran previously" badge."""
+    _require_dataset_in_project(dataset_id, project_id)
+    return {"state": db_service.get_rationalisation_state(dataset_id)}
+
+
+@router.post("/db/datasets/{dataset_id}/rationalisation_state")
+def db_save_rationalisation_state(
+    dataset_id: int,
+    body: RationalisationStateBody,
+    project_id: int,
+    _user: dict = Depends(require_project_access()),
+):
+    _require_dataset_in_project(dataset_id, project_id)
+    return db_service.save_rationalisation_state(dataset_id, body.state)
+
+
+class HierarchySnapshotBody(BaseModel):
+    # {preview, max_depth, level_distribution, rows_processed} — the exact
+    # shape /hierarchy already returns, so it can be replayed straight into
+    # the same UI state without recomputation.
+    snapshot: Dict[str, Any]
+
+
+@router.get("/db/datasets/{dataset_id}/hierarchy_snapshot")
+def db_get_hierarchy_snapshot(
+    dataset_id: int,
+    project_id: int,
+    _user: dict = Depends(require_project_access()),
+):
+    """Return the persisted Hierarchy preview + stats for this dataset, so
+    reopening the Hierarchy tab can restore instantly (DB read only) instead
+    of re-running the full Level/Span/Chain computation every tab switch."""
+    _require_dataset_in_project(dataset_id, project_id)
+    return {"snapshot": db_service.get_hierarchy_snapshot(dataset_id)}
+
+
+@router.post("/db/datasets/{dataset_id}/hierarchy_snapshot")
+def db_save_hierarchy_snapshot(
+    dataset_id: int,
+    body: HierarchySnapshotBody,
+    project_id: int,
+    _user: dict = Depends(require_project_access()),
+):
+    _require_dataset_in_project(dataset_id, project_id)
+    return db_service.save_hierarchy_snapshot(dataset_id, body.snapshot)
 
 
 @router.get("/db/datasets")

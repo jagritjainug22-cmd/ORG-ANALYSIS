@@ -527,6 +527,7 @@ function DatasetRow({ dataset, onSelect, loading, disabled }) {
             <PipelineBadge label="Cleanup" ts={dataset.last_cleanup_at} />
             <PipelineBadge label="Validated" ts={dataset.last_validate_at} />
             <PipelineBadge label="Rationalised" ts={dataset.last_rationalise_at} />
+            <PipelineBadge label="Hierarchy" ts={dataset.last_hierarchy_at} />
           </div>
         </div>
 

@@ -2,6 +2,22 @@ import React, { useState, useEffect, useCallback, useRef } from "react";
 import { cleanup as cleanupApi, validate as validateApi, filterErrors as filterErrorsApi } from "../api/backend";
 import DataSourceSelector from "./DataSourceSelector";
 import ValidationDataTable from "./ValidationDataTable";
+import ConfirmDialog from "./ConfirmDialog";
+
+// Columns appended by the Hierarchy stage (mirrors HIERARCHY_SYSTEM_COLS in
+// db_service.py / Rationalise.jsx). Editing Cleanup & Validate invalidates
+// Hierarchy server-side (save_dataset_stage clears last_hierarchy_at and
+// deletes the snapshot) — strip them client-side too, otherwise a stale
+// "Level" column left over in dfRecords would make the Hierarchy tab's
+// restore check silently treat the dataset as already-processed.
+const HIERARCHY_SYSTEM_COLS = ["Level", "Span", "Total_Reports", "Avg_FLC", "Last_Employee", "Chain", "Chain_reversed"];
+function stripHierarchyColumns(records) {
+  return (records || []).map((r) => {
+    const clean = { ...r };
+    HIERARCHY_SYSTEM_COLS.forEach((c) => delete clean[c]);
+    return clean;
+  });
+}
 
 function StatCard({ label, value, accent = false, icon = null }) {
   return (
@@ -45,7 +61,7 @@ const StatIcons = {
 };
 
 
-function FlagRow({ label, count, checked, onChange }) {
+function FlagRow({ label, count, checked, onChange, readOnly = false }) {
   const hasIssues = count > 0;
   return (
     <div className={`flex items-center justify-between px-4 py-2.5 border-l-4 ${hasIssues ? "border-amber-400 bg-amber-50/50" : "border-blue-400 bg-blue-50/30"}`}>
@@ -59,7 +75,7 @@ function FlagRow({ label, count, checked, onChange }) {
       </div>
       <div className="flex items-center gap-3">
         <span className={`text-sm font-semibold ${hasIssues ? "text-amber-700" : "text-blue-700"}`}>{count}</span>
-        {hasIssues && (
+        {hasIssues && !readOnly && (
           <label className="flex items-center gap-1.5 cursor-pointer text-xs text-slate-500">
             <input type="checkbox" checked={checked} onChange={onChange} className="rounded border-gray-300 text-brand-500 focus:ring-brand-500 h-3.5 w-3.5" />
             Remove
@@ -69,6 +85,11 @@ function FlagRow({ label, count, checked, onChange }) {
     </div>
   );
 }
+
+// Stage names in the pipeline, in dependency order — used to build the
+// downstream-invalidation warning when a user re-opens Cleanup & Validate
+// for editing after later stages have already been run on top of it.
+const DOWNSTREAM_STAGE_LABELS = { rationalise: "Rationalisation", hierarchy: "Hierarchy Analysis" };
 
 const FLAG_LABELS = {
   FLAG_DUPLICATE_EMP_ID: "Duplicate Employee IDs",
@@ -95,6 +116,37 @@ function parseValidationResponse(valRes) {
     invalid_manager_ids: valRes?.invalid_manager_ids || [],
     circular_reference_ids: valRes?.circular_reference_ids || [],
     top_manager: valRes?.top_manager ?? null,
+  };
+}
+
+/**
+ * Reconstruct a validation summary purely from already-persisted FLAG_ columns
+ * on a saved dataset's records — no API round-trip needed. Used to restore the
+ * "Validation" results panel when a previously-processed dataset is reopened,
+ * instead of showing a "run again" prompt for work that already happened.
+ */
+function deriveValidationResultFromRecords(records, empCol, mgrCol) {
+  if (!records?.length) return null;
+  const flagCols = Object.keys(records[0]).filter((k) => k.startsWith("FLAG_"));
+  if (!flagCols.length) return null;
+
+  const isFlagged = (r, f) => r[f] === true || r[f] === 1 || r[f] === "1";
+  const flag_counts = {};
+  flagCols.forEach((f) => {
+    flag_counts[f] = records.filter((r) => isFlagged(r, f)).length;
+  });
+  const uniq = (arr) => Array.from(new Set(arr));
+
+  return {
+    flaggedRecords: records,
+    flag_counts,
+    duplicate_ids: uniq(records.filter((r) => isFlagged(r, "FLAG_DUPLICATE_EMP_ID")).map((r) => r[empCol])),
+    missing_manager_ids: records.filter((r) => isFlagged(r, "FLAG_MISSING_MANAGER_ID")).map((r) => r[empCol]),
+    invalid_manager_ids: uniq(
+      records.filter((r) => isFlagged(r, "FLAG_MANAGER_ID_NOT_EMPLOYEE")).map((r) => String(r[mgrCol]))
+    ),
+    circular_reference_ids: records.filter((r) => isFlagged(r, "FLAG_CIRCULAR_REFERENCE")).map((r) => r[empCol]),
+    top_manager: null,
   };
 }
 
@@ -560,6 +612,12 @@ export default function UploadAndPrepare({
   const [cleanupResult, setCleanupResult] = useState(null);
   const [validationResult, setValidationResult] = useState(null);
   const [pipelineComplete, setPipelineComplete] = useState(false);
+  // Read-only restore: true once a previously-completed cleanup/validate
+  // pass has been loaded back for this dataset and hasn't been explicitly
+  // unlocked for editing. Mirrors the same pattern used in Rationalise.jsx.
+  const [locked, setLocked] = useState(false);
+  // True while the "edit will invalidate downstream stages" dialog is open.
+  const [pendingDownstreamWarning, setPendingDownstreamWarning] = useState(false);
 
   useEffect(() => {
     if (!pipelineRunning) { setPipelineStage(0); return; }
@@ -601,29 +659,58 @@ export default function UploadAndPrepare({
   const scenarioName = scenarios.find((s) => s.id === activeScenarioId)?.name || "Baseline";
   const hadPriorPipeline = !!(pipelineStatus?.cleanup || pipelineStatus?.validate);
 
-  // When a new dataset loads, show prepare panel
+  // When a new dataset loads, show prepare panel — but if it's a saved
+  // dataset that already went through cleanup/validate in a previous
+  // session, restore the completed results view (reconstructed from its
+  // persisted FLAG_ columns) instead of prompting to run again.
   const datasetKeyRef = useRef(null);
   useEffect(() => {
     if (!hasWorkingData || !dataSource) return;
     setShowSourcePicker(false);
     const key = `${datasetId ?? "mem"}:${dataSource}`;
-    if (datasetKeyRef.current !== null && datasetKeyRef.current !== key) {
-      setPipelineComplete(false);
-      setCleanupResult(null);
-      setValidationResult(null);
-      setFilterApplied(false);
-      setFilterFlags({});
-      setPipelineError(null);
-      setMappingBannerDismissed(false);
-      pushRowStats(null);
+    if (datasetKeyRef.current !== key) {
+      if (dataSource === "saved" && (pipelineStatus?.cleanup || pipelineStatus?.validate)) {
+        const source = validatedDf?.length ? validatedDf : dfRecords;
+        const derived = deriveValidationResultFromRecords(source, empCol, mgrCol);
+        const readiness = computeHierarchyReadiness(source, empCol, mgrCol, derived);
+        setCleanupResult(null);
+        setValidationResult(derived ? { ...derived, readiness } : null);
+        setPipelineComplete(true);
+        setLocked(true);
+        setFilterApplied(false);
+        setFilterFlags({});
+        setPipelineError(null);
+        setMappingBannerDismissed(false);
+        const totalFlagged = Object.values(derived?.flag_counts || {}).reduce((s, c) => s + c, 0);
+        pushRowStats({
+          uploadedRows: source?.length || 0,
+          exclusionsRemoved: 0,
+          baselineRows: source?.length || 0,
+          currentRows: source?.length || 0,
+          filterRemovedTotal: 0,
+          lastFilterRemoved: 0,
+          newIssuesAfterFilter: totalFlagged,
+        });
+      } else {
+        setPipelineComplete(false);
+        setLocked(false);
+        setCleanupResult(null);
+        setValidationResult(null);
+        setFilterApplied(false);
+        setFilterFlags({});
+        setPipelineError(null);
+        setMappingBannerDismissed(false);
+        pushRowStats(null);
+      }
     }
     datasetKeyRef.current = key;
-  }, [hasWorkingData, dataSource, datasetId, pushRowStats]);
+  }, [hasWorkingData, dataSource, datasetId, pushRowStats, pipelineStatus, validatedDf, dfRecords, empCol, mgrCol]);
 
   const handleSwitchDataset = () => {
     setShowSourcePicker(true);
     setSourceView(isSavedSource ? "picker" : "upload");
     setPipelineComplete(false);
+    setLocked(false);
     setCleanupResult(null);
     setValidationResult(null);
     setFilterApplied(false);
@@ -666,6 +753,7 @@ export default function UploadAndPrepare({
     setCleanupResult(null);
     setValidationResult(null);
     setPipelineComplete(false);
+    setLocked(false);
     setFilterApplied(false);
     setFilterFlags({});
     setPipelineError(null);
@@ -688,7 +776,7 @@ export default function UploadAndPrepare({
     setFilterApplied(false);
     setFilterFlags({});
     try {
-      let workingDf = dfRecords;
+      let workingDf = stripHierarchyColumns(dfRecords);
       const uploadedCount = workingDf.length;
 
       // Cleanup
@@ -701,6 +789,7 @@ export default function UploadAndPrepare({
       }
 
       // Validate
+      let finalRecords = workingDf;
       if (empCol && mgrCol) {
         const valRes = await validateApi(workingDf, empCol, mgrCol, null, false, datasetId || null);
         const parsed = parseValidationResponse(valRes);
@@ -713,6 +802,7 @@ export default function UploadAndPrepare({
         setValidationResult({ ...parsed, readiness });
         if (parsed.flaggedRecords.length) {
           setValidatedDf(parsed.flaggedRecords);
+          finalRecords = parsed.flaggedRecords;
         }
       }
 
@@ -728,7 +818,8 @@ export default function UploadAndPrepare({
       });
 
       setPipelineComplete(true);
-      onPipelineComplete?.();
+      setLocked(false);
+      onPipelineComplete?.(finalRecords);
     } catch (err) {
       console.error("Pipeline error:", err);
       setPipelineError(err.response?.data?.detail || "Pipeline failed. Check your column selections and try again.");
@@ -758,7 +849,7 @@ export default function UploadAndPrepare({
       const removedThisPass = res.removed_count ?? ((res.original_count ?? 0) - (res.filtered_count ?? res.df.length));
 
       // Re-validate so error cards, readiness, and preview match remaining rows
-      const cleaned = res.df;
+      const cleaned = stripHierarchyColumns(res.df);
       const valRes = await validateApi(cleaned, empCol, mgrCol, null, false, datasetId || null);
       const parsed = parseValidationResponse(valRes);
       const next = parsed.flaggedRecords.length ? parsed.flaggedRecords : cleaned;
@@ -769,6 +860,8 @@ export default function UploadAndPrepare({
       setColumns?.(Object.keys(next[0] || {}).filter((k) => !k.startsWith("FLAG_")));
       setFilterApplied(true);
       setFilterFlags({});
+      setLocked(false);
+      onPipelineComplete?.(next);
 
       // Re-validating after removing rows can surface *new* flags: if a removed
       // row's employee ID was used as someone else's manager reference, those
@@ -806,8 +899,9 @@ export default function UploadAndPrepare({
     if (!source?.length) return;
     setRevalidating(true);
     try {
-      // Strip prior FLAG_ columns before re-running validation
-      const cleaned = source.map((row) => {
+      // Strip prior FLAG_ columns (and any stale Level/Chain/etc. carried
+      // over from a Hierarchy run) before re-running validation
+      const cleaned = stripHierarchyColumns(source).map((row) => {
         const next = { ...row };
         Object.keys(next).forEach((k) => {
           if (k.startsWith("FLAG_")) delete next[k];
@@ -828,6 +922,8 @@ export default function UploadAndPrepare({
       setDfRecords?.(next);
       setFilterApplied(false);
       setFilterFlags({});
+      setLocked(false);
+      onPipelineComplete?.(next);
 
       const totalFlaggedAfter = Object.values(parsed.flag_counts || {}).reduce((s, c) => s + c, 0);
       if (rowStats) {
@@ -851,7 +947,7 @@ export default function UploadAndPrepare({
     } finally {
       setRevalidating(false);
     }
-  }, [empCol, mgrCol, validatedDf, dfRecords, datasetId, setValidatedDf, setDfRecords, rowStats, pushRowStats]);
+  }, [empCol, mgrCol, validatedDf, dfRecords, datasetId, setValidatedDf, setDfRecords, rowStats, pushRowStats, onPipelineComplete]);
 
   const tableRecords = (validatedDf?.length
     ? validatedDf
@@ -880,6 +976,27 @@ export default function UploadAndPrepare({
       : isSavedSource && hadPriorPipeline
         ? "Re-run Cleanup & Validate"
         : "Run Cleanup & Validate";
+
+  // Editing/re-running Cleanup & Validate invalidates anything downstream
+  // that was computed on the old row set (save_dataset_stage clears these
+  // server-side regardless of which control triggered the change) — warn
+  // before unlocking so the user knows Rationalise/Hierarchy will need a
+  // re-run afterward.
+  const downstreamStages = ["rationalise", "hierarchy"].filter((s) => pipelineStatus?.[s]);
+  const downstreamLabel = downstreamStages.map((s) => DOWNSTREAM_STAGE_LABELS[s]).join(" and ");
+
+  const handleEditClick = () => {
+    if (downstreamStages.length > 0) {
+      setPendingDownstreamWarning(true);
+    } else {
+      setLocked(false);
+    }
+  };
+
+  const confirmDownstreamWarning = () => {
+    setPendingDownstreamWarning(false);
+    setLocked(false);
+  };
 
   return (
     <div className="space-y-5">
@@ -1139,7 +1256,7 @@ export default function UploadAndPrepare({
             </button>
           )}
 
-          {pipelineComplete && isSavedSource && (
+          {pipelineComplete && isSavedSource && !locked && (
             <button
               type="button"
               onClick={() => {
@@ -1162,13 +1279,39 @@ export default function UploadAndPrepare({
           {/* ─── Phase 2 results: Cleanup + Validation ─── */}
           {pipelineComplete && (
             <div className="space-y-4 animate-fadeInUp">
+              {/* Read-only banner — shown when restoring a previously-completed
+                  cleanup/validate pass instead of prompting to re-run it */}
+              {locked && (
+                <div className="flex items-start gap-2.5 bg-blue-50 border border-blue-200 rounded-lg px-4 py-3">
+                  <svg className="w-4 h-4 text-blue-600 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                  <p className="text-sm text-blue-800 flex-1">
+                    <span className="font-semibold">Already cleaned &amp; validated</span>
+                    {formatRelative(pipelineStatus?.validate || pipelineStatus?.cleanup) &&
+                      ` — ${formatRelative(pipelineStatus?.validate || pipelineStatus?.cleanup)}`}.
+                    Reviewing the results below (read-only). Click <span className="font-semibold">Edit Cleanup &amp; Validate</span> to make changes.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={handleEditClick}
+                    className="px-4 py-2 bg-white border border-brand-300 text-brand-700 rounded-lg text-xs font-semibold hover:bg-brand-50 transition shadow-sm flex items-center gap-1.5 flex-shrink-0"
+                  >
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+                    Edit Cleanup &amp; Validate
+                  </button>
+                </div>
+              )}
+
               {/* Cleanup */}
               <div>
                 <h4 className="text-xs font-semibold text-brand-400 uppercase tracking-wide mb-2" style={{ fontFamily: "Manrope, Inter, sans-serif" }}>Cleanup</h4>
                 <div className="bg-white border border-brand-100 rounded-lg px-4 py-3 shadow-sm flex items-center gap-2">
                   <svg className="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
                   <span className="text-sm text-slate-700">
-                    {cleanupResult?.removed ? `${cleanupResult.removed} exclusion rows removed` : "No exclusion rows found"}
+                    {cleanupResult?.removed
+                      ? `${cleanupResult.removed} exclusion rows removed`
+                      : isSavedSource && pipelineStatus?.cleanup
+                        ? `Ran previously — ${formatRelative(pipelineStatus.cleanup)}`
+                        : "No exclusion rows found"}
                   </span>
                 </div>
               </div>
@@ -1199,6 +1342,7 @@ export default function UploadAndPrepare({
                             count={count}
                             checked={!!filterFlags[flag]}
                             onChange={() => setFilterFlags(prev => ({ ...prev, [flag]: !prev[flag] }))}
+                            readOnly={locked}
                           />
                         ))}
                         {!hasValidationIssues && (
@@ -1257,7 +1401,7 @@ export default function UploadAndPrepare({
 
                       {/* Always available while there are flagged rows — including new ones
                           revealed by a previous filter pass, not just the first pass. */}
-                      {totalFlagged > 0 && (
+                      {totalFlagged > 0 && !locked && (
                         <div className="flex flex-wrap items-center justify-between gap-2">
                           <p className="text-xs text-slate-400">
                             {selectedRemoveCount > 0
@@ -1288,6 +1432,7 @@ export default function UploadAndPrepare({
                         onRecordsChange={handleValidationRecordsChange}
                         onRevalidate={handleRevalidate}
                         revalidating={revalidating}
+                        readOnly={locked}
                       />
                     </div>
 
@@ -1360,6 +1505,21 @@ export default function UploadAndPrepare({
           </div>
         </div>
       )}
+
+      <ConfirmDialog
+        open={pendingDownstreamWarning}
+        title="Edit Cleanup & Validate?"
+        message={
+          `This dataset's ${downstreamLabel} ${downstreamStages.length > 1 ? "have" : "has"} already been run on top of the current data. ` +
+          `Editing and re-running Cleanup & Validate will clear ${downstreamStages.length > 1 ? "those" : "that"} snapshot${downstreamStages.length > 1 ? "s" : ""} ` +
+          `(and the Org Chart baseline built from it) — you'll need to re-run ${downstreamLabel} afterward to rebuild ${downstreamStages.length > 1 ? "them" : "it"} from the updated data. Continue?`
+        }
+        confirmLabel="Yes, edit"
+        cancelLabel="Cancel"
+        destructive
+        onConfirm={confirmDownstreamWarning}
+        onCancel={() => setPendingDownstreamWarning(false)}
+      />
     </div>
   );
 }

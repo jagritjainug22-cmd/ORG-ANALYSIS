@@ -326,6 +326,37 @@ console.log("\n--- computeSubtreeStats with flags ---");
 }
 
 // ===========================================================================
+// buildIndex: true roots vs broken manager refs
+// ===========================================================================
+console.log("\n--- buildIndex roots vs brokenRefs ---");
+
+{
+  const fixture = [
+    { __emp_id: "CEO", __mgr_id: null },
+    { __emp_id: "VP", __mgr_id: "CEO" },
+    { __emp_id: "Orphan", __mgr_id: "MISSING-BOSS" },
+    { __emp_id: "OrphanReport", __mgr_id: "Orphan" },
+    { __emp_id: "BlankMgr", __mgr_id: "" },
+    { __emp_id: "SpaceMgr", __mgr_id: "   " },
+  ];
+  const idx = buildIndex(fixture, idOf, parentOf);
+
+  assert(idx.roots.includes("CEO"), "null mgr => true root");
+  assert(idx.roots.includes("BlankMgr"), "empty-string mgr => true root");
+  assert(idx.roots.includes("SpaceMgr"), "whitespace mgr => true root");
+  assert(!idx.roots.includes("Orphan"), "missing mgr id must NOT be a main root");
+  assert(!idx.roots.includes("VP"), "valid child is not a root");
+  assert(!idx.roots.includes("OrphanReport"), "child of broken-ref is not a root");
+
+  assert(idx.brokenRefs.includes("Orphan"), "missing mgr id => brokenRefs");
+  assert(!idx.brokenRefs.includes("CEO"), "true root not in brokenRefs");
+  assert(!idx.brokenRefs.includes("OrphanReport"), "valid parent link not in brokenRefs");
+
+  assertEq(idx.childrenByParent.get("CEO"), ["VP"], "CEO children");
+  assertEq(idx.childrenByParent.get("Orphan"), ["OrphanReport"], "broken-ref keeps its reports");
+}
+
+// ===========================================================================
 // Summary
 // ===========================================================================
 console.log(`\n=== Results: ${passed} passed, ${failed} failed ===`);

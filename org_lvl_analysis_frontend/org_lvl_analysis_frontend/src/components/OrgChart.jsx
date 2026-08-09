@@ -607,18 +607,22 @@ export default function OrgChart({
   const flaggedOf = useCallback((r) => !!r.is_flagged_removed, []);
 
   const index = useMemo(() => {
-    if (!records) return { byId: new Map(), childrenByParent: new Map(), roots: [] };
+    if (!records) {
+      return { byId: new Map(), childrenByParent: new Map(), roots: [], brokenRefs: [] };
+    }
     return buildIndex(records, idOf, parentOf);
   }, [records, idOf, parentOf]);
 
-  // Auto-collapse nodes at depth >= maxDepth for the level filter
+  // Auto-collapse nodes at depth >= maxDepth for the level filter.
+  // Include brokenRefs so data-issue subtrees respect the same depth cap.
   useEffect(() => {
-    if (!index.roots.length) return;
+    const autoRoots = [...index.roots, ...(index.brokenRefs || [])];
+    if (!autoRoots.length) return;
     if (maxDepth === 0) {
       setCollapsed(new Set());
       return;
     }
-    const autoSet = autoCollapseAtDepth(index.roots, index.childrenByParent, maxDepth);
+    const autoSet = autoCollapseAtDepth(autoRoots, index.childrenByParent, maxDepth);
     setCollapsed(autoSet);
   }, [maxDepth, index]);
 
@@ -709,44 +713,93 @@ export default function OrgChart({
   const layout = useMemo(() => {
     if (!records || !records.length) return { nodes: new Map(), width: 0, height: 0, childRowsInfo: new Map() };
 
-    const result = layoutTree({
-      rootIds: index.roots,
+    const layoutOpts = {
       childrenByParent: index.childrenByParent,
       collapsed,
       hidden,
       maxDepth,
+    };
+
+    // Main tree: only true top-of-house roots (no manager listed).
+    const result = layoutTree({
+      rootIds: index.roots,
+      ...layoutOpts,
     });
 
-    // Find true cycle-orphans: nodes that are NOT reachable from any root in
-    // the full tree (ignoring collapse/hidden). These are the only nodes that
-    // should appear in the orphan row. Nodes that are simply collapsed or
-    // filtered out are reachable — they must NOT be treated as orphans.
-    const reachableFromRoot = new Set();
-    {
-      const queue = [...index.roots];
+    // Reachable from the main tree (ignore collapse/hidden — full structural reach).
+    const bfsReachable = (startIds) => {
+      const reachable = new Set();
+      const queue = [...startIds];
       while (queue.length) {
         const id = queue.shift();
-        if (reachableFromRoot.has(id)) continue;
-        reachableFromRoot.add(id);
+        if (reachable.has(id)) continue;
+        reachable.add(id);
         for (const child of index.childrenByParent.get(id) || []) {
           queue.push(child);
         }
       }
+      return reachable;
+    };
+
+    const reachableFromMain = bfsReachable(index.roots);
+
+    // Broken manager refs: manager id present but not in dataset. Lay these out
+    // as their own subtrees in a data-issues lane below the main tree so they
+    // don't scatter across the top of the canvas as fake L1 roots.
+    const brokenRootIds = (index.brokenRefs || []).filter((id) => !reachableFromMain.has(id));
+    let issuesBottom = result.height;
+
+    if (brokenRootIds.length) {
+      const issuesLayout = layoutTree({
+        rootIds: brokenRootIds,
+        ...layoutOpts,
+      });
+      const yOffset = (result.height || 0) + CARD_HEIGHT + 80;
+      issuesLayout.nodes.forEach((pos, id) => {
+        result.nodes.set(id, {
+          ...pos,
+          y: pos.y + yOffset,
+          isDataIssue: true,
+        });
+      });
+      result.width = Math.max(result.width, issuesLayout.width);
+      result.height = yOffset + issuesLayout.height;
+      issuesBottom = result.height;
+      // Merge childRowsInfo if present
+      if (issuesLayout.childRowsInfo) {
+        issuesLayout.childRowsInfo.forEach((v, k) => {
+          result.childRowsInfo.set(k, v);
+        });
+      }
     }
 
-    const orphanIds = [];
+    // True cycle-orphans: still unreachable after including broken-ref trees.
+    // Flat-place them (no meaningful parent-child connectors).
+    const reachableFromMainAndBroken = bfsReachable([
+      ...index.roots,
+      ...brokenRootIds,
+    ]);
+    const cycleOrphanIds = [];
     for (const id of index.byId.keys()) {
-      if (!reachableFromRoot.has(id)) orphanIds.push(id);
+      if (!reachableFromMainAndBroken.has(id) && !result.nodes.has(id)) {
+        cycleOrphanIds.push(id);
+      }
     }
 
-    if (orphanIds.length) {
-      const yOffset = result.height + CARD_HEIGHT + 80;
+    if (cycleOrphanIds.length) {
+      const yOffset = issuesBottom + CARD_HEIGHT + 80;
       let xCursor = 0;
-      for (const id of orphanIds) {
-        result.nodes.set(id, { x: xCursor, y: yOffset, depth: -1, isCycleOrphan: true });
+      for (const id of cycleOrphanIds) {
+        result.nodes.set(id, {
+          x: xCursor,
+          y: yOffset,
+          depth: -1,
+          isCycleOrphan: true,
+          isDataIssue: true,
+        });
         xCursor += CARD_WIDTH + HORIZONTAL_GAP;
       }
-      result.width  = Math.max(result.width,  xCursor - HORIZONTAL_GAP);
+      result.width = Math.max(result.width, xCursor - HORIZONTAL_GAP);
       result.height = yOffset + CARD_HEIGHT;
     }
 
@@ -2523,9 +2576,10 @@ export default function OrgChart({
                 pointerEvents: "none",
               }}
             >
-              {index.roots.concat(
-                Array.from(index.childrenByParent.keys())
-              ).map((parentId) => {
+              {/* childrenByParent already includes every node (roots included).
+                  Do NOT concat roots again — duplicate keys make React leave
+                  stale/doubled connector paths after filter/collapse updates. */}
+              {Array.from(index.childrenByParent.keys()).map((parentId) => {
                 const pPos = layout.nodes.get(parentId);
                 if (!pPos) return null;
                 // Skip connectors from/to cycle-orphan nodes — they have no
@@ -2545,7 +2599,7 @@ export default function OrgChart({
                     key={`conn-${parentId}`}
                     d={d}
                     stroke={AM.navy}
-                    strokeOpacity={0.4}
+                    strokeOpacity={0.65}
                     strokeWidth={1.5}
                     fill="none"
                     strokeLinecap="round"
@@ -2554,22 +2608,31 @@ export default function OrgChart({
               })}
             </svg>
 
-            {/* Separator label for cycle-orphan nodes that couldn't be placed in the main tree */}
+            {/* Separator label for data-issue nodes (broken manager refs / cycles) */}
             {(() => {
-              const firstOrphan = records.find((r) => {
-                const id = String(idOf(r));
-                const pos = layout.nodes.get(id);
-                return pos?.isCycleOrphan;
+              let laneTopY = Infinity;
+              let hasBroken = false;
+              let hasCycle = false;
+              layout.nodes.forEach((pos, id) => {
+                if (!pos?.isDataIssue && !pos?.isCycleOrphan) return;
+                if (pos.y < laneTopY) laneTopY = pos.y;
+                if (pos.isCycleOrphan) hasCycle = true;
+                else if ((index.brokenRefs || []).includes(id)) hasBroken = true;
               });
-              if (!firstOrphan) return null;
-              const pos = layout.nodes.get(String(idOf(firstOrphan)));
+              if (!Number.isFinite(laneTopY)) return null;
+              let label = "⚠ Circular reference — fix the reporting chain to place these nodes in the tree";
+              if (hasBroken && hasCycle) {
+                label = "⚠ Data issues — broken manager references and circular reporting chains";
+              } else if (hasBroken) {
+                label = "⚠ Broken manager reference — manager id not found in dataset";
+              }
               return (
                 <div
-                  key="cycle-orphan-label"
+                  key="data-issue-label"
                   style={{
                     position: "absolute",
                     left: 0,
-                    top: pos.y - 36,
+                    top: laneTopY - 36,
                     width: "100%",
                     display: "flex",
                     alignItems: "center",
@@ -2588,7 +2651,7 @@ export default function OrgChart({
                     fontFamily: "Inter, system-ui, sans-serif",
                     whiteSpace: "nowrap",
                   }}>
-                    ⚠ Circular reference — fix the reporting chain to place these nodes in the tree
+                    {label}
                   </div>
                 </div>
               );

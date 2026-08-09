@@ -43,15 +43,31 @@ export function getVerticalGap(maxDepth) {
 }
 
 /**
+ * Normalize a manager id from raw parentOf() output.
+ * null / undefined / blank / whitespace => no manager (true root candidate).
+ */
+export function normalizeParentKey(parentId) {
+  if (parentId == null) return null;
+  const key = String(parentId).trim();
+  return key ? key : null;
+}
+
+/**
  * Build a parent-child index. `idOf` and `parentOf` let the caller use whichever
  * field name the dataset stores employee/manager IDs under (e.g. "Employee ID"
  * vs "ID"); the function gracefully falls back to the __emp_id / __mgr_id
  * fields that db_service.get_scenario_records adds.
+ *
+ * Returns:
+ *   roots       — true top-of-house (no manager listed)
+ *   brokenRefs  — manager id present but not found in the dataset (data error);
+ *                 these must NOT be laid out as main-tree roots
  */
 export function buildIndex(records, idOf, parentOf) {
   const byId = new Map();
   const childrenByParent = new Map();
   const roots = [];
+  const brokenRefs = [];
 
   records.forEach((rec, i) => {
     const id = String(idOf(rec) ?? "");
@@ -63,16 +79,18 @@ export function buildIndex(records, idOf, parentOf) {
   records.forEach((rec) => {
     const id = String(idOf(rec) ?? "");
     if (!id) return;
-    const parentId = parentOf(rec);
-    const parentKey = parentId == null ? null : String(parentId);
-    if (parentKey && byId.has(parentKey)) {
+    const parentKey = normalizeParentKey(parentOf(rec));
+    if (!parentKey) {
+      roots.push(id);
+    } else if (byId.has(parentKey)) {
       childrenByParent.get(parentKey).push(id);
     } else {
-      roots.push(id);
+      // Manager listed but missing from dataset — keep out of main roots.
+      brokenRefs.push(id);
     }
   });
 
-  return { byId, childrenByParent, roots };
+  return { byId, childrenByParent, roots, brokenRefs };
 }
 
 /**

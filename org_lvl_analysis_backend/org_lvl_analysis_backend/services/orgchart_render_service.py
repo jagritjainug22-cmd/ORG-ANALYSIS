@@ -344,7 +344,7 @@ def render_scenario_svg(
         d = _shared_bus_path((ppos[0], ppos[1]), child_pos)
         if d:
             parts.append(
-                f'<path d="{d}" stroke="{NAVY}" stroke-opacity="0.4" '
+                f'<path d="{d}" stroke="{NAVY}" stroke-opacity="0.65" '
                 f'stroke-width="1.5" fill="none" stroke-linecap="round"/>'
             )
 

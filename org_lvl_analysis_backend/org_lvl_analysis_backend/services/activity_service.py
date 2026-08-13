@@ -25,9 +25,15 @@ def get_role_values(
     role_grouping_col: str,
 ) -> List[Dict[str, Any]]:
     """Return distinct role values and their census counts for a given column."""
-    from services.db_service import get_baseline_records
+    from services.db_service import get_baseline_records, get_dataset
 
     records = get_baseline_records(dataset_id)
+    
+    # Resolve column names from dataset configuration
+    dataset = get_dataset(dataset_id)
+    fte_col = dataset.get("fte_col") if dataset else None
+    flc_col = dataset.get("flc_col") if dataset else None
+    
     counts: Dict[str, int] = defaultdict(int)
     fte_sums: Dict[str, float] = defaultdict(float)
     cost_sums: Dict[str, float] = defaultdict(float)
@@ -37,8 +43,17 @@ def get_role_values(
         if not val:
             val = "(Blank)"
         counts[val] += 1
-        fte_sums[val] += float(r.get("__fte") or r.get("FTE") or 0)
-        cost_sums[val] += float(r.get("__flc") or r.get("FLC") or r.get("Fully loaded cost") or 0)
+        
+        # Try configured column first, then fall back to standard names
+        fte_value = r.get(fte_col) if fte_col else None
+        if fte_value is None:
+            fte_value = r.get("__fte") or r.get("FTE") or r.get("fte") or 0
+        fte_sums[val] += float(fte_value or 0)
+        
+        flc_value = r.get(flc_col) if flc_col else None
+        if flc_value is None:
+            flc_value = r.get("__flc") or r.get("FLC") or r.get("Fully loaded cost") or 0
+        cost_sums[val] += float(flc_value or 0)
 
     return sorted(
         [
@@ -221,11 +236,17 @@ def compute_impact(
         get_activity_config,
         get_activity_levers,
         get_baseline_records,
+        get_dataset,
     )
 
     cfg = get_activity_config(config_id)
     if not cfg:
         raise ValueError(f"Activity config {config_id} not found")
+
+    # Resolve column names from dataset configuration
+    dataset = get_dataset(dataset_id)
+    fte_col = dataset.get("fte_col") if dataset else None
+    flc_col = dataset.get("flc_col") if dataset else None
 
     role_col = cfg["role_grouping_col"]
     activities = {a["id"]: a for a in cfg["activities"]}
@@ -289,8 +310,16 @@ def compute_impact(
 
     for rec in records:
         role_val = str(rec.get(role_col) or "").strip() or "(Blank)"
-        raw_fte = rec.get("FTE") or rec.get("fte") or 1.0
-        raw_cost = rec.get("Fully loaded cost") or rec.get("FLC") or rec.get("flc") or 0.0
+        
+        # Try configured column first, then fall back to standard names
+        raw_fte = rec.get(fte_col) if fte_col else None
+        if raw_fte is None:
+            raw_fte = rec.get("FTE") or rec.get("fte") or rec.get("__fte") or 1.0
+        
+        raw_cost = rec.get(flc_col) if flc_col else None
+        if raw_cost is None:
+            raw_cost = rec.get("Fully loaded cost") or rec.get("FLC") or rec.get("flc") or rec.get("__flc") or 0.0
+        
         p_fte = float(raw_fte or 1.0)
         p_cost = float(raw_cost or 0.0)
         emp_id = str(rec.get("ID") or rec.get("__emp_id") or "")

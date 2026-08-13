@@ -1064,6 +1064,40 @@ async def upload(
 
 
 @router.post("/cleanup", response_class=ORJSONResponse)
+
+# ===================================================================
+# Pipeline endpoints (stateless -- data in body, no DB interaction)
+# ===================================================================
+
+@router.post("/upload")
+async def upload(
+    file: UploadFile,
+    request: Request,
+    project_id: int,
+    user: dict = Depends(require_project_access()),
+):
+    username = user["username"]
+    try:
+        contents = await file.read()
+        df = read_excel_file(BytesIO(contents))
+        rows_count = len(df)
+        records = df.to_dict(orient="records")
+        safe_records = jsonable_encoder(records)
+        write_activity_log(
+            username=username, action="process", module="Upload",
+            rows_output=rows_count, status="success",
+            details=f"Uploaded file: {file.filename}",
+        )
+        return {"columns": df.columns.tolist(), "records": safe_records}
+    except Exception as e:
+        write_activity_log(
+            username=username, action="process", module="Upload",
+            status="error", details=str(e),
+        )
+        raise
+
+
+@router.post("/cleanup", response_class=ORJSONResponse)
 def cleanup_endpoint(
     payload: List[Dict],
     project_id: int,
@@ -1742,6 +1776,89 @@ def delete_formula(
     return {"status": "deleted"}
 
 
+# ---------------------------------------------------------------------------
+# Spans & Layers threshold scenarios (tabbed modeling)
+# ---------------------------------------------------------------------------
+
+class SpansScenarioBody(BaseModel):
+    name: Optional[str] = None
+    threshold: Optional[float] = None
+    filters: Optional[List[Any]] = None
+    result: Optional[Dict[str, Any]] = None
+
+
+@router.get("/datasets/{dataset_id}/spans-scenarios")
+def list_spans_scenarios(
+    dataset_id: int,
+    project_id: int,
+    _user: dict = Depends(require_project_access()),
+):
+    _require_dataset_in_project(dataset_id, project_id)
+    return {
+        "scenarios": db_service.list_spans_scenarios(dataset_id),
+        "max": db_service.SPANS_SCENARIO_MAX,
+    }
+
+
+@router.post("/datasets/{dataset_id}/spans-scenarios")
+def create_spans_scenario(
+    dataset_id: int,
+    body: SpansScenarioBody,
+    project_id: int,
+    _user: dict = Depends(require_project_access()),
+):
+    _require_dataset_in_project(dataset_id, project_id)
+    name = (body.name or "").strip() or f"Span {body.threshold if body.threshold else 5}"
+    try:
+        scenario = db_service.create_spans_scenario(
+            dataset_id,
+            name=name,
+            threshold=body.threshold if body.threshold is not None else 5,
+            filters=body.filters,
+            result=body.result,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {"scenario": scenario}
+
+
+@router.patch("/datasets/{dataset_id}/spans-scenarios/{scenario_id}")
+def update_spans_scenario(
+    dataset_id: int,
+    scenario_id: int,
+    body: SpansScenarioBody,
+    project_id: int,
+    _user: dict = Depends(require_project_access()),
+):
+    _require_dataset_in_project(dataset_id, project_id)
+    existing = db_service.get_spans_scenario(scenario_id)
+    if not existing or existing["dataset_id"] != dataset_id:
+        raise HTTPException(status_code=404, detail="Spans scenario not found")
+    updated = db_service.update_spans_scenario(
+        scenario_id,
+        name=body.name,
+        threshold=body.threshold,
+        filters=body.filters,
+        result=body.result,
+    )
+    return {"scenario": updated}
+
+
+@router.delete("/datasets/{dataset_id}/spans-scenarios/{scenario_id}")
+def delete_spans_scenario(
+    dataset_id: int,
+    scenario_id: int,
+    project_id: int,
+    _user: dict = Depends(require_project_access()),
+):
+    _require_dataset_in_project(dataset_id, project_id)
+    existing = db_service.get_spans_scenario(scenario_id)
+    if not existing or existing["dataset_id"] != dataset_id:
+        raise HTTPException(status_code=404, detail="Spans scenario not found")
+    db_service.delete_spans_scenario(scenario_id)
+    return {"status": "deleted"}
+
+
 @router.post("/datasets/{dataset_id}/formulas/preview")
 def preview_formula(
     dataset_id: int,
@@ -1782,6 +1899,8 @@ async def spans_layers_endpoint(
     emp_col: str | None = Query(None),
     mgr_col: str | None = Query(None),
     fte_col: str | None = Query(None),
+    flc_col: str | None = Query(None),
+    func_col: str | None = Query(None),
     user: dict = Depends(require_project_access()),
 ):
     username = user["username"]
@@ -1825,6 +1944,7 @@ async def spans_layers_endpoint(
             insights = get_insights(
                 df_out, threshold=threshold,
                 emp_col=emp_col, mgr_col=mgr_col, fte_col=fte_col,
+                flc_col=flc_col, func_col=func_col,
             )
         except Exception as insights_err:
             write_activity_log(
@@ -3349,7 +3469,6 @@ def db_export_scenario_ppt(
         media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
         headers={"Content-Disposition": f'attachment; filename="orgsight_{safe_name}.pptx"'},
     )
-
 
 def _render_summary_table_svg(summary, dataset, scenario) -> str:
     from html import escape

@@ -123,9 +123,78 @@ def detect_thin_layers(df, emp_col, mgr_col):
     return thin
 
 
-def get_insights(df, threshold=0, emp_col=None, mgr_col=None, fte_col=None):
+def _span_distribution(managers: pd.DataFrame) -> list:
+    """Bucket manager counts by span of control for a histogram."""
+    if managers.empty:
+        return []
+    buckets = [
+        ("1", lambda s: s == 1),
+        ("2-3", lambda s: (s >= 2) & (s <= 3)),
+        ("4-5", lambda s: (s >= 4) & (s <= 5)),
+        ("6-8", lambda s: (s >= 6) & (s <= 8)),
+        ("9+", lambda s: s >= 9),
+    ]
+    spans = managers["Span"]
+    out = []
+    for label, pred in buckets:
+        out.append({"bucket": label, "count": int(pred(spans).sum())})
+    return out
+
+
+def _function_benchmarks(df, managers, func_col, threshold=0, fte_col=None, flc_col=None) -> list:
+    """Per-function span stats for internal benchmarking."""
+    if not func_col or func_col not in df.columns or managers.empty:
+        return []
+
+    mgr = managers.copy()
+    mgr["_func"] = mgr[func_col].fillna("(Blank)").astype(str)
+    hc_by_func = df[func_col].fillna("(Blank)").astype(str).value_counts().to_dict()
+
+    rows = []
+    for func_val, grp in mgr.groupby("_func"):
+        mgr_count = len(grp)
+        avg = round(float(grp["Span"].mean()), 2) if mgr_count else 0.0
+        median = round(float(grp["Span"].median()), 2) if mgr_count else 0.0
+        min_span = int(grp["Span"].min()) if mgr_count else 0
+        max_span = int(grp["Span"].max()) if mgr_count else 0
+        one_to_one = int((grp["Span"] == 1).sum())
+        headcount = int(hc_by_func.get(func_val, 0))
+
+        fte_opp = 0.0
+        cost_opp = 0.0
+        below_count = 0
+        if threshold > 0:
+            below = grp[grp["Span"] < threshold]
+            below_count = len(below)
+            for _, row in below.iterrows():
+                fte_val = float(row[fte_col]) if fte_col and fte_col in df.columns and pd.notna(row.get(fte_col)) else 1.0
+                flc_val = float(row[flc_col]) if flc_col and flc_col in df.columns and pd.notna(row.get(flc_col)) else 0.0
+                fte_opp += fte_val
+                cost_opp += flc_val
+
+        rows.append({
+            "function": str(func_val),
+            "headcount": headcount,
+            "manager_count": mgr_count,
+            "avg_span": avg,
+            "median_span": median,
+            "min_span": min_span,
+            "max_span": max_span,
+            "one_to_one_count": one_to_one,
+            "below_target_count": below_count,
+            "fte_opportunity": round(fte_opp, 2),
+            "cost_opportunity": round(cost_opp, 1),
+        })
+
+    # Rank: narrowest avg span first (biggest redesign opportunity typically)
+    rows.sort(key=lambda r: (r["avg_span"], -r["manager_count"]))
+    return rows
+
+
+def get_insights(df, threshold=0, emp_col=None, mgr_col=None, fte_col=None, flc_col=None, func_col=None):
     """
-    Structural insights: 1:1 managers, below-target span, thin layers, FTE opportunity.
+    Structural insights: 1:1 managers, below-target span, thin layers,
+    FTE/cost opportunity, span distribution, and function-level benchmarks.
     """
     if "Span" not in df.columns:
         raise ValueError("Span column missing")
@@ -150,11 +219,13 @@ def get_insights(df, threshold=0, emp_col=None, mgr_col=None, fte_col=None):
 
     below_target = []
     fte_opportunity = 0.0
+    cost_opportunity = 0.0
     if threshold > 0:
         below = managers[(managers["Span"] > 0) & (managers["Span"] < threshold)]
         for _, row in below.iterrows():
             gap = round(threshold - float(row["Span"]), 1)
             fte_val = float(row[fte_col]) if fte_col and fte_col in df.columns and pd.notna(row.get(fte_col)) else 1.0
+            flc_val = float(row[flc_col]) if flc_col and flc_col in df.columns and pd.notna(row.get(flc_col)) else 0.0
             below_target.append({
                 "emp_id": _safe_str(row.get(emp_col)),
                 "name": _row_label(row, emp_col, name_col),
@@ -163,12 +234,58 @@ def get_insights(df, threshold=0, emp_col=None, mgr_col=None, fte_col=None):
                 "target_span": threshold,
                 "gap": gap,
                 "fte": round(fte_val, 2),
+                "cost": round(flc_val, 1),
             })
             fte_opportunity += fte_val
+            cost_opportunity += flc_val
 
     thin_layers = detect_thin_layers(df, emp_col, mgr_col) if mgr_col and mgr_col in df.columns else []
 
     avg_span = round(float(managers["Span"].mean()), 2) if len(managers) > 0 else 0.0
+    management_depth = int(df["Level"].max()) if "Level" in df.columns and len(df) and pd.notna(df["Level"].max()) else 0
+    total_managers = int(len(managers))
+    total_ics = int((df["Span"] == 0).sum())
+
+    by_function = _function_benchmarks(
+        df, managers, func_col, threshold=threshold, fte_col=fte_col, flc_col=flc_col
+    )
+    narrowest = by_function[0] if by_function else None
+    widest = max(by_function, key=lambda r: r["avg_span"]) if by_function else None
+
+    # Most efficiently structured = highest avg span (best leverage of managers).
+    # Prefer functions with >= 2 managers; fall back to any function.
+    efficient_pool = [r for r in by_function if r["manager_count"] >= 2] or list(by_function)
+    most_efficient = max(efficient_pool, key=lambda r: (r["avg_span"], r["manager_count"])) if efficient_pool else None
+    # Avoid trivial duplicate messaging when every function has the same avg span
+    if (
+        most_efficient
+        and narrowest
+        and widest
+        and narrowest["function"] == widest["function"] == most_efficient["function"]
+        and len(by_function) == 1
+    ):
+        pass  # single-function org — keep the highlight
+
+    # Redesign priority: functions with largest combined opportunity when threshold set
+    redesign_priority = []
+    if threshold > 0 and by_function:
+        ranked = sorted(
+            by_function,
+            key=lambda r: (r["fte_opportunity"], r["cost_opportunity"], -r["avg_span"]),
+            reverse=True,
+        )
+        redesign_priority = [
+            {
+                "function": r["function"],
+                "fte_opportunity": r["fte_opportunity"],
+                "cost_opportunity": r["cost_opportunity"],
+                "below_target_count": r["below_target_count"],
+                "avg_span": r["avg_span"],
+                "rank": i + 1,
+            }
+            for i, r in enumerate(ranked)
+            if r["below_target_count"] > 0 or r["fte_opportunity"] > 0
+        ]
 
     return {
         "one_to_one_count": len(one_to_one_list),
@@ -178,7 +295,20 @@ def get_insights(df, threshold=0, emp_col=None, mgr_col=None, fte_col=None):
         "thin_layer_count": len(thin_layers),
         "thin_layers": thin_layers,
         "fte_opportunity": round(fte_opportunity, 2),
+        "cost_opportunity": round(cost_opportunity, 1),
         "avg_span": avg_span,
+        "total_managers": total_managers,
+        "total_ics": total_ics,
+        "management_depth": management_depth,
+        "span_distribution": _span_distribution(managers),
+        "by_function": by_function,
+        "function_highlights": {
+            "narrowest": narrowest,
+            "widest": widest,
+            "most_efficient": most_efficient,
+        },
+        "redesign_priority": redesign_priority,
+        "has_cost_data": bool(flc_col and flc_col in df.columns),
     }
 
 

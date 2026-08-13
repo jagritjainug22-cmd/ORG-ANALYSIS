@@ -731,6 +731,29 @@ def _migrate_v15(conn: PgConnection) -> None:
     )
 
 
+def _migrate_v16(conn: PgConnection) -> None:
+    """v16: spans threshold scenario tabs persisted per dataset."""
+    c = conn.cursor()
+    c.execute(
+        """
+        CREATE TABLE IF NOT EXISTS spans_scenarios (
+            id           SERIAL PRIMARY KEY,
+            dataset_id   INTEGER NOT NULL REFERENCES datasets(id) ON DELETE CASCADE,
+            name         TEXT NOT NULL,
+            threshold    DOUBLE PRECISION NOT NULL DEFAULT 0,
+            filters_json TEXT,
+            result_json  TEXT NOT NULL DEFAULT '{}',
+            sort_order   INTEGER NOT NULL DEFAULT 0,
+            created_at   TEXT,
+            updated_at   TEXT
+        )
+        """
+    )
+    c.execute(
+        "CREATE INDEX IF NOT EXISTS idx_spans_scenarios_dataset ON spans_scenarios(dataset_id)"
+    )
+
+
 _MIGRATIONS = [
     (1, "projects + assignments + audit_log tables", _migrate_v1),
     (2, "project_id on datasets + Legacy project backfill", _migrate_v2),
@@ -747,7 +770,10 @@ _MIGRATIONS = [
     (13, "last_hierarchy_at on datasets to complete pipeline timestamps", _migrate_v13),
     (14, "dataset_rationalisation_state table", _migrate_v14),
     (15, "dataset_hierarchy_snapshot table", _migrate_v15),
+    (16, "spans_scenarios table for threshold scenario tabs", _migrate_v16),
 ]
+
+SPANS_SCENARIO_MAX = 5
 
 
 # All optional column fields stored on the datasets row (snake_case DB keys).
@@ -3573,3 +3599,133 @@ def delete_formula(formula_id: int) -> None:
     with _connect() as conn:
         conn.execute("DELETE FROM dataset_formulas WHERE id = ?", (formula_id,))
         conn.commit()
+
+
+# ---------------------------------------------------------------------------
+# Spans & Layers threshold scenarios (tabbed modeling, max 5 per dataset)
+# ---------------------------------------------------------------------------
+
+def _parse_spans_scenario_row(row) -> Dict[str, Any]:
+    d = dict(row)
+    filters = []
+    result = {}
+    try:
+        filters = json.loads(d.pop("filters_json") or "[]")
+    except (TypeError, json.JSONDecodeError):
+        filters = []
+    try:
+        result = json.loads(d.pop("result_json") or "{}")
+    except (TypeError, json.JSONDecodeError):
+        result = {}
+    d["filters"] = filters
+    d["result"] = result
+    return d
+
+
+def list_spans_scenarios(dataset_id: int) -> List[Dict[str, Any]]:
+    with _connect_ro() as conn:
+        rows = conn.execute(
+            """
+            SELECT * FROM spans_scenarios
+            WHERE dataset_id = ?
+            ORDER BY sort_order ASC, id ASC
+            """,
+            (dataset_id,),
+        ).fetchall()
+    return [_parse_spans_scenario_row(r) for r in rows]
+
+
+def get_spans_scenario(scenario_id: int) -> Optional[Dict[str, Any]]:
+    with _connect_ro() as conn:
+        row = conn.execute(
+            "SELECT * FROM spans_scenarios WHERE id = ?", (scenario_id,)
+        ).fetchone()
+    return _parse_spans_scenario_row(row) if row else None
+
+
+def create_spans_scenario(
+    dataset_id: int,
+    name: str,
+    threshold: float = 0,
+    filters: Optional[List[Any]] = None,
+    result: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    existing = list_spans_scenarios(dataset_id)
+    if len(existing) >= SPANS_SCENARIO_MAX:
+        raise ValueError(f"Maximum of {SPANS_SCENARIO_MAX} spans scenarios per dataset")
+
+    now = datetime.utcnow().isoformat()
+    sort_order = (existing[-1]["sort_order"] + 1) if existing else 0
+    # Never persist the full employee df — too large; charts use summary/insights
+    slim = dict(result or {})
+    slim.pop("df", None)
+
+    with _connect() as conn:
+        c = conn.cursor()
+        c.execute(
+            """
+            INSERT INTO spans_scenarios
+                (dataset_id, name, threshold, filters_json, result_json, sort_order, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                dataset_id,
+                name,
+                float(threshold or 0),
+                json.dumps(filters or [], default=str),
+                json.dumps(slim, default=str),
+                sort_order,
+                now,
+                now,
+            ),
+        )
+        new_id = c.lastrowid
+        conn.commit()
+        row = conn.execute("SELECT * FROM spans_scenarios WHERE id = ?", (new_id,)).fetchone()
+    return _parse_spans_scenario_row(row)
+
+
+def update_spans_scenario(
+    scenario_id: int,
+    *,
+    name: Optional[str] = None,
+    threshold: Optional[float] = None,
+    filters: Optional[List[Any]] = None,
+    result: Optional[Dict[str, Any]] = None,
+) -> Optional[Dict[str, Any]]:
+    existing = get_spans_scenario(scenario_id)
+    if not existing:
+        return None
+
+    now = datetime.utcnow().isoformat()
+    new_name = name if name is not None else existing["name"]
+    new_threshold = float(threshold) if threshold is not None else float(existing["threshold"])
+    new_filters = filters if filters is not None else existing.get("filters") or []
+    new_result = dict(result) if result is not None else existing.get("result") or {}
+    new_result.pop("df", None)
+
+    with _connect() as conn:
+        conn.execute(
+            """
+            UPDATE spans_scenarios
+            SET name = ?, threshold = ?, filters_json = ?, result_json = ?, updated_at = ?
+            WHERE id = ?
+            """,
+            (
+                new_name,
+                new_threshold,
+                json.dumps(new_filters, default=str),
+                json.dumps(new_result, default=str),
+                now,
+                scenario_id,
+            ),
+        )
+        conn.commit()
+    return get_spans_scenario(scenario_id)
+
+
+def delete_spans_scenario(scenario_id: int) -> bool:
+    with _connect() as conn:
+        cur = conn.execute("DELETE FROM spans_scenarios WHERE id = ?", (scenario_id,))
+        conn.commit()
+        return cur.rowcount > 0

@@ -354,11 +354,13 @@ export const filterErrors = (df, empCol, mgrCol, removeDup = true, removeMissing
     remove_invalid: removeInvalid, remove_circular: removeCircular,
   });
 
-export const spansLayers = async (df, threshold = 0, download = false, empCol = null, mgrCol = null, fteCol = null) => {
+export const spansLayers = async (df, threshold = 0, download = false, empCol = null, mgrCol = null, fteCol = null, flcCol = null, funcCol = null) => {
   const params = { threshold, download };
   if (empCol) params.emp_col = empCol;
   if (mgrCol) params.mgr_col = mgrCol;
   if (fteCol) params.fte_col = fteCol;
+  if (flcCol) params.flc_col = flcCol;
+  if (funcCol) params.func_col = funcCol;
   if (download) {
     const res = await axios.post(`${getProjectUrl()}/spans_layers`, df, {
       headers: getHeaders(), params, responseType: "blob"
@@ -389,6 +391,35 @@ export const spansLayersManagerDetail = async (df, empId, threshold = 0, empCol 
   if (mgrCol) params.mgr_col = mgrCol;
   if (fteCol) params.fte_col = fteCol;
   const res = await axios.post(`${getProjectUrl()}/spans_layers/manager_detail`, df, { headers: getHeaders(), params });
+  return res.data;
+};
+
+export const listSpansScenarios = async (datasetId) => {
+  const res = await axios.get(`${getProjectUrl()}/datasets/${datasetId}/spans-scenarios`, { headers: getHeaders() });
+  return res.data;
+};
+
+export const createSpansScenario = async (datasetId, body) => {
+  const res = await axios.post(`${getProjectUrl()}/datasets/${datasetId}/spans-scenarios`, body, {
+    headers: jsonHeaders(),
+  });
+  return res.data;
+};
+
+export const updateSpansScenario = async (datasetId, scenarioId, body) => {
+  const res = await axios.patch(
+    `${getProjectUrl()}/datasets/${datasetId}/spans-scenarios/${scenarioId}`,
+    body,
+    { headers: jsonHeaders() }
+  );
+  return res.data;
+};
+
+export const deleteSpansScenario = async (datasetId, scenarioId) => {
+  const res = await axios.delete(
+    `${getProjectUrl()}/datasets/${datasetId}/spans-scenarios/${scenarioId}`,
+    { headers: getHeaders() }
+  );
   return res.data;
 };
 
@@ -761,6 +792,7 @@ export const dbExportPpt = async (scenarioId, scenarioName = "scenario", detail 
   downloadBlobAs(res.data, `orgsight_${scenarioName.replace(/[^a-z0-9-_]/gi, "") || "scenario"}.pptx`);
 };
 
+
 export const dbExportPdf = async (scenarioId, scenarioName = "scenario", detail = "summary") => {
   const res = await axios.get(`${getProjectUrl()}/db/scenarios/${scenarioId}/export/pdf`, {
     headers: getHeaders(), responseType: "blob", params: { detail },
@@ -772,6 +804,7 @@ export const dbExportSvg = async (scenarioId, scenarioName = "scenario") => {
   const res = await axios.get(`${getProjectUrl()}/db/scenarios/${scenarioId}/export/svg`, { headers: getHeaders(), responseType: "blob" });
   downloadBlobAs(res.data, `orgsight_${scenarioName.replace(/[^a-z0-9-_]/gi, "") || "scenario"}.svg`);
 };
+
 
 // =================================================================
 // Admin API
@@ -1109,6 +1142,7 @@ export const chatMessageStream = (
   // Return a cleanup / abort function
   return () => controller.abort();
 };
+
 
 
 // ---------------------------------------------------------------------------

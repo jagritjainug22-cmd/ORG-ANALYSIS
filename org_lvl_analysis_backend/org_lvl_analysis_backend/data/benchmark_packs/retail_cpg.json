@@ -1,0 +1,88 @@
+{
+  "name": "Retail & CPG",
+  "industry": "Retail & Consumer Goods",
+  "region": "Global",
+  "size_band": "All sizes",
+  "currency": "USD",
+  "effective_year": 2026,
+  "source": "Directional - validate before client use",
+  "inherit_subfunctions": true,
+  "notes": "Retail, consumer packaged goods and distribution. Store and distribution-centre populations sit inside the operational base, which pushes spans wide and corporate support ratios low. Benchmarks assume the census includes front-line store staff; exclude them first if you are benchmarking the corporate centre only, otherwise every support ratio will read artificially lean.",
+  "org": {
+    "avg_span_of_control": [7.0, 9.0, 12.0],
+    "total_layers": [5, 7, 8],
+    "mgr_pct_of_headcount": [7.0, 10.0, 14.0],
+    "mgr_cost_pct_of_total_cost": [15.0, 20.0, 26.0],
+    "ic_to_mgr_ratio": [6.1, 9.0, 13.3],
+    "pct_managers_below_target_span": [10.0, 20.0, 31.0],
+    "pct_single_report_managers": [2.5, 5.5, 10.0],
+    "pct_headcount_below_layer_5": [50.0, 65.0, 77.0],
+    "pct_fte_in_low_cost_locations": [10.0, 25.0, 45.0]
+  },
+  "functions": {
+    "R&D": {
+      "func_fte_pct_of_total_fte": [0.5, 1.5, 3.5],
+      "func_fte_per_1000_employees": [5.0, 15.0, 35.0],
+      "func_cost_pct_of_total_cost": [0.8, 2.2, 4.8],
+      "func_avg_span": [5.0, 6.5, 8.0],
+      "func_layers": [3, 4, 5],
+      "mgr_pct_of_headcount": [9.0, 13.0, 17.0]
+    },
+    "Sales & Marketing": {
+      "func_fte_pct_of_total_fte": [8.0, 13.0, 20.0],
+      "func_fte_per_1000_employees": [80.0, 130.0, 200.0],
+      "func_cost_pct_of_total_cost": [10.0, 16.0, 24.0],
+      "func_avg_span": [6.0, 8.0, 10.0],
+      "func_layers": [4, 5, 6],
+      "mgr_pct_of_headcount": [10.0, 14.0, 18.0]
+    },
+    "Procurement": {
+      "func_fte_pct_of_total_fte": [55.0, 68.0, 78.0],
+      "func_fte_per_1000_employees": [550.0, 680.0, 780.0],
+      "func_cost_pct_of_total_cost": [45.0, 58.0, 69.0],
+      "func_avg_span": [8.0, 12.0, 16.0],
+      "func_layers": [4, 5, 7],
+      "mgr_pct_of_headcount": [6.0, 9.0, 13.0]
+    },
+    "Customer Support": {
+      "func_fte_pct_of_total_fte": [3.0, 6.0, 11.0],
+      "func_fte_per_1000_employees": [30.0, 60.0, 110.0],
+      "func_cost_pct_of_total_cost": [2.0, 4.0, 7.5],
+      "func_avg_span": [9.0, 12.0, 16.0],
+      "func_layers": [3, 4, 5],
+      "mgr_pct_of_headcount": [5.0, 8.0, 11.0]
+    },
+    "HR": {
+      "func_fte_pct_of_total_fte": [0.5, 0.9, 1.4],
+      "func_fte_per_1000_employees": [5.0, 9.0, 14.0],
+      "func_cost_pct_of_total_cost": [0.6, 1.1, 1.7],
+      "func_avg_span": [5.0, 6.5, 8.0],
+      "func_layers": [3, 4, 5],
+      "mgr_pct_of_headcount": [12.0, 17.0, 22.0]
+    },
+    "IT": {
+      "func_fte_pct_of_total_fte": [0.8, 1.5, 2.5],
+      "func_fte_per_1000_employees": [8.0, 15.0, 25.0],
+      "func_cost_pct_of_total_cost": [1.2, 2.2, 3.6],
+      "func_avg_span": [5.0, 6.0, 7.5],
+      "func_layers": [3, 4, 5],
+      "mgr_pct_of_headcount": [11.0, 15.0, 20.0]
+    },
+    "Finance": {
+      "func_fte_pct_of_total_fte": [0.7, 1.1, 1.7],
+      "func_fte_per_1000_employees": [7.0, 11.0, 17.0],
+      "func_cost_pct_of_total_cost": [1.0, 1.6, 2.4],
+      "func_avg_span": [4.5, 5.5, 7.0],
+      "func_layers": [4, 5, 6],
+      "mgr_pct_of_headcount": [12.0, 17.0, 22.0]
+    },
+    "Compliance and Legal": {
+      "func_fte_pct_of_total_fte": [0.2, 0.4, 0.65],
+      "func_fte_per_1000_employees": [2.0, 4.0, 6.5],
+      "func_cost_pct_of_total_cost": [0.35, 0.7, 1.2],
+      "func_avg_span": [3.5, 4.5, 6.0],
+      "func_layers": [3, 4, 5],
+      "mgr_pct_of_headcount": [14.0, 19.0, 25.0]
+    }
+  }
+}

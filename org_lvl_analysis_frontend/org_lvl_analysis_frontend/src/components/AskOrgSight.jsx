@@ -23,6 +23,7 @@ import {
 } from "recharts";
 import { chatEnsure, chatMessageStream } from "../api/backend";
 import { useChatHistory } from "../hooks/useChatHistory";
+import BenchmarkReportModal from "./benchmark/BenchmarkReportModal";
 
 const CHART_COLORS = ["#1e3a5f", "#2563eb", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6", "#ec4899", "#06b6d4", "#84cc16"];
 
@@ -92,7 +93,7 @@ const PHASE_CONFIG = {
 // MAIN COMPONENT
 // =============================================================================
 
-export default function AskOrgSight({ projectId, datasetId, scenarioId, onNavigate }) {
+export default function AskOrgSight({ projectId, datasetId, scenarioId, datasetName, onNavigate }) {
   const { messages, setMessages, clearHistory, sessionRestored } = useChatHistory(
     projectId, datasetId, scenarioId
   );
@@ -102,6 +103,7 @@ export default function AskOrgSight({ projectId, datasetId, scenarioId, onNaviga
   const [streamPhase, setStreamPhase] = useState(null); // current phase label
   const [initStatus, setInitStatus] = useState("idle"); // idle | loading | ready | error
   const [initError, setInitError] = useState(null);
+  const [benchmarkReportOpen, setBenchmarkReportOpen] = useState(false);
 
   const messagesEndRef = useRef(null);
   const abortRef = useRef(null); // holds the stream cleanup / abort function
@@ -261,6 +263,11 @@ export default function AskOrgSight({ projectId, datasetId, scenarioId, onNaviga
             finalMsg.navigationTarget = payload.navigation_target;
           }
 
+          // The agent offers the full benchmark report when the ask warrants one
+          if (payload.report_ref) {
+            finalMsg.reportRef = payload.report_ref;
+          }
+
           setMessages((prev) =>
             prev.map((m) => (m._id === streamingMsgId ? finalMsg : m))
           );
@@ -357,6 +364,17 @@ export default function AskOrgSight({ projectId, datasetId, scenarioId, onNaviga
           <p className="text-xs text-gray-500">Ask questions about your org data in plain English</p>
         </div>
 
+        <button
+          onClick={() => setBenchmarkReportOpen(true)}
+          title="Run the full AI benchmark analysis on this dataset"
+          className="ml-3 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-brand-200 bg-gradient-to-r from-brand-50 to-teal-50 text-[11px] font-semibold text-brand-600 hover:border-brand-400 hover:shadow-sm transition"
+        >
+          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+          </svg>
+          Benchmark report
+        </button>
+
         {/* Session restored badge */}
         {sessionRestored && (
           <div
@@ -390,6 +408,7 @@ export default function AskOrgSight({ projectId, datasetId, scenarioId, onNaviga
             key={msg._id || i}
             message={msg}
             onFollowUp={sendMessage}
+            onOpenReport={() => setBenchmarkReportOpen(true)}
             onClarify={(query, selectedColumn) => {
               // Extract the ambiguous term from the clarification message
               const termMatch = msg.content?.match(/'([^']+)'/);
@@ -467,6 +486,14 @@ export default function AskOrgSight({ projectId, datasetId, scenarioId, onNaviga
           Press <kbd className="px-1 py-0.5 bg-gray-100 rounded text-gray-500 font-mono">Enter</kbd> to send · <kbd className="px-1 py-0.5 bg-gray-100 rounded text-gray-500 font-mono">Shift+Enter</kbd> for new line
         </p>
       </div>
+
+      <BenchmarkReportModal
+        open={benchmarkReportOpen}
+        onClose={() => setBenchmarkReportOpen(false)}
+        datasetId={datasetId}
+        scenarioId={scenarioId}
+        datasetName={datasetName}
+      />
     </div>
   );
 }
@@ -563,7 +590,7 @@ function formatMarkdown(text) {
   return elements;
 }
 
-function MessageBubble({ message, onFollowUp, onClarify }) {
+function MessageBubble({ message, onFollowUp, onClarify, onOpenReport }) {
   const isUser = message.role === "user";
   const display = message.display || "text";
   const isStreaming = !!message._streaming;
@@ -662,6 +689,37 @@ function MessageBubble({ message, onFollowUp, onClarify }) {
         <div className="mt-2 w-full overflow-x-auto">
           <DataTable columns={message.data.columns} rows={message.data.rows} />
         </div>
+      )}
+
+      {/* Full benchmark report offer */}
+      {!isUser && !isStreaming && message.reportRef?.kind === "benchmark" && (
+        <button
+          onClick={onOpenReport}
+          className="group mt-2.5 w-full max-w-lg text-left rounded-2xl overflow-hidden border border-brand-200 bg-gradient-to-br from-brand-600 via-brand-500 to-[#08304a] shadow-md hover:shadow-xl transition-all"
+        >
+          <div className="relative px-4 py-3.5">
+            <div className="absolute -right-8 -top-8 w-28 h-28 rounded-full bg-white/10 pointer-events-none" />
+            <div className="relative flex items-start gap-3">
+              <div className="w-9 h-9 rounded-xl bg-white/15 border border-white/25 flex items-center justify-center flex-shrink-0">
+                <svg className="w-4.5 h-4.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                </svg>
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-bold text-white">{message.reportRef.title}</p>
+                <p className="text-[11px] text-white/70 leading-relaxed mt-0.5">
+                  {message.reportRef.description}
+                </p>
+                <span className="inline-flex items-center gap-1.5 mt-2 text-[11px] font-semibold text-teal-200 group-hover:text-white transition">
+                  {message.reportRef.cta}
+                  <svg className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 5l7 7-7 7" />
+                  </svg>
+                </span>
+              </div>
+            </div>
+          </div>
+        </button>
       )}
 
       {/* Follow-up suggestions */}

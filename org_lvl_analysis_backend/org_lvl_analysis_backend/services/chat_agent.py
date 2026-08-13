@@ -37,9 +37,29 @@ log = logging.getLogger(__name__)
 
 BENCHMARKS = """## BENCHMARKING
 
-You have access to A&M industry benchmarks via the get_benchmarks tool.
+You have two benchmarking tools. Choose deliberately.
 
-WHEN TO CALL get_benchmarks:
+### get_benchmark_comparison — PREFER THIS
+Returns the client's ACTUAL computed values against the configured benchmark pack:
+client value, P25/median/P75, the variance, and the implied FTE and cost gap.
+Use it whenever the question involves how this organisation compares, whether a
+number is good, where the savings sit, or which areas are over- or under-invested.
+Because the numbers are pre-computed, quote them verbatim — never recalculate.
+Rules when using it:
+- State the client figure and the benchmark together, never one alone.
+- Quote savings as a range and name the realisation assumption.
+- Never add the functional and structural opportunity totals together; they overlap.
+- If coverage is low, say the comparison is directional.
+
+For a full written analysis with root causes and a roadmap, tell the user to open
+the benchmark report from the Benchmarking tab rather than trying to produce one
+in chat — the report route runs a much deeper multi-stage analysis.
+
+### get_benchmarks — generic fallback
+Static A&M rules of thumb with no client data attached. Only use it when no
+benchmark pack is configured, or for qualitative guidance the pack does not cover.
+
+WHEN TO CALL a benchmark tool:
 - User asks to "compare against benchmark" or "how do we compare"
 - User asks "is this good/bad/normal" about a metric
 - User asks about "industry standard" or "best practice"
@@ -50,13 +70,12 @@ WHEN TO CALL get_benchmarks:
 - You are analyzing spans, layers, or management ratios and need a reference point
 
 HOW TO USE:
-1. First run the data query (run_sql or named tool) to get the computed metric
-2. Then call get_benchmarks with the relevant categories
-3. Compare the computed value against the benchmark in your response
-4. Always state BOTH numbers: "Average span is 3.2, below the industry benchmark of 6"
-
-Available benchmark categories: span, layers, management, delayering, location, functions
-Pick only the categories relevant to the question — don't request "all" unless doing a full org review.
+1. Call get_benchmark_comparison with the scope that matches the question
+   ('org', 'function', 'subfunction', or 'opportunities').
+2. Quote its numbers directly — they are already computed against this client's data.
+3. Always state BOTH numbers: "Average span is 3.2, against a benchmark median of 6.0"
+4. Only fall back to get_benchmarks when the comparison tool reports that no pack
+   is configured. Its categories are: span, layers, management, delayering, location, functions.
 """
 
 # ---------------------------------------------------------------------------
@@ -241,7 +260,11 @@ def _build_column_synonym_hints(dataset_meta: Dict[str, Any], available_cols: se
     return "\n".join(lines)
 
 
-def build_system_prompt(schema: Dict[str, Any], dataset_meta: Dict[str, Any]) -> str:
+def build_system_prompt(
+    schema: Dict[str, Any],
+    dataset_meta: Dict[str, Any],
+    user_id: Optional[int] = None,
+) -> str:
     """
     Construct the full system prompt injected into every LLM call.
 
@@ -250,6 +273,9 @@ def build_system_prompt(schema: Dict[str, Any], dataset_meta: Dict[str, Any]) ->
       - Safe metadata boundary: clearly separates "columns usable in SQL" from
         "availability status for reasoning only"
       - No hardcoded column names — adapts to any dataset shape
+      - Benchmark-aware: when a pack is configured for the dataset, the top
+        variances are inlined so ordinary questions can reference them without
+        spending a tool call
     """
     col_lines = []
     available_col_names = set()
@@ -316,6 +342,16 @@ def build_system_prompt(schema: Dict[str, Any], dataset_meta: Dict[str, Any]) ->
     # Dynamic column synonym hints
     synonym_hints = _build_column_synonym_hints(dataset_meta, available_col_names)
 
+    benchmark_block = ""
+    if user_id and dataset_meta.get("id"):
+        try:
+            from services import benchmark_tools
+            benchmark_block = benchmark_tools.build_prompt_context(
+                user_id, dataset_meta["id"], dataset_meta, schema,
+            )
+        except Exception as e:
+            log.info("Benchmark prompt context unavailable: %s", e)
+
     # Self-join example — only if we have cost column
     join_example = ""
     if flc_col:
@@ -364,6 +400,8 @@ Users may refer to columns using common business terms. Use these mappings:
 9. Do NOT end SQL with a semicolon
 
 {BENCHMARKS}
+
+{benchmark_block}
 
 ## RESPONSE STYLE
 - Be concise but insightful — always add a business interpretation, not just numbers
@@ -971,12 +1009,54 @@ Rules:
 - DO NOT repeat the raw SQL or column names in your response"""
 
 
+def _benchmark_tool_defs(benchmark_ctx: Optional[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Tools offered to the narrator: the client-aware comparison first, the
+    generic constants as a fallback."""
+    from services.benchmark_constants import BENCHMARK_TOOL
+
+    tools = [BENCHMARK_TOOL]
+    if benchmark_ctx and benchmark_ctx.get("user_id") and benchmark_ctx.get("dataset_id"):
+        from services.benchmark_tools import BENCHMARK_COMPARISON_TOOL
+        tools.insert(0, BENCHMARK_COMPARISON_TOOL)
+    return tools
+
+
+def _run_benchmark_tool(
+    name: str, raw_args: str, benchmark_ctx: Optional[Dict[str, Any]],
+) -> Optional[str]:
+    """Execute a benchmark tool call. Returns the text for the model, or None
+    when the call is not a benchmark tool.
+
+    A chart-ready payload from get_benchmark_comparison is stashed on
+    benchmark_ctx so the caller can attach it to the response.
+    """
+    try:
+        args = json.loads(raw_args)
+    except Exception:
+        args = {}
+
+    if name == "get_benchmark_comparison":
+        from services.benchmark_tools import execute_get_benchmark_comparison
+        text_result, payload = execute_get_benchmark_comparison(args, benchmark_ctx)
+        if payload and benchmark_ctx is not None:
+            benchmark_ctx["_payload"] = payload
+        return text_result
+
+    if name == "get_benchmarks":
+        from services.benchmark_constants import execute_get_benchmarks
+        text_result, _ = execute_get_benchmarks(args)
+        return text_result
+
+    return None
+
+
 def format_response(
     message: str,
     tool_result: Dict[str, Any],
     intent: Dict[str, Any],
     system_prompt: str,
     history: List[Dict[str, Any]] | None = None,
+    benchmark_ctx: Optional[Dict[str, Any]] = None,
 ) -> str:
     """LLM call #2 — narrate the tool results in business language.
 
@@ -1040,14 +1120,14 @@ If this is a follow-up question, connect your answer to the prior conversation c
     messages.extend(_build_history_messages(history or []))
     messages.append({"role": "user", "content": prompt})
 
-    from services.benchmark_constants import BENCHMARK_TOOL
+    benchmark_tools_list = _benchmark_tool_defs(benchmark_ctx)
 
     try:
         # Loop for tool call resolution (max 4 iterations)
         for iteration in range(4):
             response_msg, usage_dict, latency_ms = call_llm(
                 messages=messages,
-                tools=[BENCHMARK_TOOL],
+                tools=benchmark_tools_list,
                 tool_choice="auto",
                 max_tokens=600,
                 temperature=0.3,
@@ -1067,21 +1147,17 @@ If this is a follow-up question, connect your answer to the prior conversation c
 
             # Execute the tool calls
             for tool_call in tool_calls:
-                if tool_call.function.name == "get_benchmarks":
-                    try:
-                        args = json.loads(tool_call.function.arguments)
-                    except Exception:
-                        args = {}
-
-                    from services.benchmark_constants import execute_get_benchmarks
-                    text_result, _ = execute_get_benchmarks(args)
-
-                    messages.append({
-                        "role": "tool",
-                        "tool_call_id": tool_call.id,
-                        "name": tool_call.function.name,
-                        "content": text_result,
-                    })
+                text_result = _run_benchmark_tool(
+                    tool_call.function.name, tool_call.function.arguments, benchmark_ctx,
+                )
+                if text_result is None:
+                    continue
+                messages.append({
+                    "role": "tool",
+                    "tool_call_id": tool_call.id,
+                    "name": tool_call.function.name,
+                    "content": text_result,
+                })
 
         # Fallback if loop ends without returning
         return getattr(response_msg, "content", "") if not isinstance(response_msg, str) else response_msg
@@ -1125,9 +1201,9 @@ _FOLLOWUP_INTENTS = {
         "What percentage of our workforce is in low-cost locations?",
     ],
     "benchmarking": [
-        "Which managers could be removed while maintaining a span of 6?",
-        "What would be the estimated savings from removing all 1:1 managers?",
-        "Which L2 subtrees have the most excessive layering?",
+        "Which functions are furthest above the benchmark on FTE share?",
+        "Show me the full benchmark report",
+        "What is the quantified opportunity by function?",
     ],
     "default": [
         "Show me the top-level org summary.",
@@ -1140,6 +1216,50 @@ _FOLLOWUP_INTENTS = {
 def _get_followups(intent: Dict[str, Any]) -> List[str]:
     intent_cat = intent.get("intent", "default")
     return _FOLLOWUP_INTENTS.get(intent_cat, _FOLLOWUP_INTENTS["default"])
+
+
+# ---------------------------------------------------------------------------
+# Benchmark wiring
+# ---------------------------------------------------------------------------
+
+def _build_benchmark_ctx(
+    user_id: int, dataset_meta: Dict[str, Any], schema: Dict[str, Any],
+) -> Dict[str, Any]:
+    """Context the benchmark comparison tool needs to reach the client's data."""
+    return {
+        "user_id": user_id,
+        "dataset_id": dataset_meta.get("id"),
+        "dataset_meta": dataset_meta,
+        "schema": schema,
+    }
+
+
+def _merge_benchmark_payload(
+    tool_result: Dict[str, Any], benchmark_ctx: Optional[Dict[str, Any]],
+) -> None:
+    """Promote a benchmark tool's tabular output into the turn result so the
+    frontend can chart it, but only when the primary tool returned nothing."""
+    payload = (benchmark_ctx or {}).get("_payload")
+    if not payload or tool_result.get("data"):
+        return
+    tool_result["data"] = payload.get("data") or []
+    tool_result["columns"] = payload.get("columns") or []
+    tool_result["row_count"] = len(tool_result["data"])
+    tool_result["total_rows"] = tool_result["row_count"]
+    tool_result["benchmark_chart_hint"] = payload.get("chart_hint")
+
+
+def _is_benchmark_report_request(message: str) -> bool:
+    """Detect asks that deserve the full report rather than a chat answer."""
+    text = (message or "").lower()
+    report_words = ("report", "full analysis", "detailed analysis", "deep dive",
+                    "deep analysis", "in depth", "in-depth", "complete analysis")
+    benchmark_words = ("benchmark", "industry comparison", "compare against industry",
+                       "peer comparison", "how do we compare")
+    if any(w in text for w in ("benchmark report", "benchmarking report",
+                               "full benchmarking analysis", "full benchmark analysis")):
+        return True
+    return any(b in text for b in benchmark_words) and any(r in text for r in report_words)
 
 
 # ---------------------------------------------------------------------------
@@ -1181,7 +1301,8 @@ def run_agent_turn(
     _t0 = _time.monotonic()
 
     # Step 1: build system prompt
-    system_prompt = build_system_prompt(schema, dataset_meta)
+    system_prompt = build_system_prompt(schema, dataset_meta, user_id=user_id)
+    benchmark_ctx = _build_benchmark_ctx(user_id, dataset_meta, schema)
 
     # Step 2: classify intent + validate contracts
     intent = classify_intent(message, schema, dataset_meta, history=history)
@@ -1197,7 +1318,9 @@ def run_agent_turn(
     # Step 4: format response
     response_text = format_response(
         message, tool_result, intent, system_prompt, history=history,
+        benchmark_ctx=benchmark_ctx,
     )
+    _merge_benchmark_payload(tool_result, benchmark_ctx)
 
     # Step 5: determine chart hint
     chart_hint = _suggest_chart(intent, tool_result)
@@ -1298,7 +1421,10 @@ async def run_agent_turn_stream(
         # ── Phase 1: Intent classification ──────────────────────────────────
         yield {"type": "status", "data": {"phase": "intent", "message": "Classifying your question..."}}
 
-        system_prompt = build_system_prompt(schema, dataset_meta)
+        system_prompt = await asyncio.to_thread(
+            build_system_prompt, schema, dataset_meta, user_id,
+        )
+        benchmark_ctx = _build_benchmark_ctx(user_id, dataset_meta, schema)
 
         intent = await asyncio.to_thread(
             classify_intent, message, schema, dataset_meta, history
@@ -1389,14 +1515,14 @@ If this is a follow-up question, connect your answer to the prior conversation c
             messages.extend(_build_history_messages(history))
             messages.append({"role": "user", "content": format_prompt})
 
-            from services.benchmark_constants import BENCHMARK_TOOL
+            benchmark_tools_list = _benchmark_tool_defs(benchmark_ctx)
 
             has_tool_called = False
             for iteration in range(4):
                 response_msg, usage_dict, latency_ms = await asyncio.to_thread(
                     call_llm,
                     messages=messages,
-                    tools=[BENCHMARK_TOOL],
+                    tools=benchmark_tools_list,
                     tool_choice="auto",
                     max_tokens=600,
                     temperature=0.3,
@@ -1420,21 +1546,18 @@ If this is a follow-up question, connect your answer to the prior conversation c
                 messages.append(response_msg)
 
                 for tool_call in tool_calls:
-                    if tool_call.function.name == "get_benchmarks":
-                        try:
-                            args = json.loads(tool_call.function.arguments)
-                        except Exception:
-                            args = {}
-
-                        from services.benchmark_constants import execute_get_benchmarks
-                        text_result, _ = execute_get_benchmarks(args)
-
-                        messages.append({
-                            "role": "tool",
-                            "tool_call_id": tool_call.id,
-                            "name": tool_call.function.name,
-                            "content": text_result,
-                        })
+                    text_result = await asyncio.to_thread(
+                        _run_benchmark_tool,
+                        tool_call.function.name, tool_call.function.arguments, benchmark_ctx,
+                    )
+                    if text_result is None:
+                        continue
+                    messages.append({
+                        "role": "tool",
+                        "tool_call_id": tool_call.id,
+                        "name": tool_call.function.name,
+                        "content": text_result,
+                    })
 
                 # Break after handling tool calls so we stream the subsequent final completion
                 break
@@ -1467,7 +1590,8 @@ If this is a follow-up question, connect your answer to the prior conversation c
             log.error("Failed to log chat query (stream): %s", log_err)
 
         # ── Done event: structured metadata ──────────────────────────────────
-        chart_hint = _suggest_chart(intent, tool_result)
+        _merge_benchmark_payload(tool_result, benchmark_ctx)
+        chart_hint = tool_result.get("benchmark_chart_hint") or _suggest_chart(intent, tool_result)
         done_data = {
             "data": tool_result.get("data", []),
             "columns": tool_result.get("columns", []),
@@ -1488,6 +1612,17 @@ If this is a follow-up question, connect your answer to the prior conversation c
             done_data["clarification_type"] = tool_result.get("clarification_type")
             done_data["options"] = tool_result.get("options", [])
             done_data["original_query"] = tool_result.get("original_query")
+        # Offer the full report when the question is really asking for one
+        if _is_benchmark_report_request(message):
+            done_data["report_ref"] = {
+                "kind": "benchmark",
+                "title": "Full benchmark report",
+                "description": (
+                    "A multi-section AI analysis: function-by-function variance, structural "
+                    "diagnosis, root causes, quantified opportunity and a 30/60/90 roadmap."
+                ),
+                "cta": "Open full benchmark report",
+            }
 
         yield {
             "type": "done",

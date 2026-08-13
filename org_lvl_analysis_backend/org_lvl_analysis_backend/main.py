@@ -26,6 +26,7 @@ from routers.admin import router as admin_router
 from routers.projects import router as projects_router
 from routers.lifecycle import router as lifecycle_router
 from routers.chat import router as chat_router
+from routers.benchmark import router as benchmark_router
 
 ALLOWED_ORIGINS = [
     "http://localhost:8501",
@@ -120,6 +121,7 @@ app.include_router(admin_router)
 app.include_router(projects_router)
 app.include_router(lifecycle_router)
 app.include_router(chat_router)
+app.include_router(benchmark_router)
 
 # Paths that do not require a Bearer token (Swagger + runtime).
 _PUBLIC_PATHS = {"/", "/auth/login", "/auth/refresh"}

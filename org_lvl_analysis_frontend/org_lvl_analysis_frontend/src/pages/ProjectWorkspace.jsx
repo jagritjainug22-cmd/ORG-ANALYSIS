@@ -22,6 +22,7 @@ import SpansLayers from "../components/SpansLayers";
 import Crosstab from "../components/Crosstab";
 import OrgChart from "../components/OrgChart";
 import ActivityAnalysis from "../components/ActivityAnalysis";
+import Benchmarking from "../components/Benchmarking";
 import ExportExcel from "../components/ExportExcel";
 import AskOrgSight from "../components/AskOrgSight";
 import RationaliseToast from "../components/RationaliseToast";
@@ -60,6 +61,10 @@ const MODULES = [
   {
     id: "Activity Analysis", label: "Activity Analysis",
     icon: (<svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>)
+  },
+  {
+    id: "Benchmarking", label: "Benchmarking",
+    icon: (<svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 20h18M6 20V10m6 10V4m6 16v-7" /></svg>)
   },
   {
     id: "Ask OrgSight", label: "Ask OrgSight",
@@ -736,7 +741,7 @@ export default function ProjectWorkspace() {
 
   // --- CENTER PANE RENDER (same as old App.jsx) ---
   const renderActiveModule = () => {
-    if (!dfRecords && activeModule !== "Upload" && activeModule !== "Org Chart" && activeModule !== "Activity Analysis" && activeModule !== "Ask OrgSight") {
+    if (!dfRecords && activeModule !== "Upload" && activeModule !== "Org Chart" && activeModule !== "Activity Analysis" && activeModule !== "Ask OrgSight" && activeModule !== "Benchmarking") {
       return (
         <div className="flex flex-col items-center justify-center py-20 px-8">
           <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-brand-500 to-brand-700 flex items-center justify-center mb-6 shadow-lg">
@@ -830,6 +835,7 @@ export default function ProjectWorkspace() {
             mgrCol={mgrCol}
             fteCol={fteCol}
             flcCol={flcCol}
+            funcCol={funcCol}
             jobTitleCol={jobTitleCol}
             datasetId={datasetId}
             onJumpToOrgChart={jumpToOrgChartNode}
@@ -876,12 +882,21 @@ export default function ProjectWorkspace() {
         );
       case "Activity Analysis":
         return <ActivityAnalysis key={activityNavKey} datasetId={datasetId} />;
+      case "Benchmarking":
+        return (
+          <Benchmarking
+            datasetId={datasetId}
+            scenarioId={activeScenarioId}
+            datasetName={activeDatasetName || uploadedFileName || "Dataset"}
+          />
+        );
       case "Ask OrgSight":
         return (
           <AskOrgSight
             projectId={pid}
             datasetId={datasetId}
             scenarioId={activeScenarioId}
+            datasetName={activeDatasetName || uploadedFileName || "Dataset"}
             onNavigate={(target) => {
               const tabMap = {
                 hierarchy: "Hierarchy",
@@ -891,6 +906,7 @@ export default function ProjectWorkspace() {
                 scenarios: "Org Chart",
                 activity: "Activity Analysis",
                 upload: "Upload",
+                benchmarking: "Benchmarking",
               };
               const tab = tabMap[target];
               if (tab) {
@@ -1059,7 +1075,7 @@ export default function ProjectWorkspace() {
       {/* TOP PANE (GLOBAL CONTROLS) */}
       <div
         className="bg-white border-b border-gray-200"
-        style={{ display: (activeModule === "Org Chart" || activeModule === "Activity Analysis" || activeModule === "Ask OrgSight") ? "none" : "block" }}
+        style={{ display: (activeModule === "Org Chart" || activeModule === "Activity Analysis" || activeModule === "Ask OrgSight" || activeModule === "Benchmarking") ? "none" : "block" }}
       >
         {/* Header row — always visible, acts as toggle */}
         <button
@@ -1247,10 +1263,11 @@ export default function ProjectWorkspace() {
             {MODULES.map((m) => {
               const isOrgChart = m.id === "Org Chart";
               const isAskOrgSight = m.id === "Ask OrgSight";
-              // Org Chart / Ask OrgSight need Level/Span/Chain from Hierarchy,
-              // not merely a dataset row (a dataset can now exist earlier,
+              const isBenchmarking = m.id === "Benchmarking";
+              // Org Chart / Ask OrgSight / Benchmarking need Level/Span/Chain from
+              // Hierarchy, not merely a dataset row (a dataset can now exist earlier,
               // right after Cleanup/Validate, before Hierarchy ever runs).
-              const isMenuDisabled = (isOrgChart || isAskOrgSight) && !pipelineStatus.hierarchy;
+              const isMenuDisabled = (isOrgChart || isAskOrgSight || isBenchmarking) && !pipelineStatus.hierarchy;
 
               return (
                 <button
@@ -1305,7 +1322,7 @@ export default function ProjectWorkspace() {
 
         {/* CENTER PANE */}
         <main className="flex-1 overflow-auto bg-gray-50">
-          {(activeModule === "Org Chart" || activeModule === "Activity Analysis" || activeModule === "Spans & Layers" || activeModule === "Ask OrgSight") ? (
+          {(activeModule === "Org Chart" || activeModule === "Activity Analysis" || activeModule === "Spans & Layers" || activeModule === "Ask OrgSight" || activeModule === "Benchmarking") ? (
             <div className="h-full">{renderActiveModule()}</div>
           ) : (
             <div className="p-8">
@@ -1317,7 +1334,7 @@ export default function ProjectWorkspace() {
         </main>
 
         {/* RIGHT PANE (collapsible) */}
-        {!(activeModule === "Org Chart" || activeModule === "Activity Analysis" || activeModule === "Spans & Layers" || activeModule === "Rationalise" || activeModule === "Ask OrgSight" || activeModule === "Crosstab") && (
+        {!(activeModule === "Org Chart" || activeModule === "Activity Analysis" || activeModule === "Spans & Layers" || activeModule === "Rationalise" || activeModule === "Ask OrgSight" || activeModule === "Crosstab" || activeModule === "Benchmarking") && (
           rightPaneCollapsed ? (
             /* Collapsed: a clearly-visible tab stuck to the right edge — always
                clickable to bring the panel back, unlike the old 4px sliver. */

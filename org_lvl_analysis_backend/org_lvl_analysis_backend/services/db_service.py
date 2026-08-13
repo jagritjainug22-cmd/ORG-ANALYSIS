@@ -164,6 +164,7 @@ def init_db() -> None:
     _seed_admin()
     _migrate_legacy_users()
     _run_migrations()
+    _seed_benchmark_packs()
 
 
 # ---------------------------------------------------------------------------
@@ -772,6 +773,95 @@ def _migrate_v17(conn: PgConnection) -> None:
     c.execute("CREATE INDEX IF NOT EXISTS idx_uiprefs_user ON user_ui_prefs(user_id)")
 
 
+def _migrate_v18(conn: PgConnection) -> None:
+    """v18: benchmarking — reusable benchmark packs, their metric rows, and the
+    per-dataset configuration that binds a pack to a client census."""
+    c = conn.cursor()
+    c.execute(
+        f"""
+        CREATE TABLE IF NOT EXISTS benchmark_packs (
+            id             {_ID_PK},
+            name           TEXT NOT NULL,
+            industry       TEXT,
+            region         TEXT,
+            size_band      TEXT,
+            currency       TEXT NOT NULL DEFAULT 'USD',
+            effective_year INTEGER,
+            source_type    TEXT NOT NULL DEFAULT 'custom',
+            is_builtin     INTEGER NOT NULL DEFAULT 0,
+            is_default     INTEGER NOT NULL DEFAULT 0,
+            project_id     INTEGER REFERENCES projects(id) ON DELETE CASCADE,
+            created_by     TEXT,
+            notes          TEXT,
+            created_at     TEXT NOT NULL,
+            updated_at     TEXT NOT NULL
+        )
+        """
+    )
+    c.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_bm_packs_builtin_name "
+        "ON benchmark_packs(name, effective_year) WHERE is_builtin = 1"
+    )
+    c.execute("CREATE INDEX IF NOT EXISTS idx_bm_packs_project ON benchmark_packs(project_id)")
+
+    c.execute(
+        f"""
+        CREATE TABLE IF NOT EXISTS benchmark_metrics (
+            id          {_ID_PK},
+            pack_id     INTEGER NOT NULL REFERENCES benchmark_packs(id) ON DELETE CASCADE,
+            scope       TEXT NOT NULL,
+            function    TEXT,
+            subfunction TEXT,
+            metric_key  TEXT NOT NULL,
+            unit        TEXT,
+            p25         DOUBLE PRECISION,
+            median      DOUBLE PRECISION,
+            p75         DOUBLE PRECISION,
+            direction   TEXT,
+            source      TEXT,
+            notes       TEXT
+        )
+        """
+    )
+    c.execute("CREATE INDEX IF NOT EXISTS idx_bm_metrics_pack ON benchmark_metrics(pack_id)")
+    c.execute(
+        "CREATE INDEX IF NOT EXISTS idx_bm_metrics_lookup "
+        "ON benchmark_metrics(pack_id, scope, function, subfunction, metric_key)"
+    )
+
+    c.execute(
+        f"""
+        CREATE TABLE IF NOT EXISTS dataset_benchmark_config (
+            id                {_ID_PK},
+            dataset_id        INTEGER NOT NULL UNIQUE REFERENCES datasets(id) ON DELETE CASCADE,
+            pack_id           INTEGER REFERENCES benchmark_packs(id) ON DELETE SET NULL,
+            context_json      TEXT NOT NULL DEFAULT '{{}}',
+            function_map_json TEXT NOT NULL DEFAULT '{{}}',
+            realization_low   DOUBLE PRECISION NOT NULL DEFAULT 0.6,
+            realization_high  DOUBLE PRECISION NOT NULL DEFAULT 0.7,
+            target_span       DOUBLE PRECISION NOT NULL DEFAULT 6,
+            updated_at        TEXT NOT NULL
+        )
+        """
+    )
+
+    c.execute(
+        f"""
+        CREATE TABLE IF NOT EXISTS benchmark_reports (
+            id           {_ID_PK},
+            dataset_id   INTEGER NOT NULL REFERENCES datasets(id) ON DELETE CASCADE,
+            scenario_id  INTEGER,
+            pack_id      INTEGER,
+            title        TEXT,
+            report_json  TEXT NOT NULL,
+            created_by   TEXT,
+            created_at   TEXT NOT NULL
+        )
+        """
+    )
+    c.execute("CREATE INDEX IF NOT EXISTS idx_bm_reports_dataset ON benchmark_reports(dataset_id)")
+
+
 _MIGRATIONS = [
     (1, "projects + assignments + audit_log tables", _migrate_v1),
     (2, "project_id on datasets + Legacy project backfill", _migrate_v2),
@@ -790,6 +880,7 @@ _MIGRATIONS = [
     (15, "dataset_hierarchy_snapshot table", _migrate_v15),
     (16, "spans_scenarios table for threshold scenario tabs", _migrate_v16),
     (17, "user_ui_prefs table for dismissed tooltips", _migrate_v17),
+    (18, "benchmark packs, metrics, dataset config and saved reports", _migrate_v18),
 ]
 
 SPANS_SCENARIO_MAX = 5
@@ -3778,3 +3869,467 @@ def delete_spans_scenario(scenario_id: int) -> bool:
         cur = conn.execute("DELETE FROM spans_scenarios WHERE id = ?", (scenario_id,))
         conn.commit()
         return cur.rowcount > 0
+
+
+# ---------------------------------------------------------------------------
+# Benchmarking — packs, metric rows, per-dataset config, saved reports
+# ---------------------------------------------------------------------------
+
+BENCHMARK_PACK_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "benchmark_packs")
+DIRECTIONAL_SOURCE = "Directional - validate before client use"
+
+
+def _pack_row(row: Any) -> Dict[str, Any]:
+    d = dict(row)
+    d["is_builtin"] = bool(d.get("is_builtin"))
+    d["is_default"] = bool(d.get("is_default"))
+    return d
+
+
+def list_benchmark_packs(project_id: Optional[int] = None) -> List[Dict[str, Any]]:
+    """Built-in packs (global) plus any custom packs owned by this project."""
+    with _connect_ro() as conn:
+        rows = conn.execute(
+            """
+            SELECT p.*, (
+                SELECT COUNT(*) FROM benchmark_metrics m WHERE m.pack_id = p.id
+            ) AS metric_count
+            FROM benchmark_packs p
+            WHERE p.project_id IS NULL OR p.project_id = ?
+            ORDER BY p.is_builtin DESC, p.is_default DESC, p.name ASC
+            """,
+            (project_id,),
+        ).fetchall()
+    return [_pack_row(r) for r in rows]
+
+
+def get_benchmark_pack(pack_id: int) -> Optional[Dict[str, Any]]:
+    with _connect_ro() as conn:
+        row = conn.execute("SELECT * FROM benchmark_packs WHERE id = ?", (pack_id,)).fetchone()
+    return _pack_row(row) if row else None
+
+
+def get_default_benchmark_pack() -> Optional[Dict[str, Any]]:
+    with _connect_ro() as conn:
+        row = conn.execute(
+            "SELECT * FROM benchmark_packs WHERE is_default = 1 ORDER BY id LIMIT 1"
+        ).fetchone()
+    return _pack_row(row) if row else None
+
+
+def get_benchmark_metrics(pack_id: int) -> List[Dict[str, Any]]:
+    with _connect_ro() as conn:
+        rows = conn.execute(
+            "SELECT * FROM benchmark_metrics WHERE pack_id = ? ORDER BY scope, function, subfunction, metric_key",
+            (pack_id,),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def create_benchmark_pack(
+    *,
+    name: str,
+    metrics: List[Dict[str, Any]],
+    industry: Optional[str] = None,
+    region: Optional[str] = None,
+    size_band: Optional[str] = None,
+    currency: str = "USD",
+    effective_year: Optional[int] = None,
+    notes: Optional[str] = None,
+    project_id: Optional[int] = None,
+    created_by: Optional[str] = None,
+    source_type: str = "custom",
+    is_builtin: bool = False,
+    is_default: bool = False,
+) -> Dict[str, Any]:
+    now = datetime.utcnow().isoformat()
+    with _connect() as conn:
+        c = conn.cursor()
+        c.execute(
+            """
+            INSERT INTO benchmark_packs
+                (name, industry, region, size_band, currency, effective_year,
+                 source_type, is_builtin, is_default, project_id, created_by,
+                 notes, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                name, industry, region, size_band, currency, effective_year,
+                source_type, 1 if is_builtin else 0, 1 if is_default else 0,
+                project_id, created_by, notes, now, now,
+            ),
+        )
+        pack_id = c.lastrowid
+        _replace_benchmark_metrics(conn, pack_id, metrics)
+        conn.commit()
+    return get_benchmark_pack(pack_id)
+
+
+def _replace_benchmark_metrics(conn: PgConnection, pack_id: int, metrics: List[Dict[str, Any]]) -> None:
+    c = conn.cursor()
+    c.execute("DELETE FROM benchmark_metrics WHERE pack_id = ?", (pack_id,))
+    if not metrics:
+        return
+    c.executemany(
+        """
+        INSERT INTO benchmark_metrics
+            (pack_id, scope, function, subfunction, metric_key, unit,
+             p25, median, p75, direction, source, notes)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        [
+            (
+                pack_id,
+                m.get("scope"),
+                m.get("function"),
+                m.get("subfunction"),
+                m.get("metric_key"),
+                m.get("unit"),
+                m.get("p25"),
+                m.get("median"),
+                m.get("p75"),
+                m.get("direction"),
+                m.get("source"),
+                m.get("notes"),
+            )
+            for m in metrics
+        ],
+    )
+
+
+def update_benchmark_pack(
+    pack_id: int,
+    *,
+    metrics: Optional[List[Dict[str, Any]]] = None,
+    **fields: Any,
+) -> Optional[Dict[str, Any]]:
+    existing = get_benchmark_pack(pack_id)
+    if not existing:
+        return None
+
+    allowed = {"name", "industry", "region", "size_band", "currency",
+               "effective_year", "notes"}
+    updates = {k: v for k, v in fields.items() if k in allowed and v is not None}
+
+    with _connect() as conn:
+        if updates:
+            set_clause = ", ".join(f"{k} = ?" for k in updates)
+            conn.execute(
+                f"UPDATE benchmark_packs SET {set_clause}, updated_at = ? WHERE id = ?",
+                list(updates.values()) + [datetime.utcnow().isoformat(), pack_id],
+            )
+        if metrics is not None:
+            _replace_benchmark_metrics(conn, pack_id, metrics)
+            conn.execute(
+                "UPDATE benchmark_packs SET updated_at = ? WHERE id = ?",
+                (datetime.utcnow().isoformat(), pack_id),
+            )
+        conn.commit()
+    return get_benchmark_pack(pack_id)
+
+
+def delete_benchmark_pack(pack_id: int) -> bool:
+    """Built-in packs are protected — they are reseeded on every startup anyway."""
+    pack = get_benchmark_pack(pack_id)
+    if not pack:
+        return False
+    if pack.get("is_builtin"):
+        raise ValueError("Built-in benchmark packs cannot be deleted. Duplicate and edit instead.")
+    with _connect() as conn:
+        cur = conn.execute("DELETE FROM benchmark_packs WHERE id = ?", (pack_id,))
+        conn.commit()
+        return cur.rowcount > 0
+
+
+DEFAULT_BENCHMARK_CONFIG = {
+    "pack_id": None,
+    "context": {},
+    "function_map": {},
+    "realization_low": 0.6,
+    "realization_high": 0.7,
+    "target_span": 6.0,
+}
+
+
+def get_dataset_benchmark_config(dataset_id: int) -> Dict[str, Any]:
+    with _connect_ro() as conn:
+        row = conn.execute(
+            "SELECT * FROM dataset_benchmark_config WHERE dataset_id = ?", (dataset_id,)
+        ).fetchone()
+    if not row:
+        cfg = dict(DEFAULT_BENCHMARK_CONFIG)
+        default_pack = get_default_benchmark_pack()
+        cfg["pack_id"] = default_pack["id"] if default_pack else None
+        cfg["dataset_id"] = dataset_id
+        cfg["is_saved"] = False
+        return cfg
+
+    d = dict(row)
+    try:
+        context = json.loads(d.get("context_json") or "{}")
+    except (TypeError, json.JSONDecodeError):
+        context = {}
+    try:
+        function_map = json.loads(d.get("function_map_json") or "{}")
+    except (TypeError, json.JSONDecodeError):
+        function_map = {}
+    return {
+        "dataset_id": dataset_id,
+        "pack_id": d.get("pack_id"),
+        "context": context,
+        "function_map": function_map,
+        "realization_low": float(d.get("realization_low") or 0.6),
+        "realization_high": float(d.get("realization_high") or 0.7),
+        "target_span": float(d.get("target_span") or 6.0),
+        "updated_at": d.get("updated_at"),
+        "is_saved": True,
+    }
+
+
+def save_dataset_benchmark_config(
+    dataset_id: int,
+    *,
+    pack_id: Optional[int] = None,
+    context: Optional[Dict[str, Any]] = None,
+    function_map: Optional[Dict[str, str]] = None,
+    realization_low: Optional[float] = None,
+    realization_high: Optional[float] = None,
+    target_span: Optional[float] = None,
+) -> Dict[str, Any]:
+    current = get_dataset_benchmark_config(dataset_id)
+    now = datetime.utcnow().isoformat()
+    merged = {
+        "pack_id": pack_id if pack_id is not None else current.get("pack_id"),
+        "context": context if context is not None else current.get("context") or {},
+        "function_map": function_map if function_map is not None else current.get("function_map") or {},
+        "realization_low": float(realization_low if realization_low is not None else current["realization_low"]),
+        "realization_high": float(realization_high if realization_high is not None else current["realization_high"]),
+        "target_span": float(target_span if target_span is not None else current["target_span"]),
+    }
+
+    with _connect() as conn:
+        conn.execute(
+            """
+            INSERT INTO dataset_benchmark_config
+                (dataset_id, pack_id, context_json, function_map_json,
+                 realization_low, realization_high, target_span, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(dataset_id) DO UPDATE SET
+                pack_id = EXCLUDED.pack_id,
+                context_json = EXCLUDED.context_json,
+                function_map_json = EXCLUDED.function_map_json,
+                realization_low = EXCLUDED.realization_low,
+                realization_high = EXCLUDED.realization_high,
+                target_span = EXCLUDED.target_span,
+                updated_at = EXCLUDED.updated_at
+            """,
+            (
+                dataset_id,
+                merged["pack_id"],
+                json.dumps(merged["context"], default=str),
+                json.dumps(merged["function_map"], default=str),
+                merged["realization_low"],
+                merged["realization_high"],
+                merged["target_span"],
+                now,
+            ),
+        )
+        conn.commit()
+    return get_dataset_benchmark_config(dataset_id)
+
+
+def save_benchmark_report(
+    dataset_id: int,
+    report: Dict[str, Any],
+    *,
+    scenario_id: Optional[int] = None,
+    pack_id: Optional[int] = None,
+    title: Optional[str] = None,
+    created_by: Optional[str] = None,
+) -> int:
+    now = datetime.utcnow().isoformat()
+    with _connect() as conn:
+        c = conn.cursor()
+        c.execute(
+            """
+            INSERT INTO benchmark_reports
+                (dataset_id, scenario_id, pack_id, title, report_json, created_by, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (dataset_id, scenario_id, pack_id, title,
+             json.dumps(report, default=str), created_by, now),
+        )
+        report_id = c.lastrowid
+        conn.commit()
+    return report_id
+
+
+def list_benchmark_reports(dataset_id: int, limit: int = 20) -> List[Dict[str, Any]]:
+    with _connect_ro() as conn:
+        rows = conn.execute(
+            """
+            SELECT id, dataset_id, scenario_id, pack_id, title, created_by, created_at
+            FROM benchmark_reports WHERE dataset_id = ?
+            ORDER BY id DESC LIMIT ?
+            """,
+            (dataset_id, limit),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def get_benchmark_report(report_id: int) -> Optional[Dict[str, Any]]:
+    with _connect_ro() as conn:
+        row = conn.execute("SELECT * FROM benchmark_reports WHERE id = ?", (report_id,)).fetchone()
+    if not row:
+        return None
+    d = dict(row)
+    try:
+        d["report"] = json.loads(d.pop("report_json") or "{}")
+    except (TypeError, json.JSONDecodeError):
+        d["report"] = {}
+    return d
+
+
+def delete_benchmark_report(report_id: int) -> bool:
+    with _connect() as conn:
+        cur = conn.execute("DELETE FROM benchmark_reports WHERE id = ?", (report_id,))
+        conn.commit()
+        return cur.rowcount > 0
+
+
+# --- Built-in pack seeding ---------------------------------------------------
+
+def _expand_pack_json(raw: Dict[str, Any], shared_subfunctions: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Turn the compact [p25, median, p75] pack format into long metric rows."""
+    from services import benchmark_registry as reg
+
+    source = raw.get("source") or DIRECTIONAL_SOURCE
+    rows: List[Dict[str, Any]] = []
+
+    def _emit(scope: str, function: Optional[str], subfunction: Optional[str],
+              metric_key: str, triple: Any) -> None:
+        meta = reg.get_metric(metric_key)
+        if not meta or not isinstance(triple, (list, tuple)) or len(triple) != 3:
+            return
+        p25, median, p75 = (float(v) if v is not None else None for v in triple)
+        rows.append({
+            "scope": scope,
+            "function": function,
+            "subfunction": subfunction,
+            "metric_key": metric_key,
+            "unit": meta["unit"],
+            "p25": p25,
+            "median": median,
+            "p75": p75,
+            "direction": meta["direction"],
+            "source": source,
+            "notes": None,
+        })
+
+    for metric_key, triple in (raw.get("org") or {}).items():
+        _emit("org", None, None, metric_key, triple)
+
+    for function, metrics in (raw.get("functions") or {}).items():
+        for metric_key, triple in (metrics or {}).items():
+            _emit("function", function, None, metric_key, triple)
+
+    subfunctions: Dict[str, Any] = {}
+    if raw.get("inherit_subfunctions"):
+        subfunctions = {k: dict(v) for k, v in shared_subfunctions.items() if not k.startswith("_")}
+    for function, subs in (raw.get("subfunctions") or {}).items():
+        subfunctions.setdefault(function, {})
+        subfunctions[function].update(subs or {})
+
+    for function, subs in subfunctions.items():
+        for subfunction, metrics in (subs or {}).items():
+            for metric_key, triple in (metrics or {}).items():
+                _emit("subfunction", function, subfunction, metric_key, triple)
+
+    return rows
+
+
+def _seed_benchmark_packs() -> None:
+    """Load built-in packs from data/benchmark_packs/*.json.
+
+    Idempotent and non-destructive: a built-in pack is matched on
+    (name, effective_year) and its metric rows are replaced so edits to the
+    JSON take effect on restart, while custom packs are never touched.
+    """
+    if not os.path.isdir(BENCHMARK_PACK_DIR):
+        logger.info("No benchmark pack directory at %s — skipping seed", BENCHMARK_PACK_DIR)
+        return
+
+    shared_path = os.path.join(BENCHMARK_PACK_DIR, "_shared_subfunctions.json")
+    shared: Dict[str, Any] = {}
+    if os.path.exists(shared_path):
+        try:
+            with open(shared_path, "r", encoding="utf-8") as f:
+                shared = json.load(f)
+        except Exception as e:
+            logger.warning("Could not read shared sub-function benchmarks: %s", e)
+
+    seeded = 0
+    for filename in sorted(os.listdir(BENCHMARK_PACK_DIR)):
+        if not filename.endswith(".json") or filename.startswith("_"):
+            continue
+        path = os.path.join(BENCHMARK_PACK_DIR, filename)
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                raw = json.load(f)
+        except Exception as e:
+            logger.error("Invalid benchmark pack %s: %s", filename, e)
+            continue
+
+        name = raw.get("name")
+        if not name:
+            continue
+        effective_year = raw.get("effective_year")
+        metrics = _expand_pack_json(raw, shared)
+
+        try:
+            with _connect() as conn:
+                existing = conn.execute(
+                    "SELECT id FROM benchmark_packs WHERE name = ? AND is_builtin = 1 "
+                    "AND (effective_year = ? OR (effective_year IS NULL AND ? IS NULL))",
+                    (name, effective_year, effective_year),
+                ).fetchone()
+                now = datetime.utcnow().isoformat()
+                if existing:
+                    pack_id = existing["id"]
+                    conn.execute(
+                        """
+                        UPDATE benchmark_packs
+                        SET industry = ?, region = ?, size_band = ?, currency = ?,
+                            notes = ?, is_default = ?, updated_at = ?
+                        WHERE id = ?
+                        """,
+                        (
+                            raw.get("industry"), raw.get("region"), raw.get("size_band"),
+                            raw.get("currency") or "USD", raw.get("notes"),
+                            1 if raw.get("is_default") else 0, now, pack_id,
+                        ),
+                    )
+                else:
+                    c = conn.cursor()
+                    c.execute(
+                        """
+                        INSERT INTO benchmark_packs
+                            (name, industry, region, size_band, currency, effective_year,
+                             source_type, is_builtin, is_default, project_id, created_by,
+                             notes, created_at, updated_at)
+                        VALUES (?, ?, ?, ?, ?, ?, 'builtin', 1, ?, NULL, 'system', ?, ?, ?)
+                        """,
+                        (
+                            name, raw.get("industry"), raw.get("region"), raw.get("size_band"),
+                            raw.get("currency") or "USD", effective_year,
+                            1 if raw.get("is_default") else 0, raw.get("notes"), now, now,
+                        ),
+                    )
+                    pack_id = c.lastrowid
+                _replace_benchmark_metrics(conn, pack_id, metrics)
+                conn.commit()
+            seeded += 1
+        except Exception as e:
+            logger.error("Failed to seed benchmark pack %s: %s", name, e)
+
+    logger.info("Benchmark packs seeded: %d", seeded)

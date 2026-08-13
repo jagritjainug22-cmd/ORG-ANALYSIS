@@ -1160,6 +1160,184 @@ export const chatMessageStream = (
 };
 
 
+// ===========================================================================
+// Benchmarking
+// ===========================================================================
+
+export const benchmarkMetricCatalogue = () =>
+  axios.get(`${getProjectUrl()}/benchmark/metrics`, { headers: getHeaders() }).then(r => r.data);
+
+export const benchmarkListPacks = () =>
+  axios.get(`${getProjectUrl()}/benchmark/packs`, { headers: getHeaders() }).then(r => r.data);
+
+export const benchmarkGetPack = (packId) =>
+  axios.get(`${getProjectUrl()}/benchmark/packs/${packId}`, { headers: getHeaders() }).then(r => r.data);
+
+export const benchmarkUpdatePack = (packId, body) =>
+  axios.patch(`${getProjectUrl()}/benchmark/packs/${packId}`, body, { headers: jsonHeaders() }).then(r => r.data);
+
+export const benchmarkDeletePack = (packId) =>
+  axios.delete(`${getProjectUrl()}/benchmark/packs/${packId}`, { headers: getHeaders() }).then(r => r.data);
+
+export const benchmarkDuplicatePack = (packId, name) =>
+  axios.post(`${getProjectUrl()}/benchmark/packs/${packId}/duplicate`, { name }, { headers: jsonHeaders() })
+    .then(r => r.data);
+
+export const benchmarkUploadPack = (file) => {
+  const fd = new FormData();
+  fd.append("file", file);
+  return axios.post(`${getProjectUrl()}/benchmark/packs/upload`, fd, { headers: getHeaders() })
+    .then(r => r.data);
+};
+
+export const benchmarkDownloadTemplate = async (packId = null) => {
+  const res = await axios.get(`${getProjectUrl()}/benchmark/template`, {
+    headers: getHeaders(),
+    params: packId ? { pack_id: packId } : {},
+    responseType: "blob",
+  });
+  const url = URL.createObjectURL(res.data);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "orgsight_benchmark_template.xlsx";
+  a.click();
+  URL.revokeObjectURL(url);
+};
+
+export const benchmarkGetConfig = (datasetId) =>
+  axios.get(`${getProjectUrl()}/benchmark/config`, { headers: getHeaders(), params: { dataset_id: datasetId } })
+    .then(r => r.data);
+
+export const benchmarkSaveConfig = (body) =>
+  axios.put(`${getProjectUrl()}/benchmark/config`, body, { headers: jsonHeaders() }).then(r => r.data);
+
+export const benchmarkPreview = (body) =>
+  axios.post(`${getProjectUrl()}/benchmark/preview`, body, { headers: jsonHeaders(), timeout: 120000 })
+    .then(r => r.data);
+
+export const benchmarkListReports = (datasetId) =>
+  axios.get(`${getProjectUrl()}/benchmark/reports`, { headers: getHeaders(), params: { dataset_id: datasetId } })
+    .then(r => r.data);
+
+export const benchmarkGetReport = (reportId) =>
+  axios.get(`${getProjectUrl()}/benchmark/reports/${reportId}`, { headers: getHeaders() }).then(r => r.data);
+
+export const benchmarkSaveReport = (body) =>
+  axios.post(`${getProjectUrl()}/benchmark/reports`, body, { headers: jsonHeaders() }).then(r => r.data);
+
+export const benchmarkDeleteReport = (reportId) =>
+  axios.delete(`${getProjectUrl()}/benchmark/reports/${reportId}`, { headers: getHeaders() }).then(r => r.data);
+
+export const benchmarkExportReport = async (report, title = "OrgSight Benchmark Report") => {
+  const res = await axios.post(`${getProjectUrl()}/benchmark/export`, { report, title }, {
+    headers: jsonHeaders(), responseType: "blob", timeout: 120000,
+  });
+  const url = URL.createObjectURL(res.data);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "orgsight_benchmark_report.xlsx";
+  a.click();
+  URL.revokeObjectURL(url);
+};
+
+/**
+ * Stream the deep benchmark analysis over SSE.
+ *
+ * Event flow: status* -> deterministic -> (section_start, evidence?, token*, section_end)* -> done
+ *
+ * @param   {Object}   body      { dataset_id, scenario_id, pack_id?, section_ids?, focus? }
+ * @param   {Object}   handlers  { onStatus, onDeterministic, onSectionStart, onEvidence,
+ *                                 onToken, onSectionEnd, onDone, onError }
+ * @returns {Function} abort     call to cancel the stream
+ */
+export const benchmarkAnalysisStream = (body, handlers = {}) => {
+  const controller = new AbortController();
+  const {
+    onStatus, onDeterministic, onSectionStart, onEvidence,
+    onToken, onSectionEnd, onDone, onError,
+  } = handlers;
+
+  const run = async () => {
+    let response;
+    try {
+      response = await fetch(`${getProjectUrl()}/benchmark/analysis/stream`, {
+        method: "POST",
+        headers: { ...getHeaders(), "Content-Type": "application/json", Accept: "text/event-stream" },
+        body: JSON.stringify(body),
+        signal: controller.signal,
+      });
+    } catch (err) {
+      if (err.name !== "AbortError") onError?.(`Network error: ${err.message}`);
+      return;
+    }
+
+    if (!response.ok) {
+      let detail = `HTTP ${response.status}`;
+      try {
+        const payload = await response.json();
+        detail = payload?.detail?.detail || payload?.detail || detail;
+      } catch (_) { /* body was not JSON */ }
+      onError?.(detail);
+      return;
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder("utf-8");
+    let buffer = "";
+
+    const dispatch = {
+      status: onStatus,
+      deterministic: onDeterministic,
+      section_start: onSectionStart,
+      evidence: onEvidence,
+      section_end: onSectionEnd,
+      done: onDone,
+    };
+
+    const processChunk = (chunk) => {
+      buffer += chunk;
+      const events = buffer.split(/\n\n/);
+      buffer = events.pop() ?? "";
+
+      for (const rawEvent of events) {
+        if (!rawEvent.trim()) continue;
+        let eventType = "message";
+        let dataStr = "";
+        for (const line of rawEvent.split("\n")) {
+          if (line.startsWith("event:")) eventType = line.slice(6).trim();
+          else if (line.startsWith("data:")) dataStr = line.slice(5).trim();
+        }
+        if (!dataStr) continue;
+
+        let payload;
+        try {
+          payload = JSON.parse(dataStr);
+        } catch (_) {
+          payload = { text: dataStr };
+        }
+
+        if (eventType === "token") onToken?.(payload.section, payload.text ?? "");
+        else if (eventType === "error") onError?.(payload.message ?? "Unknown error");
+        else dispatch[eventType]?.(payload);
+      }
+    };
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        processChunk(decoder.decode(value, { stream: true }));
+      }
+      if (buffer.trim()) processChunk("\n\n");
+    } catch (err) {
+      if (err.name !== "AbortError") onError?.(`Stream read error: ${err.message}`);
+    }
+  };
+
+  run();
+  return () => controller.abort();
+};
+
 
 // ---------------------------------------------------------------------------
 

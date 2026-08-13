@@ -1,0 +1,106 @@
+{
+  "_comment": "Shared sub-function shares (percent of parent function FTE / cost). Merged into any pack that sets inherit_subfunctions=true; a pack's own subfunctions block overrides these. Share-of-parent-function is materially more stable across industries than share-of-total-org, which is why these are shared. Values are [p25, median, p75].",
+  "Finance": {
+    "Perform general accounting and reporting": {
+      "subfunc_fte_pct_of_function_fte": [18.0, 24.0, 30.0]
+    },
+    "Perform planning and management accounting": {
+      "subfunc_fte_pct_of_function_fte": [14.0, 19.0, 25.0]
+    },
+    "Process accounts payable and expense reimbursements": {
+      "subfunc_fte_pct_of_function_fte": [10.0, 15.0, 21.0]
+    },
+    "Perform revenue accounting": {
+      "subfunc_fte_pct_of_function_fte": [8.0, 12.0, 17.0]
+    },
+    "Process payroll": {
+      "subfunc_fte_pct_of_function_fte": [5.0, 8.0, 12.0]
+    },
+    "Manage treasury operations": {
+      "subfunc_fte_pct_of_function_fte": [3.0, 5.0, 8.0]
+    },
+    "Manage taxes": {
+      "subfunc_fte_pct_of_function_fte": [3.0, 5.0, 8.0]
+    },
+    "Manage internal controls": {
+      "subfunc_fte_pct_of_function_fte": [3.0, 5.0, 8.0]
+    }
+  },
+  "HR": {
+    "Recruit, source, and select employees": {
+      "subfunc_fte_pct_of_function_fte": [15.0, 22.0, 30.0]
+    },
+    "Develop and counsel employees": {
+      "subfunc_fte_pct_of_function_fte": [12.0, 18.0, 25.0]
+    },
+    "Reward and retain employees": {
+      "subfunc_fte_pct_of_function_fte": [10.0, 15.0, 21.0]
+    },
+    "Manage employee relations": {
+      "subfunc_fte_pct_of_function_fte": [8.0, 12.0, 17.0]
+    },
+    "Develop and manage human resources (HR) planning, policies, and strategies": {
+      "subfunc_fte_pct_of_function_fte": [8.0, 12.0, 17.0]
+    },
+    "Manage employee information and analytics": {
+      "subfunc_fte_pct_of_function_fte": [7.0, 11.0, 16.0]
+    },
+    "Manage employee communication": {
+      "subfunc_fte_pct_of_function_fte": [3.0, 6.0, 10.0]
+    }
+  },
+  "IT": {
+    "Develop and maintain information technology solutions": {
+      "subfunc_fte_pct_of_function_fte": [28.0, 36.0, 45.0]
+    },
+    "Deliver and support information technology services": {
+      "subfunc_fte_pct_of_function_fte": [22.0, 30.0, 38.0]
+    },
+    "Manage enterprise information": {
+      "subfunc_fte_pct_of_function_fte": [7.0, 11.0, 16.0]
+    },
+    "Develop and implement security, privacy, and data protection controls": {
+      "subfunc_fte_pct_of_function_fte": [6.0, 10.0, 15.0]
+    },
+    "Deploy information technology solutions": {
+      "subfunc_fte_pct_of_function_fte": [6.0, 9.0, 13.0]
+    },
+    "Manage the business of information technology": {
+      "subfunc_fte_pct_of_function_fte": [5.0, 8.0, 12.0]
+    },
+    "Develop and manage IT customer relationships": {
+      "subfunc_fte_pct_of_function_fte": [3.0, 6.0, 10.0]
+    }
+  },
+  "Procurement": {
+    "Procure materials and services": {
+      "subfunc_fte_pct_of_function_fte": [4.0, 8.0, 13.0]
+    },
+    "Plan for and align supply chain resources": {
+      "subfunc_fte_pct_of_function_fte": [3.0, 6.0, 10.0]
+    },
+    "Produce/Manufacture/Deliver product": {
+      "subfunc_fte_pct_of_function_fte": [45.0, 60.0, 74.0]
+    },
+    "Deliver products and services to customers": {
+      "subfunc_fte_pct_of_function_fte": [8.0, 14.0, 22.0]
+    },
+    "Manage logistics and warehousing": {
+      "subfunc_fte_pct_of_function_fte": [7.0, 12.0, 19.0]
+    }
+  },
+  "Compliance and Legal": {
+    "Manage compliance": {
+      "subfunc_fte_pct_of_function_fte": [28.0, 38.0, 48.0]
+    },
+    "Manage enterprise risk": {
+      "subfunc_fte_pct_of_function_fte": [20.0, 29.0, 39.0]
+    },
+    "Manage business resiliency": {
+      "subfunc_fte_pct_of_function_fte": [10.0, 17.0, 25.0]
+    },
+    "Manage remediation efforts": {
+      "subfunc_fte_pct_of_function_fte": [8.0, 15.0, 23.0]
+    }
+  }
+}

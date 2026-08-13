@@ -47,6 +47,7 @@ from services.filter_error_service import filter_errors
 from services.hierarchy_service import compute_avg_flc, compute_chains, compute_direct_span, compute_levels, compute_total_reports
 from services.logging_service import get_activity_logs, get_user_stats, write_activity_log
 from services.orgchart_render_service import render_scenario_svg, get_tree_structure
+from services.pptx_orgchart_service import add_orgchart_slides
 from services.orgchart_service import build_org_tree, build_tree_preserve_ancestors, make_json_serializable
 from services.formula_service import apply_formulas_to_records, evaluate_formula, validate_expression as formula_validate_expression
 from services.spans_layers_service import (
@@ -917,111 +918,43 @@ def _build_scenario_pptx(
     dataset: dict,
     scenario: dict,
     detail: str = "summary",
+    scope: str = "all",
+    root_id: Optional[str] = None,
 ) -> bytes:
     """Build a multi-slide PPTX with title, summary, scenario comparison,
-    phasing monthly timeline, org chart pages, and change log.
-    *detail* controls depth:
-      - ``overview``: title + summary + comparison + phasing + L1-L2 overview only
-      - ``summary``: same as overview (L1-L2 overview only, no subtree slides)
-      - ``full``: + recursive L1 team subtrees
+    phasing timeline, **editable** org chart shape slides, and change log.
+
+    *detail* controls how many org chart slides are produced:
+      - ``overview`` : title + summary + comparison + phasing + L1-L2 overview only
+      - ``summary``  : + one editable slide per direct-report function
+      - ``full``     : + recursive subtree slides for large teams
+
+    *scope* / *root_id* limit the org chart section:
+      - ``all``     : whole organisation
+      - ``subtree`` : only the subtree rooted at *root_id*
     """
     from pptx.util import Emu
 
-    emp_col = dataset["emp_col"]
-    mgr_col = dataset["mgr_col"]
-    jtc = dataset.get("job_title_col")
-    ftc = dataset.get("fte_col")
-    flc = dataset.get("flc_col")
-    ctc = dataset.get("country_col")
-
     summary_data = db_service.get_scenario_summary(scenario["id"])
-    change_log = db_service.get_change_log(scenario["id"])
-    tree = get_tree_structure(records, emp_col, mgr_col)
+    change_log   = db_service.get_change_log(scenario["id"])
 
     prs = Presentation()
-    prs.slide_width = Emu(12192000)   # 13.333 in
-    prs.slide_height = Emu(6858000)   # 7.5 in
-
-    svg_kwargs = dict(
-        emp_col=emp_col, mgr_col=mgr_col,
-        job_title_col=jtc, fte_col=ftc, flc_col=flc, country_col=ctc,
-    )
+    prs.slide_width  = Emu(12192000)   # 13.333 in
+    prs.slide_height = Emu(6858000)    # 7.5 in
 
     _add_pptx_title_slide(prs, dataset, scenario)
-
     _add_pptx_summary_slide(prs, summary_data, dataset, scenario, page_num=2)
-
     _add_pptx_comparison_slide(prs, dataset["id"], scenario["id"], scenario["name"], page_num=3)
-
     _add_pptx_phasing_slide(prs, scenario["id"], scenario["name"], page_num=4)
 
-    page = 5
-
-    overview_svg = render_scenario_svg(
-        records, **svg_kwargs,
-        title=f"Organization Chart — Overview (L1–L2)",
-        subtitle=f"{dataset['name']}  ·  {scenario['name']}",
-        max_depth=2,
+    # ── Editable org chart slides ──────────────────────────────────────────────
+    page = add_orgchart_slides(
+        prs, records, dataset, scenario,
+        scope=scope,
+        root_id_filter=root_id,
+        detail=detail,
+        page_start=5,
     )
-    try:
-        overview_png = _svg_to_png(overview_svg, max_width=3840)
-        _add_pptx_chart_slide(prs, overview_png, "Organization Chart — Overview (L1–L2)", scenario["name"], page)
-        page += 1
-    except Exception:
-        pass
-
-    if detail == "full":
-        for root_id in tree["roots"]:
-            l1_kids = tree["children"].get(root_id, [])
-            for kid_id in l1_kids:
-                rec = tree["by_id"].get(kid_id, {})
-                kid_title = str(rec.get(jtc) or rec.get("Job Title") or kid_id) if jtc else str(rec.get("Job Title") or kid_id)
-                kid_hc = tree["headcount"].get(kid_id, 0)
-                if kid_hc < 1:
-                    continue
-                subtree_svg = render_scenario_svg(
-                    records, **svg_kwargs,
-                    title=f"{kid_title} — Team Structure",
-                    subtitle=f"{kid_hc} headcount",
-                    root_id=kid_id,
-                    max_depth=3,
-                )
-                try:
-                    subtree_png = _svg_to_png(subtree_svg, max_width=3840)
-                    _add_pptx_chart_slide(
-                        prs, subtree_png,
-                        f"{kid_title} — Team Structure",
-                        scenario["name"], page,
-                    )
-                    page += 1
-                except Exception:
-                    pass
-
-                if kid_hc > 20:
-                    l2_kids = tree["children"].get(kid_id, [])
-                    for gk_id in l2_kids:
-                        gk_rec = tree["by_id"].get(gk_id, {})
-                        gk_title = str(gk_rec.get(jtc) or gk_rec.get("Job Title") or gk_id) if jtc else str(gk_rec.get("Job Title") or gk_id)
-                        gk_hc = tree["headcount"].get(gk_id, 0)
-                        if gk_hc < 5:
-                            continue
-                        deep_svg = render_scenario_svg(
-                            records, **svg_kwargs,
-                            title=f"{gk_title} — Detail",
-                            subtitle=f"{gk_hc} headcount",
-                            root_id=gk_id,
-                            max_depth=4,
-                        )
-                        try:
-                            deep_png = _svg_to_png(deep_svg, max_width=3840)
-                            _add_pptx_chart_slide(
-                                prs, deep_png,
-                                f"{gk_title} — Detail",
-                                scenario["name"], page,
-                            )
-                            page += 1
-                        except Exception:
-                            pass
 
     if change_log:
         page = _add_pptx_changelog_slides(prs, change_log, scenario["name"], page)
@@ -1030,40 +963,6 @@ def _build_scenario_pptx(
     prs.save(out)
     return out.getvalue()
 
-
-# ===================================================================
-# Pipeline endpoints (stateless -- data in body, no DB interaction)
-# ===================================================================
-
-@router.post("/upload")
-async def upload(
-    file: UploadFile,
-    request: Request,
-    project_id: int,
-    user: dict = Depends(require_project_access()),
-):
-    username = user["username"]
-    try:
-        contents = await file.read()
-        df = read_excel_file(BytesIO(contents))
-        rows_count = len(df)
-        records = df.to_dict(orient="records")
-        safe_records = jsonable_encoder(records)
-        write_activity_log(
-            username=username, action="process", module="Upload",
-            rows_output=rows_count, status="success",
-            details=f"Uploaded file: {file.filename}",
-        )
-        return {"columns": df.columns.tolist(), "records": safe_records}
-    except Exception as e:
-        write_activity_log(
-            username=username, action="process", module="Upload",
-            status="error", details=str(e),
-        )
-        raise
-
-
-@router.post("/cleanup", response_class=ORJSONResponse)
 
 # ===================================================================
 # Pipeline endpoints (stateless -- data in body, no DB interaction)
@@ -3456,12 +3355,17 @@ def db_export_scenario_ppt(
     scenario_id: int,
     project_id: int,
     detail: str = Query("summary", regex="^(overview|summary|full)$"),
+    scope: str = Query("all", regex="^(all|subtree)$"),
+    root_id: Optional[str] = Query(None),
     _user: dict = Depends(require_project_access()),
 ):
     scenario, dataset = _require_scenario_in_project(scenario_id, project_id)
     records = db_service.get_scenario_records(scenario_id)
 
-    pptx_bytes = _build_scenario_pptx(records, dataset, scenario, detail=detail)
+    pptx_bytes = _build_scenario_pptx(
+        records, dataset, scenario,
+        detail=detail, scope=scope, root_id=root_id,
+    )
 
     safe_name = "".join(c for c in scenario["name"] if c.isalnum() or c in "-_") or "scenario"
     return StreamingResponse(
@@ -3469,6 +3373,7 @@ def db_export_scenario_ppt(
         media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
         headers={"Content-Disposition": f'attachment; filename="orgsight_{safe_name}.pptx"'},
     )
+
 
 def _render_summary_table_svg(summary, dataset, scenario) -> str:
     from html import escape
@@ -4051,3 +3956,32 @@ def export_activity_impact(
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f'attachment; filename="orgsight_activity_{safe_name}.xlsx"'},
     )
+
+
+# ---------------------------------------------------------------------------
+# User UI preferences (dismissed tooltips, per-user, no project scope needed)
+# ---------------------------------------------------------------------------
+
+class UiPrefBody(BaseModel):
+    value: str
+
+
+@router.get("/db/user/prefs/{pref_key}")
+def get_user_ui_pref(
+    pref_key: str,
+    project_id: int,
+    user: dict = Depends(require_project_access()),
+):
+    value = db_service.get_ui_pref(user["id"], pref_key)
+    return {"pref_key": pref_key, "value": value}
+
+
+@router.post("/db/user/prefs/{pref_key}")
+def set_user_ui_pref(
+    pref_key: str,
+    body: UiPrefBody,
+    project_id: int,
+    user: dict = Depends(require_project_access()),
+):
+    db_service.set_ui_pref(user["id"], pref_key, body.value)
+    return {"status": "ok", "pref_key": pref_key, "value": body.value}

@@ -45,6 +45,8 @@ import {
   dbBulkFlag,
   dbBulkEditProperty,
   dbBulkMove,
+  dbGetUiPref,
+  dbSetUiPref,
 } from "../api/backend";
 import {
   CARD_WIDTH,
@@ -57,6 +59,7 @@ import {
   collectDescendants,
   autoCollapseAtDepth,
   isSignificantMove,
+  isSameLevelDrop,
   fmtCompactCurrency,
   fmtNumber,
 } from "./orgchart/orgChartLayout";
@@ -77,6 +80,8 @@ import OrgActivityPanel from "./orgchart/OrgActivityPanel";
 import OrgChartLoadingOverlay from "./orgchart/OrgChartLoadingOverlay";
 import { FOCUS_ZOOM, ROOT_ENTRY_ZOOM, computeFocusPan } from "./orgchart/orgChartFocus";
 import { rankSearchMatches } from "./orgchart/orgChartSearch";
+import OrgChartHelp from "./orgchart/OrgChartHelp";
+import OrgExportModal from "./orgchart/OrgExportModal";
 
 /**
  * OrgSight 2.0 -- interactive org chart.
@@ -207,7 +212,27 @@ export default function OrgChart({
   // synchronous access in handleDndEnd; the state triggers card re-renders.
   const dragOldParentLevelRef = useRef(null);
   const [dragOldParentLevel, setDragOldParentLevel] = useState(null);
+  // Level of the node being dragged (used for same-level drop detection)
+  const dragSrcLevelRef = useRef(null);
+  const [dragSrcLevel, setDragSrcLevel] = useState(null);
   const skipDropAnimRef = useRef(false);
+
+  // Last edited/moved node -- used to refocus camera after layout recalculates
+  const lastEditedIdRef = useRef(null);
+
+  // Help tooltip: always mounted (collapsed pill by default) so it's never
+  // missing; auto-expands once we confirm from the DB that this user hasn't
+  // dismissed it before. Starting `false` (collapsed, not hidden) means the
+  // affordance is visible immediately, even before the DB check resolves.
+  const [helpOpen, setHelpOpen] = useState(false);
+  const helpAutoExpandDoneRef = useRef(false);
+
+  // View-only hint: dismissible per view-mode session. Reappears the next
+  // time the user exits Edit Mode (fresh reminder), not permanently hidden.
+  const [viewOnlyHintDismissed, setViewOnlyHintDismissed] = useState(false);
+  useEffect(() => {
+    if (editMode) setViewOnlyHintDismissed(false);
+  }, [editMode]);
 
   // Modals
   const [compareOpen, setCompareOpen] = useState(false);
@@ -215,6 +240,7 @@ export default function OrgChart({
   const [addChildFor, setAddChildFor] = useState(null);
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
   const [exportingLabel, setExportingLabel] = useState(null); // e.g. "PowerPoint – Summary"
+  const [exportModalOpen, setExportModalOpen] = useState(false);
   const exportBtnRef = useRef(null);
   const searchWrapRef = useRef(null);
 
@@ -455,6 +481,29 @@ export default function OrgChart({
     }
   }, [datasetId]);
 
+  // Check whether this user has already dismissed the help tooltip before.
+  // If not (first visit), auto-expand it. The collapsed pill is already
+  // visible regardless -- this only decides whether to auto-open the panel.
+  useEffect(() => {
+    if (!inDbMode || helpAutoExpandDoneRef.current) return;
+    dbGetUiPref("org_chart_help_dismissed")
+      .then((val) => {
+        if (val !== "1" && !helpAutoExpandDoneRef.current) {
+          helpAutoExpandDoneRef.current = true;
+          setHelpOpen(true);
+        }
+      })
+      .catch(() => {}); // network hiccup: keep the collapsed pill, don't force-open
+  }, [inDbMode]);
+
+  const handleHelpDismiss = useCallback(() => {
+    helpAutoExpandDoneRef.current = true;
+    setHelpOpen(false);
+    if (inDbMode) {
+      dbSetUiPref("org_chart_help_dismissed", "1").catch(() => {});
+    }
+  }, [inDbMode]);
+
   // On dataset open: load activity, surface banner if there are unseen changes
   useEffect(() => {
     if (!inDbMode || !datasetId) return;
@@ -630,6 +679,22 @@ export default function OrgChart({
     if (!records) return new Map();
     return computeSubtreeStats(records, idOf, parentOf, { fteOf, flcOf, flaggedOf });
   }, [records, idOf, parentOf, fteOf, flcOf, flaggedOf]);
+
+  // Build the list of L1 function heads (direct children of roots) for the export modal.
+  const l1Functions = useMemo(() => {
+    if (!index.roots.length) return [];
+    const fns = [];
+    for (const rootId of index.roots) {
+      for (const kidId of (index.childrenByParent.get(rootId) || [])) {
+        const rec = index.byId.get(kidId);
+        if (!rec) continue;
+        const title = (jobTitleCol ? String(rec[jobTitleCol] || "") : "") || String(rec["Job Title"] || kidId);
+        const hc = stats.get(kidId)?.headcount ?? 0;
+        fns.push({ id: kidId, title, headcount: hc });
+      }
+    }
+    return fns;
+  }, [index, jobTitleCol, stats]);
 
   // Hidden ids from search + department + job title + function filters; ranked search matches
   const { hidden, searchMatches } = useMemo(() => {
@@ -937,6 +1002,7 @@ export default function OrgChart({
   };
 
   const handleMove = async (empId, newMgrId) => {
+    lastEditedIdRef.current = String(empId);
     await applyAndPersist(
       (recs) =>
         recs.map((r) =>
@@ -964,6 +1030,7 @@ export default function OrgChart({
   };
 
   const handleFlag = async (empId, flagged, effectiveDate = null) => {
+    lastEditedIdRef.current = String(empId);
     const subtree = collectDescendants(String(empId), index.childrenByParent);
     await applyAndPersist(
       (recs) =>
@@ -1065,10 +1132,13 @@ export default function OrgChart({
       ? index.byId.get(String(node.__mgr_id))
       : null;
     const oldLevel = oldMgr ? Number(oldMgr.Level) || 0 : 0;
+    const srcLevel = Number(node?.Level) || 0;
 
     dragDescendantsRef.current = collectDescendants(empId, index.childrenByParent);
     dragOldParentLevelRef.current = oldLevel;
+    dragSrcLevelRef.current = srcLevel;
     setDragOldParentLevel(oldLevel);
+    setDragSrcLevel(srcLevel);
     setActiveDragId(empId);
   }, [index]);
 
@@ -1080,8 +1150,10 @@ export default function OrgChart({
       skipDropAnimRef.current = false;
       setActiveDragId(null);
       setDragOldParentLevel(null);
+      setDragSrcLevel(null);
       dragDescendantsRef.current = new Set();
       dragOldParentLevelRef.current = null;
+      dragSrcLevelRef.current = null;
       return;
     }
 
@@ -1089,33 +1161,40 @@ export default function OrgChart({
     const targetNode = index.byId.get(targetId);
     const targetLevel = targetNode ? Number(targetNode.Level) || 0 : 0;
     const oldParentLevel = dragOldParentLevelRef.current ?? 0;
+    const srcLevel = dragSrcLevelRef.current ?? 0;
+    const isSameLvl = isSameLevelDrop(targetLevel, oldParentLevel, srcLevel);
 
+    // Block: self-drop, dropping onto own descendant, or true downward (not same-level)
     if (
       srcId === targetId ||
       dragDescendantsRef.current.has(targetId) ||
-      targetLevel > oldParentLevel
+      (targetLevel > oldParentLevel && !isSameLvl)
     ) {
       skipDropAnimRef.current = false;
       setActiveDragId(null);
       setDragOldParentLevel(null);
+      setDragSrcLevel(null);
       dragDescendantsRef.current = new Set();
       dragOldParentLevelRef.current = null;
+      dragSrcLevelRef.current = null;
       return;
     }
 
     skipDropAnimRef.current = true;
     const result = isSignificantMove(srcId, targetId, index);
-    const descCopy = new Set(dragDescendantsRef.current);
     dragDescendantsRef.current = new Set();
     dragOldParentLevelRef.current = null;
+    dragSrcLevelRef.current = null;
 
     if (result.significant) {
       setPendingMove({ srcId, targetId, reasons: result.reasons });
       setActiveDragId(null);
       setDragOldParentLevel(null);
+      setDragSrcLevel(null);
     } else {
       setActiveDragId(null);
       setDragOldParentLevel(null);
+      setDragSrcLevel(null);
       handleMove(srcId, targetId);
     }
   }, [index, handleMove]);
@@ -1336,15 +1415,31 @@ export default function OrgChart({
     navigateToNode(match.id, { mode: "focus" });
   }, [navigateToNode]);
 
-  const onWheel = (e) => {
-    if (!e.ctrlKey && !e.metaKey) return;
+  const onWheelLogic = useCallback((e) => {
+    // Always zoom on wheel scroll (no Ctrl required).
+    // Use smaller factor for trackpad (deltaMode 0 with small deltas) vs mouse wheel.
     e.preventDefault();
-    const factor = e.deltaY < 0 ? 1.1 : 1 / 1.1;
+    const isTrackpad = Math.abs(e.deltaY) < 50 && e.deltaMode === 0;
+    const factor = e.deltaY < 0
+      ? (isTrackpad ? 1.04 : 1.12)
+      : (isTrackpad ? 1 / 1.04 : 1 / 1.12);
     const rect = viewportRef.current?.getBoundingClientRect();
     const anchorX = rect ? e.clientX - rect.left : viewportRef.current?.clientWidth / 2 ?? 600;
     const anchorY = rect ? e.clientY - rect.top : viewportRef.current?.clientHeight / 2 ?? 400;
     setZoomAt((z) => z * factor, anchorX, anchorY);
-  };
+  }, [setZoomAt]);
+
+  // Attach wheel listener as non-passive so preventDefault() actually prevents
+  // browser scroll/page-zoom. React's onWheel synthetic event is passive in some builds.
+  useEffect(() => {
+    const el = viewportRef.current;
+    if (!el) return;
+    el.addEventListener("wheel", onWheelLogic, { passive: false });
+    return () => el.removeEventListener("wheel", onWheelLogic);
+  }, [onWheelLogic]);
+
+  // Keep the React synthetic onWheel for completeness (no-op body; the native handler does the work)
+  const onWheel = undefined;
 
   // Home button: move camera to root, no selection change.
   const centerOnRoot = useCallback(() => {
@@ -1376,6 +1471,18 @@ export default function OrgChart({
   useEffect(() => {
     hasAutoCenteredRef.current = false;
   }, [datasetId, activeScenarioId]);
+
+  // After a move/flag the layout recomputes. Once the target node appears in the
+  // updated layout, gently pan the camera to keep it in view without changing zoom.
+  useEffect(() => {
+    const targetId = lastEditedIdRef.current;
+    if (!targetId || !layout.nodes.has(targetId)) return;
+    lastEditedIdRef.current = null;
+    requestAnimationFrame(() => {
+      cameraToNodeRef.current?.(targetId, { zoom: zoomRef.current });
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [layout]);
 
   // Re-center viewport when dropdown filters change so the user isn't left
   // staring at empty space after the tree shrinks/moves.
@@ -2266,27 +2373,11 @@ export default function OrgChart({
                 <>
                   <ExportGroupLabel label="PowerPoint (.pptx)" />
                   <ExportItem
-                    label="Overview"
-                    desc="Title + KPIs + L1-L2 chart"
+                    label="Export PowerPoint…"
+                    desc="Choose scope and detail level"
                     onClick={() => {
-                      const s = (scenarios || []).find((x) => x.id === activeScenarioId);
-                      runExport("PowerPoint – Overview", () => dbExportPpt(activeScenarioId, s?.name || "scenario", "overview"));
-                    }}
-                  />
-                  <ExportItem
-                    label="Summary"
-                    desc="Overview + subtree slides per L1 report"
-                    onClick={() => {
-                      const s = (scenarios || []).find((x) => x.id === activeScenarioId);
-                      runExport("PowerPoint – Summary", () => dbExportPpt(activeScenarioId, s?.name || "scenario", "summary"));
-                    }}
-                  />
-                  <ExportItem
-                    label="Full Detail"
-                    desc="Summary + deep drill-down for large teams"
-                    onClick={() => {
-                      const s = (scenarios || []).find((x) => x.id === activeScenarioId);
-                      runExport("PowerPoint – Full Detail", () => dbExportPpt(activeScenarioId, s?.name || "scenario", "full"));
+                      setExportMenuOpen(false);
+                      setExportModalOpen(true);
                     }}
                   />
                   <ExportGroupLabel label="PDF" />
@@ -2526,7 +2617,6 @@ export default function OrgChart({
           onMouseMove={onCanvasMouseMove}
           onMouseUp={onCanvasMouseUp}
           onMouseLeave={onCanvasMouseUp}
-          onWheel={onWheel}
           style={{
             flex: 1,
             position: "relative",
@@ -2714,6 +2804,7 @@ export default function OrgChart({
                   activeDragId={activeDragId}
                   dragDescendants={dragDescendantsRef.current}
                   dragOldParentLevel={dragOldParentLevel}
+                  dragSrcLevel={dragSrcLevel}
                   mutationState={mutationStates.get(id)}
                 />
               );
@@ -2805,6 +2896,72 @@ export default function OrgChart({
             jobTitleCol={jobTitleCol}
             editMode={editMode}
           />
+
+          {/* Help tooltip — collapsible shortcuts & edit guide. Always mounted
+              (collapsed pill or expanded panel) so it never fully disappears. */}
+          <OrgChartHelp
+            open={helpOpen}
+            onOpenChange={setHelpOpen}
+            onDismiss={handleHelpDismiss}
+          />
+
+          {/* View-only hint — shown whenever Edit Mode is off, so users know
+              how to start moving/flagging/editing FTEs. Small, top-right, dismissible. */}
+          {!editMode && !isLockedByOther && !viewOnlyHintDismissed && (
+            <div
+              style={{
+                position: "absolute",
+                top: 12,
+                right: 16,
+                zIndex: 90,
+                display: "flex",
+                alignItems: "center",
+                gap: 4,
+                padding: "4px 6px 4px 10px",
+                borderRadius: 16,
+                border: `1px solid ${AM.border}`,
+                background: "rgba(255,255,255,0.92)",
+                boxShadow: "0 2px 8px rgba(1,36,74,0.10)",
+                backdropFilter: "blur(4px)",
+              }}
+            >
+              <button
+                onClick={(e) => { e.stopPropagation(); toggleEditMode(); }}
+                title="Click to enter Edit Mode"
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 5,
+                  background: "transparent",
+                  border: "none",
+                  color: AM.navy,
+                  fontSize: 11,
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  padding: 0,
+                  whiteSpace: "nowrap",
+                }}
+              >
+                <span aria-hidden style={{ fontSize: 11 }}>🔒</span>
+                View-only — click <strong>Edit Mode</strong> to edit
+              </button>
+              <button
+                onClick={(e) => { e.stopPropagation(); setViewOnlyHintDismissed(true); }}
+                title="Dismiss"
+                style={{
+                  background: "transparent",
+                  border: "none",
+                  color: "#94a3b8",
+                  cursor: "pointer",
+                  fontSize: 13,
+                  lineHeight: 1,
+                  padding: "0 2px",
+                }}
+              >
+                ✕
+              </button>
+            </div>
+          )}
 
           {/* Floating pan controls. Each click shifts the stage by a fixed
               screen-pixel amount so users can scroll wide / tall trees
@@ -2921,6 +3078,25 @@ export default function OrgChart({
           onCancel={() => setPendingMove(null)}
         />
       )}
+      <OrgExportModal
+        open={exportModalOpen}
+        onClose={() => setExportModalOpen(false)}
+        onExport={({ detail, scope, rootId }) => {
+          const s = (scenarios || []).find((x) => x.id === activeScenarioId);
+          const label = `PowerPoint – ${detail.charAt(0).toUpperCase() + detail.slice(1)}`;
+          runExport(label, () => dbExportPpt(activeScenarioId, s?.name || "scenario", detail, scope, rootId));
+        }}
+        scenarioName={(scenarios || []).find((x) => x.id === activeScenarioId)?.name || ""}
+        l1Functions={l1Functions}
+        focusedNodeId={selectedId || focusedNodeId}
+        focusedNodeTitle={(() => {
+          const nid = selectedId || focusedNodeId;
+          if (!nid) return null;
+          const rec = index.byId.get(nid);
+          if (!rec) return null;
+          return (jobTitleCol ? String(rec[jobTitleCol] || "") : "") || String(rec["Job Title"] || nid);
+        })()}
+      />
     </div>
   );
 }

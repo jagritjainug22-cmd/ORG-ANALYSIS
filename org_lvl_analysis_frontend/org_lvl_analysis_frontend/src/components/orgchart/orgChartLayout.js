@@ -444,10 +444,22 @@ export const SIGNIFICANT_MOVE_LEVEL_DELTA = 2;
 /**
  * L1 = top of hierarchy (CEO), higher numbers = less senior.
  * A drop is downward (invalid) when the target's level number exceeds the
- * dragged node's current parent's level number.
+ * dragged node's current parent's level number AND is also deeper than the
+ * source node itself (pure same-level peer moves are allowed with a warning).
  */
-export function isDownwardDrop(targetLevel, oldParentLevel) {
+export function isDownwardDrop(targetLevel, oldParentLevel, srcLevel) {
+  // If target is at the same level as the source, it's a peer move (allowed with warning)
+  if (srcLevel != null && targetLevel === srcLevel) return false;
   return targetLevel > oldParentLevel;
+}
+
+/**
+ * Returns true when the target is a same-level peer of the source node.
+ * These moves are allowed but trigger a confirmation warning.
+ */
+export function isSameLevelDrop(targetLevel, oldParentLevel, srcLevel) {
+  if (srcLevel == null) return false;
+  return targetLevel === srcLevel && targetLevel > oldParentLevel;
 }
 
 const FUNCTION_COL_CANDIDATES = [
@@ -498,8 +510,15 @@ export function isSignificantMove(srcId, targetId, index) {
 
   const oldMgrId = srcNode.__mgr_id;
   const oldMgr = oldMgrId ? index.byId.get(String(oldMgrId)) : null;
+  const srcLevel = Number(srcNode.Level) || 0;
   const targetLevel = Number(targetNode.Level) || 0;
   const oldMgrLevel = oldMgr ? Number(oldMgr.Level) || 0 : targetLevel;
+
+  // Same-level peer move: target is at the same depth as the source node
+  if (targetLevel === srcLevel && targetLevel > oldMgrLevel) {
+    reasons.push(`same-level:L${srcLevel}`);
+  }
+
   const delta = oldMgrLevel - targetLevel;
   if (delta >= SIGNIFICANT_MOVE_LEVEL_DELTA) {
     reasons.push(`level-jump:L${oldMgrLevel}\u2192L${targetLevel}`);

@@ -15,6 +15,9 @@ function parseReasons(reasons) {
       const fromNum = Number(fromL.replace("L", ""));
       const toNum = Number(toL.replace("L", ""));
       parts.push({ type: "level", from: fromL, to: toL, delta: fromNum - toNum });
+    } else if (r.startsWith("same-level:")) {
+      const lvl = r.split(":")[1];
+      parts.push({ type: "same-level", level: lvl });
     }
   }
   return parts;
@@ -45,14 +48,18 @@ export default function OrgMoveConfirmModal({
   const subtree = parsed.find((p) => p.type === "subtree");
   const func = parsed.find((p) => p.type === "function");
   const level = parsed.find((p) => p.type === "level");
+  const sameLevel = parsed.find((p) => p.type === "same-level");
 
   const headline = subtree
     ? `Move ${srcName} and ${subtree.count} reports under ${targetName}?`
     : `Move ${srcName} under ${targetName}?`;
 
   const details = [];
+  if (sameLevel) details.push(`The reporting manager is at the same level. Please review and confirm before proceeding.`);
   if (func) details.push(`This will cross from ${func.from} to ${func.to}.`);
   if (level) details.push(`This moves up ${level.delta} level${level.delta > 1 ? "s" : ""} (${level.from} to ${level.to}).`);
+
+  const warnColor = sameLevel && !func && !level ? "#d97706" : AM.navy;
 
   return (
     <div
@@ -73,7 +80,7 @@ export default function OrgMoveConfirmModal({
           background: "#fff",
           borderRadius: 12,
           padding: "28px 32px",
-          maxWidth: 440,
+          maxWidth: 460,
           width: "90%",
           boxShadow: "0 20px 60px rgba(0,0,0,0.2)",
           fontFamily: "Inter, system-ui, sans-serif",
@@ -84,10 +91,10 @@ export default function OrgMoveConfirmModal({
             margin: "0 0 8px",
             fontSize: 16,
             fontWeight: 600,
-            color: AM.navy,
+            color: warnColor,
           }}
         >
-          Confirm Move
+          {sameLevel && !func && !level ? "⚠ Same-Level Move" : "Confirm Move"}
         </h3>
 
         <p style={{ margin: "0 0 6px", fontSize: 14, color: "#333", lineHeight: 1.5 }}>
@@ -126,7 +133,7 @@ export default function OrgMoveConfirmModal({
               padding: "8px 18px",
               borderRadius: 6,
               border: "none",
-              background: AM.gold,
+              background: sameLevel && !func && !level ? "#d97706" : AM.gold,
               color: "#fff",
               cursor: "pointer",
               fontSize: 13,

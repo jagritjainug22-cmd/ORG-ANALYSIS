@@ -754,6 +754,24 @@ def _migrate_v16(conn: PgConnection) -> None:
     )
 
 
+def _migrate_v17(conn: PgConnection) -> None:
+    """v17: user_ui_prefs -- per-user key/value store for UI preferences (e.g. dismissed tooltips)."""
+    c = conn.cursor()
+    c.execute(
+        f"""
+        CREATE TABLE IF NOT EXISTS user_ui_prefs (
+            id         {_ID_PK},
+            user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            pref_key   TEXT NOT NULL,
+            pref_value TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            UNIQUE (user_id, pref_key)
+        )
+        """
+    )
+    c.execute("CREATE INDEX IF NOT EXISTS idx_uiprefs_user ON user_ui_prefs(user_id)")
+
+
 _MIGRATIONS = [
     (1, "projects + assignments + audit_log tables", _migrate_v1),
     (2, "project_id on datasets + Legacy project backfill", _migrate_v2),
@@ -771,6 +789,7 @@ _MIGRATIONS = [
     (14, "dataset_rationalisation_state table", _migrate_v14),
     (15, "dataset_hierarchy_snapshot table", _migrate_v15),
     (16, "spans_scenarios table for threshold scenario tabs", _migrate_v16),
+    (17, "user_ui_prefs table for dismissed tooltips", _migrate_v17),
 ]
 
 SPANS_SCENARIO_MAX = 5
@@ -2637,6 +2656,36 @@ def mark_dataset_seen(dataset_id: int, user_id: int) -> str:
         )
         conn.commit()
     return now
+
+
+# ---------------------------------------------------------------------------
+# User UI preferences (per-user key/value, e.g. dismissed help tooltips)
+# ---------------------------------------------------------------------------
+
+def get_ui_pref(user_id: int, pref_key: str) -> Optional[str]:
+    """Return the stored value for (user_id, pref_key), or None if not set."""
+    with _connect_ro() as conn:
+        row = conn.execute(
+            "SELECT pref_value FROM user_ui_prefs WHERE user_id = ? AND pref_key = ?",
+            (user_id, pref_key),
+        ).fetchone()
+        return row["pref_value"] if row else None
+
+
+def set_ui_pref(user_id: int, pref_key: str, pref_value: str) -> None:
+    """Upsert (user_id, pref_key) = pref_value."""
+    now = datetime.utcnow().isoformat()
+    with _connect() as conn:
+        conn.execute(
+            """
+            INSERT INTO user_ui_prefs (user_id, pref_key, pref_value, updated_at)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(user_id, pref_key)
+            DO UPDATE SET pref_value = EXCLUDED.pref_value, updated_at = EXCLUDED.updated_at
+            """,
+            (user_id, pref_key, pref_value, now),
+        )
+        conn.commit()
 
 
 def get_dataset_recent_changes(

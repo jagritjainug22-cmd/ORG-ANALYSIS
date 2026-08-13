@@ -785,13 +785,20 @@ export const dbExportRecords = async (scenarioId, scenarioName = "scenario") => 
   downloadBlobAs(res.data, `orgsight_records_${scenarioName.replace(/[^a-z0-9-_]/gi, "") || "scenario"}.xlsx`);
 };
 
-export const dbExportPpt = async (scenarioId, scenarioName = "scenario", detail = "summary") => {
+export const dbExportPpt = async (
+  scenarioId,
+  scenarioName = "scenario",
+  detail = "summary",
+  scope = "all",
+  rootId = null,
+) => {
+  const params = { detail, scope };
+  if (rootId) params.root_id = rootId;
   const res = await axios.get(`${getProjectUrl()}/db/scenarios/${scenarioId}/export/ppt`, {
-    headers: getHeaders(), responseType: "blob", params: { detail },
+    headers: getHeaders(), responseType: "blob", params,
   });
   downloadBlobAs(res.data, `orgsight_${scenarioName.replace(/[^a-z0-9-_]/gi, "") || "scenario"}.pptx`);
 };
-
 
 export const dbExportPdf = async (scenarioId, scenarioName = "scenario", detail = "summary") => {
   const res = await axios.get(`${getProjectUrl()}/db/scenarios/${scenarioId}/export/pdf`, {
@@ -805,6 +812,15 @@ export const dbExportSvg = async (scenarioId, scenarioName = "scenario") => {
   downloadBlobAs(res.data, `orgsight_${scenarioName.replace(/[^a-z0-9-_]/gi, "") || "scenario"}.svg`);
 };
 
+// UI preferences (per-user, persisted in DB -- used for dismissed tooltips etc.)
+export const dbGetUiPref = async (prefKey) => {
+  const res = await axios.get(`${getProjectUrl()}/db/user/prefs/${prefKey}`, { headers: getHeaders() });
+  return res.data.value; // string | null
+};
+
+export const dbSetUiPref = async (prefKey, value) => {
+  await axios.post(`${getProjectUrl()}/db/user/prefs/${prefKey}`, { value }, { headers: jsonHeaders() });
+};
 
 // =================================================================
 // Admin API

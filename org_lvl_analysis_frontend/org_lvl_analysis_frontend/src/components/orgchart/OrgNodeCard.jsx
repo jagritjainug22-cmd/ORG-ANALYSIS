@@ -8,6 +8,7 @@ import {
   fmtCompactCurrency,
   fmtNumber,
   isDownwardDrop,
+  isSameLevelDrop,
 } from "./orgChartLayout";
 import { FOCUSED_CARD_SCALE } from "./orgChartFocus";
 
@@ -52,6 +53,7 @@ function OrgNodeCardImpl({
   activeDragId,
   dragDescendants,
   dragOldParentLevel,
+  dragSrcLevel,
   mutationState,
 }) {
   const empId = String(record.__emp_id ?? record[empCol] ?? "");
@@ -79,10 +81,15 @@ function OrgNodeCardImpl({
 
   const isSelf = activeDragId === empId;
   const isDescendant = !!dragDescendants?.has(empId);
+  const isSameLevel =
+    dragOldParentLevel != null &&
+    isSameLevelDrop(level, dragOldParentLevel, dragSrcLevel);
   const isDownward =
-    dragOldParentLevel != null && isDownwardDrop(level, dragOldParentLevel);
+    dragOldParentLevel != null && isDownwardDrop(level, dragOldParentLevel, dragSrcLevel);
+  // Same-level targets are valid but warn (amber); pure downward/self/descendant are invalid
   const isValidTarget = isOver && !isDescendant && !isSelf && !isDownward;
-  const isInvalidTarget = isOver && (isDescendant || isSelf || isDownward);
+  const isWarnTarget = isOver && isSameLevel && !isDescendant && !isSelf;
+  const isInvalidTarget = isOver && (isDescendant || isSelf || isDownward) && !isSameLevel;
 
   const title = record[jobTitleCol] || record["Job Title"] || record.jobTitle || empId;
   const fte = fteCol ? Number(record[fteCol] || 0) : null;
@@ -99,6 +106,8 @@ function OrgNodeCardImpl({
     ? AM.gold
     : isMultiSelected
     ? "#2563eb"
+    : isWarnTarget
+    ? "#d97706"
     : isValidTarget
     ? AM.gold
     : isInvalidTarget
@@ -112,9 +121,11 @@ function OrgNodeCardImpl({
     : added
     ? AM.success
     : AM.border;
-  const borderStyle = isValidTarget ? "dashed" : "solid";
+  const borderStyle = (isValidTarget || isWarnTarget) ? "dashed" : "solid";
 
-  const portColor = isValidTarget
+  const portColor = isWarnTarget
+    ? "#d97706"
+    : isValidTarget
     ? AM.gold
     : isInvalidTarget
     ? AM.danger
@@ -148,6 +159,8 @@ function OrgNodeCardImpl({
         opacity: flagged ? 0.55 : (isSelf && activeDragId) ? 0.4 : 1,
         cursor: isInvalidTarget
           ? "not-allowed"
+          : isWarnTarget
+          ? "copy"
           : editMode && !flagged
           ? isDragging ? "grabbing" : "grab"
           : "pointer",
@@ -546,6 +559,7 @@ const OrgNodeCard = React.memo(OrgNodeCardImpl, (prev, next) => {
   if (prev.activeDragId !== next.activeDragId) return false;
   if (prev.dragDescendants !== next.dragDescendants) return false;
   if (prev.dragOldParentLevel !== next.dragOldParentLevel) return false;
+  if (prev.dragSrcLevel !== next.dragSrcLevel) return false;
   if (prev.mutationState !== next.mutationState) return false;
   return true;
 });

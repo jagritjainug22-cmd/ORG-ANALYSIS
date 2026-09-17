@@ -11,7 +11,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-BACKEND = ROOT / "org_lvl_analysis_backend" / "org_lvl_analysis_backend"
+BACKEND = ROOT / "org_lvl_analysis_backend"
 sys.path.insert(0, str(BACKEND))
 
 import pandas as pd  # noqa: E402

@@ -70,7 +70,7 @@ PGSSLMODE=require
 ## 4. Backend environment
 
 ```powershell
-copy org_lvl_analysis_backend\org_lvl_analysis_backend\.env.example org_lvl_analysis_backend\org_lvl_analysis_backend\.env
+copy org_lvl_analysis_backend\.env.example org_lvl_analysis_backend\.env
 ```
 
 Edit the backend `.env`. At minimum, set:
@@ -96,7 +96,7 @@ pip install -r requirements.txt
 Or install directly from the backend folder:
 
 ```powershell
-pip install -r org_lvl_analysis_backend\org_lvl_analysis_backend\requirements.txt
+pip install -r org_lvl_analysis_backend\requirements.txt
 ```
 
 ---
@@ -104,9 +104,9 @@ pip install -r org_lvl_analysis_backend\org_lvl_analysis_backend\requirements.tx
 ## 6. Frontend dependencies
 
 ```powershell
-cd org_lvl_analysis_frontend\org_lvl_analysis_frontend
+cd org_lvl_analysis_frontend
 npm install
-cd ..\..
+cd ..
 ```
 
 Optional standalone org-chart app:
@@ -134,7 +134,7 @@ The frontend is configured to call the API on port **8601** (`src/api/backend.js
 Or manually:
 
 ```powershell
-cd org_lvl_analysis_backend\org_lvl_analysis_backend
+cd org_lvl_analysis_backend
 python -m uvicorn main:app --reload --host 127.0.0.1 --port 8601
 ```
 
@@ -151,7 +151,7 @@ Verify: http://127.0.0.1:8601/docs
 Or manually:
 
 ```powershell
-cd org_lvl_analysis_frontend\org_lvl_analysis_frontend
+cd org_lvl_analysis_frontend
 npm run dev
 ```
 
@@ -174,16 +174,14 @@ ORG-ANALYSIS/
 ├── POSTGRES/
 │   └── .env                                  # DB credentials (gitignored)
 ├── org_lvl_analysis_backend/
-│   └── org_lvl_analysis_backend/
-│       ├── main.py                           # FastAPI entry point
-│       ├── requirements.txt
-│       ├── .env                              # Secrets (gitignored)
-│       ├── routers/                          # API routes
-│       └── services/                         # Business logic
+│   ├── main.py                               # FastAPI entry point
+│   ├── requirements.txt
+│   ├── .env                                  # Secrets (gitignored)
+│   ├── routers/                              # API routes
+│   └── services/                             # Business logic
 └── org_lvl_analysis_frontend/
-    └── org_lvl_analysis_frontend/
-        ├── package.json
-        └── src/                              # React UI
+    ├── package.json
+    └── src/                                  # React UI
 ```
 
 ---
@@ -217,7 +215,7 @@ Set `SMTP_*` variables in the backend `.env` to enable project-assignment emails
 Backend unit tests (from the backend directory, with venv active):
 
 ```powershell
-cd org_lvl_analysis_backend\org_lvl_analysis_backend
+cd org_lvl_analysis_backend
 python -m pytest tests/ -v
 ```
 

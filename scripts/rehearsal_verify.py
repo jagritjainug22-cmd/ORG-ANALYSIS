@@ -21,7 +21,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-BACKEND_DIR = REPO_ROOT / "org_lvl_analysis_backend" / "org_lvl_analysis_backend"
+BACKEND_DIR = REPO_ROOT / "org_lvl_analysis_backend"
 
 load_dotenv(REPO_ROOT / "POSTGRES" / ".env")
 load_dotenv(BACKEND_DIR / ".env")

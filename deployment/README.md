@@ -1,9 +1,9 @@
 # OrgSight — Deployment Guide
 
-Internal application. Accessible over VPN at:
+Internal application. Default local URLs:
 
-- **Frontend:** http://172.29.42.122:8501
-- **Backend:**  http://172.29.42.122:8601
+- **Frontend:** http://localhost:8501
+- **Backend:**  http://127.0.0.1:8601
 
 ---
 
@@ -34,7 +34,7 @@ python --version  # from the repo .venv
 ### 2. Install frontend dependencies (if not already done)
 
 ```
-cd org_lvl_analysis_frontend\org_lvl_analysis_frontend
+cd org_lvl_analysis_frontend
 npm install
 ```
 
@@ -121,7 +121,7 @@ git pull
 .venv\Scripts\pip install -r requirements.txt
 
 # 3. Only if frontend dependencies changed:
-cd org_lvl_analysis_frontend\org_lvl_analysis_frontend
+cd org_lvl_analysis_frontend
 npm install
 cd ..\..
 

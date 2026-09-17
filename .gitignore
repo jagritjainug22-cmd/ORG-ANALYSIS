@@ -1,12 +1,10 @@
-# Local dev credentials (plaintext) — never commit
-org_lvl_analysis_backend/org_lvl_analysis_backend/db/credentials.local.json
-
-# Environment files with secrets
+# Environment files with secrets — never commit
 .env
 .env.*
 !.env.example
 POSTGRES/.env
-org_lvl_analysis_backend/org_lvl_analysis_backend/.env
+org_lvl_analysis_backend/.env
+org_lvl_analysis_backend/db/credentials.local.json
 
 # Python
 __pycache__/
@@ -20,7 +18,6 @@ venv/
 env/
 *.egg-info/
 .eggs/
-dist/
 build/
 .pytest_cache/
 .mypy_cache/
@@ -34,19 +31,22 @@ node_modules/
 dist/
 dist-ssr/
 *.local
+org_lvl_analysis_frontend/tmp-tailwind-test.css
 
-# SQLite DB, DuckDB, and backups (local runtime data)
+# SQLite, DuckDB, and local DB backups
 *.db
 *.duckdb
-org_lvl_analysis_backend/org_lvl_analysis_backend/db/orgsight.db
-org_lvl_analysis_backend/org_lvl_analysis_backend/db/backups/
+org_lvl_analysis_backend/db/
+org_lvl_analysis_backend/orgsight.db
 
 # Runtime-learned taxonomy (per-environment, not source of truth)
-org_lvl_analysis_backend/org_lvl_analysis_backend/data/auto_learned_taxonomy.json
+org_lvl_analysis_backend/data/auto_learned_taxonomy.json
 
-# Logs
+# Logs and local activity dumps
 logs/
 *.log
+*.csv
+deployment/logs/
 
 # Cursor / IDE / OS
 .cursor/
@@ -61,32 +61,26 @@ Thumbs.db
 *.sln
 *.sw?
 
-# Project-specific paths
-CENSUS_RATIONALISATION/app_2/app_2/ORGVUE/
-Fw_ G&A Tools (Org and Census Data Rationalization) Enhancement/
+# Generated exports, sample dumps, and internal trackers
+EXPORTS/
+excel data/
+OrgSight_Feature_Tracker.xlsx
+Feedback/
+sast/
+AGENTS.md
 
-
-#TRACKER
-OrgSight_Feature_Tracker.xlsx/
-
-# Excel files
+# Spreadsheets and archives — keep small QA fixtures only
 *.xlsx
 *.xls
 *.xlsm
 *.xlsb
 *.zip
-# Keep small SAST/QA fixtures
 !testdata/
 !testdata/**/*.xlsx
 
-
-# VM-local backup copies (not source of truth)
+# VM-local backup copies
 *.vm-backup
 
-# Deployment runtime output (scripts in deployment/ are tracked)
-deployment/logs/
-
-
-sast/
-Feedback/
-AGENTS.md
+# Old local project folders
+CENSUS_RATIONALISATION/app_2/app_2/ORGVUE/
+Fw_ G&A Tools (Org and Census Data Rationalization) Enhancement/

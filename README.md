@@ -25,6 +25,6 @@ pip install -r requirements.txt
 Manual backend start:
 
 ```powershell
-cd org_lvl_analysis_backend\org_lvl_analysis_backend
+cd org_lvl_analysis_backend
 python -m uvicorn main:app --reload --host 127.0.0.1 --port 8601
 ```

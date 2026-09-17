@@ -27,7 +27,7 @@ from typing import Any, List, Sequence, Tuple
 from dotenv import load_dotenv
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-BACKEND_DIR = REPO_ROOT / "org_lvl_analysis_backend" / "org_lvl_analysis_backend"
+BACKEND_DIR = REPO_ROOT / "org_lvl_analysis_backend"
 SQLITE_PATH = BACKEND_DIR / "db" / "orgsight.db"
 
 load_dotenv(REPO_ROOT / "POSTGRES" / ".env")
@@ -119,7 +119,7 @@ def _require_schema_v5(pg: Any) -> None:
         raise SystemExit(
             "Postgres schema not found (users table missing).\n"
             "Create schema first: start the backend once, or run:\n"
-            "  cd org_lvl_analysis_backend/org_lvl_analysis_backend\n"
+            "  cd org_lvl_analysis_backend\n"
             "  python -c \"from services import db_service; db_service.init_db()\""
         )
 

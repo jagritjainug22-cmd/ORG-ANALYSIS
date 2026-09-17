@@ -1,0 +1,518 @@
+import React, { useState, useEffect, useRef } from "react";
+import { hierarchy as hierarchyBackend, dbGetHierarchySnapshot, dbSaveHierarchySnapshot } from "../api/backend";
+
+export default function Hierarchy({
+  validatedDf,
+  setValidatedDf,
+  setDfRecords,
+  empCol,
+  mgrCol,
+  flcCol,
+  fteCol,
+  jobTitleCol,
+  countryCol,
+  onSaveStage,
+  formulas = [],
+  datasetId = null,
+}) {
+  const [loading, setLoading] = useState(false);
+  const [hydrating, setHydrating] = useState(false);
+  const [preview, setPreview] = useState([]);
+  const [result, setResult] = useState(null);
+  const [error, setError] = useState(null);
+  const [saveStatus, setSaveStatus] = useState(null);
+  const [restored, setRestored] = useState(false);
+
+  const columns = validatedDf?.length ? Object.keys(validatedDf[0]) : [];
+  const canRun = validatedDf?.length > 0 && empCol && mgrCol;
+
+  // Shared by both the "Run" button and the silent restore-on-load below.
+  // Recomputing Level/Chain/Span from the same emp/mgr relationships is
+  // idempotent, so calling this again on an already-processed dataset
+  // reproduces the exact same backend-built preview (the indented L1..Ln /
+  // Last_Employee / Total_Reports view) instead of a rough approximation.
+  const computeHierarchy = async ({ persist, silent }) => {
+    if (!canRun) {
+      if (!silent) setError("Please ensure data is loaded and Employee/Manager columns are selected.");
+      return;
+    }
+
+    if (silent) setHydrating(true); else setLoading(true);
+    setError(null);
+    if (!silent) { setResult(null); setSaveStatus(null); }
+    setRestored(!!silent);
+
+    try {
+      const res = await hierarchyBackend(
+        validatedDf,
+        empCol,
+        mgrCol,
+        flcCol || null,
+        fteCol || null,
+        false,
+        jobTitleCol || null,
+        datasetId || null
+      );
+
+      // Silent restore only refreshes the display (preview + stats) — the
+      // data is already what's persisted, so there's nothing new to save
+      // back into working state or the database.
+      if (!silent && res.df) {
+        setValidatedDf(res.df);
+        setDfRecords?.(res.df);
+      }
+      setPreview(res.preview || []);
+      setResult({
+        rowsProcessed: res.rows_processed || res.df?.length || 0,
+        maxDepth: res.max_depth || 0,
+        levelDistribution: res.level_distribution || {},
+      });
+
+      // Persist the curated preview + stats as a snapshot so reopening this
+      // tab can restore instantly (DB read) instead of recomputing
+      // Level/Span/Chain from scratch on every tab switch.
+      if (datasetId) {
+        dbSaveHierarchySnapshot(datasetId, {
+          preview: res.preview || [],
+          max_depth: res.max_depth || 0,
+          level_distribution: res.level_distribution || {},
+          rows_processed: res.rows_processed || res.df?.length || 0,
+        }).catch((err) => console.warn("Failed to persist hierarchy snapshot:", err));
+      }
+
+      // Persist the processed dataset (updates the current dataset in place
+      // if one already exists, so re-running Hierarchy never orphans a
+      // duplicate dataset row) — this is what powers the OrgSight 2.0
+      // modelling workflow (Org Chart, scenarios, etc).
+      if (persist && res.df && onSaveStage) {
+        try {
+          setSaveStatus({ state: "saving" });
+          const saved = await onSaveStage(res.df);
+          if (saved?.dataset_id) {
+            setSaveStatus({ state: "saved", datasetId: saved.dataset_id });
+          } else {
+            setSaveStatus({ state: "error", message: "Save failed" });
+          }
+        } catch (saveErr) {
+          console.warn("Baseline save failed (org chart will still work in legacy mode):", saveErr);
+          setSaveStatus({ state: "error", message: saveErr.message });
+        }
+      }
+    } catch (err) {
+      if (silent) {
+        console.warn("Silent hierarchy restore failed — falling back to the Run prompt:", err);
+        setRestored(false);
+      } else {
+        console.error("Hierarchy preview failed:", err);
+        setError(err.response?.data?.detail || "Failed to compute hierarchy preview. Please try again.");
+      }
+    } finally {
+      if (silent) setHydrating(false); else setLoading(false);
+    }
+  };
+
+  const runPreview = () => computeHierarchy({ persist: true, silent: false });
+
+  // Reopening a dataset that already has a Level column from a prior
+  // Hierarchy run — restore the previously-persisted preview + stats
+  // straight from the DB (instant, no computation) instead of re-running
+  // the full Level/Span/Chain pipeline on every tab switch. Only falls back
+  // to a silent live recompute if no snapshot was ever saved (e.g. this
+  // dataset's Hierarchy ran before this feature existed) — that recompute
+  // then backfills the snapshot for next time via computeHierarchy above.
+  const hydratedKeyRef = useRef(null);
+  useEffect(() => {
+    const key = datasetId ?? "mem";
+    if (hydratedKeyRef.current === key) return;
+    hydratedKeyRef.current = key;
+    if (!canRun || !Object.prototype.hasOwnProperty.call(validatedDf[0], "Level")) return;
+
+    let cancelled = false;
+    (async () => {
+      if (datasetId) {
+        setHydrating(true);
+        try {
+          const { snapshot } = await dbGetHierarchySnapshot(datasetId);
+          if (cancelled) { setHydrating(false); return; }
+          if (snapshot) {
+            setPreview(snapshot.preview || []);
+            setResult({
+              rowsProcessed: snapshot.rows_processed || 0,
+              maxDepth: snapshot.max_depth || 0,
+              levelDistribution: snapshot.level_distribution || {},
+            });
+            setRestored(true);
+            setHydrating(false);
+            return;
+          }
+        } catch (err) {
+          console.warn("Failed to load hierarchy snapshot:", err);
+        }
+        if (!cancelled) setHydrating(false);
+      }
+      if (!cancelled) computeHierarchy({ persist: false, silent: true });
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [datasetId, canRun]);
+
+  const downloadExcel = async () => {
+    if (!canRun) return;
+
+    try {
+      await hierarchyBackend(
+        validatedDf,
+        empCol,
+        mgrCol,
+        flcCol || null,
+        fteCol || null,
+        true,
+        jobTitleCol || null,
+        datasetId || null
+      );
+    } catch (err) {
+      console.error("Hierarchy download failed:", err);
+      setError(err.response?.data?.detail || "Failed to download hierarchy Excel.");
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Header Section */}
+      <div className="bg-brand-50 border border-brand-200 rounded-lg p-3">
+        <div className="flex items-start gap-4">
+          <div className="w-12 h-12 bg-brand-500 rounded-lg flex items-center justify-center flex-shrink-0">
+            <svg
+              className="w-7 h-7 text-white"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"
+              />
+            </svg>
+          </div>
+          <div className="flex-1">
+            <h3 className="text-base font-bold text-gray-900 mb-1">
+              Hierarchy Analysis
+            </h3>
+            <p className="text-xs text-gray-500">
+              Compute organizational hierarchy levels, reporting chains, and span metrics for your data.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* Action Buttons */}
+      <div className="flex gap-4">
+        <button
+          onClick={runPreview}
+          disabled={!canRun || loading || hydrating}
+          className="flex-1 px-4 py-2 bg-brand-500 hover:bg-brand-600 text-white rounded-md font-semibold shadow-sm hover:shadow-md transition-all duration-150 disabled:bg-gray-200 disabled:text-gray-500 disabled:cursor-not-allowed flex items-center justify-center gap-2 text-sm"
+        >
+          {loading ? (
+            <>
+              <svg
+                className="animate-spin h-5 w-5 text-white"
+                xmlns="http://www.w3.org/2000/svg"
+                fill="none"
+                viewBox="0 0 24 24"
+              >
+                <circle
+                  className="opacity-25"
+                  cx="12"
+                  cy="12"
+                  r="10"
+                  stroke="currentColor"
+                  strokeWidth="4"
+                ></circle>
+                <path
+                  className="opacity-75"
+                  fill="currentColor"
+                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                ></path>
+              </svg>
+                <span className="text-sm">Computing Hierarchy...</span>
+            </>
+          ) : (
+            <>
+              <svg
+                  className="w-5 h-5"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"
+                />
+              </svg>
+              <span className="text-sm">{restored ? "Re-run Hierarchy Analysis" : "Run Hierarchy Analysis"}</span>
+            </>
+          )}
+        </button>
+
+        <button
+          onClick={downloadExcel}
+          disabled={!canRun || !preview || preview.length === 0 || hydrating}
+          className="px-4 py-2 bg-brand-500 hover:bg-brand-600 text-white rounded-md font-semibold shadow-sm hover:shadow-md transition-all duration-150 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 text-sm"
+        >
+          <svg
+            className="w-6 h-6"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+            />
+          </svg>
+          <span>Download Excel</span>
+        </button>
+      </div>
+
+      {/* Silent restore in progress */}
+      {hydrating && (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-2.5 flex items-center gap-2 text-xs font-medium text-blue-800">
+          <svg className="w-3.5 h-3.5 animate-spin flex-shrink-0" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
+          Loading previous hierarchy results...
+        </div>
+      )}
+
+      {/* Error Message */}
+      {error && (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4 flex items-start gap-3 animate-fadeIn">
+          <svg
+            className="w-5 h-5 text-red-600 mt-0.5 flex-shrink-0"
+            fill="currentColor"
+            viewBox="0 0 20 20"
+          >
+            <path
+              fillRule="evenodd"
+              d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
+              clipRule="evenodd"
+            />
+          </svg>
+          <div>
+            <p className="font-medium text-red-900">Analysis Failed</p>
+            <p className="text-sm text-red-700 mt-1">{error}</p>
+          </div>
+        </div>
+      )}
+
+      {/* Success Result */}
+        {result && !error && (
+          <div className="bg-brand-50 border border-brand-200 rounded-lg p-4 animate-fadeIn">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="w-9 h-9 bg-brand-600 rounded-lg flex items-center justify-center">
+              <svg
+                className="w-6 h-6 text-white"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                />
+              </svg>
+            </div>
+            <div>
+              <h4 className="font-bold text-brand-900 text-base">
+                Hierarchy Analysis Complete!
+              </h4>
+              <p className="text-xs text-brand-700">
+                {restored
+                  ? "Restored from a previous run — Levels, chains, and spans are already computed on this dataset."
+                  : "Organizational structure has been computed successfully"}
+              </p>
+            </div>
+          </div>
+
+          {saveStatus?.state === "saving" && (
+            <div className="mb-4 text-xs font-medium text-blue-800 bg-blue-50 border border-blue-200 rounded-md px-3 py-2">
+              Saving baseline to OrgSight database...
+            </div>
+          )}
+          {saveStatus?.state === "saved" && (
+            <div className="mb-4 text-xs font-medium text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-md px-3 py-2">
+              Baseline saved to database (dataset #{saveStatus.datasetId}). Open Org Chart to start modelling.
+            </div>
+          )}
+          {saveStatus?.state === "error" && (
+            <div className="mb-4 text-xs font-medium text-amber-800 bg-amber-50 border border-amber-200 rounded-md px-3 py-2">
+              Could not auto-save baseline to database. The org chart will still work in legacy in-memory mode.
+            </div>
+          )}
+
+          <div className="grid grid-cols-2 gap-4">
+            <div className="bg-white rounded-lg p-4 border border-green-200">
+              <div className="flex items-center gap-2 mb-2">
+                <svg
+                  className="w-5 h-5 text-green-600"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                  />
+                </svg>
+                <span className="text-xs font-medium text-gray-600">Rows Processed</span>
+              </div>
+              <p className="text-2xl font-bold text-green-900">
+                {result.rowsProcessed.toLocaleString()}
+              </p>
+            </div>
+
+            <div className="bg-white rounded-lg p-4 border border-green-200">
+              <div className="flex items-center gap-2 mb-2">
+                <svg
+                  className="w-5 h-5 text-green-600"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z"
+                  />
+                </svg>
+                <span className="text-xs font-medium text-gray-600">Maximum Depth</span>
+              </div>
+              <p className="text-2xl font-bold text-green-900">
+                {result.maxDepth} {result.maxDepth === 1 ? 'level' : 'levels'}
+              </p>
+            </div>
+          </div>
+
+          {/* Level distribution — proves deeper levels (L3+) were computed even
+              though the preview table below can only show a small sample. */}
+          {result.levelDistribution && Object.keys(result.levelDistribution).length > 0 && (
+            <div className="bg-white rounded-lg p-4 border border-green-200 mt-4">
+              <div className="flex items-center gap-2 mb-3">
+                <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 3.055A9.001 9.001 0 1020.945 13H11V3.055z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.488 9H15V3.512A9.025 9.025 0 0120.488 9z" />
+                </svg>
+                <span className="text-xs font-medium text-gray-600">Headcount by Level (full dataset)</span>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {Object.entries(result.levelDistribution)
+                  .sort((a, b) => Number(a[0]) - Number(b[0]))
+                  .map(([lvl, count]) => (
+                    <div key={lvl} className="flex-1 min-w-[64px] bg-brand-50 border border-brand-100 rounded-md px-2 py-1.5 text-center">
+                      <div className="text-[10px] font-semibold text-brand-700 uppercase">L{lvl}</div>
+                      <div className="text-sm font-bold text-gray-900">{count.toLocaleString()}</div>
+                    </div>
+                  ))}
+              </div>
+              <p className="text-[11px] text-gray-500 mt-2">
+                These counts come from the full processed dataset — the preview table below only samples up to 20 rows, so it won't show every level if your org is large.
+              </p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Preview Table */}
+      {preview && preview.length > 0 && (
+        <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+          <div className="bg-gray-50 px-6 py-4 border-b border-gray-200">
+            <h4 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
+              <svg
+                className="w-5 h-5 text-am-500"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+                />
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
+                />
+              </svg>
+              Data Preview
+              <span className="text-sm font-normal text-gray-600 ml-2">
+                ({preview.length} rows sampled across all levels)
+              </span>
+            </h4>
+            <p className="text-[11px] text-gray-500 mt-1">
+              A small sample from every hierarchy level, not just the top — see "Headcount by Level" above for full counts, or export/open the Org Chart for the complete dataset.
+            </p>
+          </div>
+
+          <div className="overflow-x-auto max-h-96">
+            <table className="w-full text-sm">
+                <thead className="bg-[#01244a] text-white sticky top-0 z-10">
+                <tr>
+                  {Object.keys(preview[0]).map((col) => (
+                    <th
+                      key={col}
+                      className="px-4 py-3 text-left text-xs font-semibold text-white uppercase tracking-wider border-b border-gray-200 whitespace-nowrap"
+                    >
+                      {col}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-200">
+                {preview.map((row, i) => (
+                  <tr key={i} className="hover:bg-gray-50 transition-colors">
+                    {Object.values(row).map((v, j) => (
+                      <td
+                        key={j}
+                        className="px-4 py-3 text-gray-900 whitespace-nowrap"
+                      >
+                        {v ?? <span className="text-gray-400 italic">null</span>}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Info Box */}
+      <details className="bg-blue-50 border border-blue-200 rounded-lg">
+        <summary className="px-3 py-2 text-xs font-medium text-blue-900 cursor-pointer flex items-center gap-1.5">
+          <svg className="w-3.5 h-3.5 text-blue-600 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+            <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+          </svg>
+          Hierarchy Computation
+        </summary>
+        <ul className="px-3 pb-2 text-[11px] text-blue-700 space-y-0.5 columns-2">
+          <li>• <strong>Levels:</strong> Calculates hierarchical level for each employee</li>
+          <li>• <strong>Chains:</strong> Builds complete reporting chains from employee to top manager</li>
+          <li>• <strong>Total Reports:</strong> Counts all direct and indirect reports</li>
+        </ul>
+      </details>
+      
+    </div>
+  );
+}

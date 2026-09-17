@@ -10,9 +10,8 @@ Full-stack org census analysis, rationalisation, org-chart modelling, and scenar
 |---------|-----|---------------|
 | **Backend** (FastAPI) | http://127.0.0.1:8601 | `.\scripts\start-backend.ps1` |
 | **Frontend** (Vite) | http://localhost:8501 | `.\scripts\start-frontend.ps1` |
-| **Org chart app** (Vite) | http://localhost:5174 | `.\scripts\start-org-chart.ps1` |
 
-The frontend calls the API at **port 8601** (`org_lvl_analysis_frontend/.../src/api/backend.js`).
+The frontend calls the API at **port 8601**. Postgres is the real database; DuckDB is an in-memory cache only. See [CLONING_GUIDE.md](CLONING_GUIDE.md).
 
 ## Dependencies
 

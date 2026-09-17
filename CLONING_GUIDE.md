@@ -1,31 +1,46 @@
-# OrgSight — Cloning & Local Setup Guide
+# OrgSight — Clone & Start
 
-OrgSight (Org Level Analysis) is a full-stack app for org census analysis, rationalisation, org-chart modelling, and scenario planning.
+Someone cloning this repo gets the **code**, not your data. Postgres is the source of truth. DuckDB is a temporary in-memory cache and does not need to be installed or configured.
 
-| Layer | Stack | Default URL |
-|-------|-------|-------------|
-| Backend | FastAPI + PostgreSQL + DuckDB | http://127.0.0.1:8601 |
+| Service | Stack | URL |
+|---------|-------|-----|
+| Backend | FastAPI | http://127.0.0.1:8601 |
 | Frontend | React + Vite | http://localhost:8501 |
-| Org chart app (optional) | React + Vite | http://localhost:5174 |
 
 ---
 
-## 1. Prerequisites
+## What gets created automatically?
 
-Install these before cloning:
+**Yes, tables and the first admin are created on first backend start.**  
+**No, the Postgres database itself is not created for you.**
 
-| Tool | Version | Notes |
-|------|---------|-------|
-| **Git** | any recent | clone the repo |
-| **Python** | 3.11+ (3.12 tested) | backend |
-| **Node.js** | 18+ LTS | frontend (`npm`) |
-| **PostgreSQL** | 13+ | Azure Database for PostgreSQL or local instance |
-| **Azure OpenAI** | optional | required for LLM features (mapping, rationalisation, chat) |
-| **Inkscape** | optional | Windows-only PPT export with embedded org-chart EMF |
+| Layer | Created automatically? | What it is |
+|-------|------------------------|------------|
+| Postgres database `OrgSight_db` | **You create this** (or reuse an existing empty one) | Persistent store: users, projects, uploads, scenarios, audit |
+| Tables / schema | **Yes** — `init_db()` on startup | Safe to run every time (`CREATE TABLE IF NOT EXISTS`) |
+| First admin user | **Yes** — from `SEED_ADMIN_*` if no admin exists | Then log in and create other users in Admin → Users |
+| Census / project data | **No** | Empty until someone uploads a file |
+| DuckDB | **Yes, in RAM only** | Per-user cache for Ask OrgSight + benchmarking SQL. Gone on restart |
+
+You do **not** need a local SQLite file, and you do **not** set up DuckDB.
+
+### DuckDB — used, but not “too much”
+
+Postgres holds everything durable. DuckDB is loaded only when a dataset/scenario is active, so chat and benchmark queries can run fast SQL in memory. It is not a second database you maintain.
 
 ---
 
-## 2. Clone the repository
+## Prerequisites
+
+- Git
+- Python 3.11+ (3.12 tested)
+- Node.js 18+ LTS
+- PostgreSQL 13+ (local or Azure). Database **name must be** `OrgSight_db`
+- Azure OpenAI — optional, but required for mapping, rationalisation, and Ask OrgSight
+
+---
+
+## 1. Clone
 
 ```powershell
 git clone https://github.com/jagritjainug22-cmd/ORG-ANALYSIS.git
@@ -34,21 +49,15 @@ cd ORG-ANALYSIS
 
 ---
 
-## 3. PostgreSQL database
+## 2. Create the Postgres database
 
-The backend connects **only** to a database named `OrgSight_db`. The name is enforced in code and cannot be changed without modifying `pg_adapter.py`.
-
-### Create the database
-
-On your PostgreSQL server, create the database (if it does not exist):
+On your Postgres server:
 
 ```sql
 CREATE DATABASE "OrgSight_db";
 ```
 
-Tables are created automatically on first backend startup via `db_service.init_db()`.
-
-### Configure connection
+Then:
 
 ```powershell
 copy POSTGRES\.env.example POSTGRES\.env
@@ -57,199 +66,78 @@ copy POSTGRES\.env.example POSTGRES\.env
 Edit `POSTGRES/.env`:
 
 ```env
-PGHOST=your-postgres-host.example.com
+PGHOST=localhost
 PGPORT=5432
 PGDATABASE=OrgSight_db
 PGUSER=your_db_user
 PGPASSWORD=your_db_password
-PGSSLMODE=require
+PGSSLMODE=prefer
 ```
+
+Use `PGSSLMODE=require` for Azure Postgres.
 
 ---
 
-## 4. Backend environment
+## 3. Backend secrets
 
 ```powershell
 copy org_lvl_analysis_backend\.env.example org_lvl_analysis_backend\.env
 ```
 
-Edit the backend `.env`. At minimum, set:
+Set at least:
 
-- `SEED_ADMIN_USERNAME` / `SEED_ADMIN_PASSWORD` — used to create the **first admin user** when the database has no admin yet
-- `JWT_SECRET` — a long random string; keep it stable across restarts so login tokens remain valid
+```env
+SEED_ADMIN_USERNAME=admin
+SEED_ADMIN_PASSWORD=change-me-to-a-strong-password
+JWT_SECRET=paste-a-long-random-string-and-keep-it-stable
+```
 
-For LLM-powered features, also set the `AZURE_OPENAI_*` variables.
+Add `AZURE_OPENAI_*` if you want LLM features.
 
 ---
 
-## 5. Python virtual environment & dependencies
-
-From the **repo root**:
+## 4. Install
 
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
-pip install --upgrade pip
 pip install -r requirements.txt
-```
 
-Or install directly from the backend folder:
-
-```powershell
-pip install -r org_lvl_analysis_backend\requirements.txt
-```
-
----
-
-## 6. Frontend dependencies
-
-```powershell
 cd org_lvl_analysis_frontend
 npm install
 cd ..
 ```
 
-Optional standalone org-chart app:
-
-```powershell
-cd org-chart-app
-npm install
-cd ..
-```
-
 ---
 
-## 7. Run the application
+## 5. Start
 
-Open **two terminals** from the repo root.
-
-### Terminal 1 — Backend (port 8601)
-
-The frontend is configured to call the API on port **8601** (`src/api/backend.js`).
+Two terminals, from the repo root:
 
 ```powershell
 .\scripts\start-backend.ps1
 ```
 
-Or manually:
-
-```powershell
-cd org_lvl_analysis_backend
-python -m uvicorn main:app --reload --host 127.0.0.1 --port 8601
-```
-
-Verify: http://127.0.0.1:8601/docs
-
-> **Note:** Use `127.0.0.1` or `0.0.0.0` as the host — not `127.0.0.0` (invalid on Windows).
-
-### Terminal 2 — Frontend (port 8501)
-
 ```powershell
 .\scripts\start-frontend.ps1
 ```
 
-Or manually:
+- API docs: http://127.0.0.1:8601/docs  
+- App: http://localhost:8501  
 
-```powershell
-cd org_lvl_analysis_frontend
-npm run dev
-```
-
-Open: http://localhost:8501
-
-Log in with the credentials from `SEED_ADMIN_USERNAME` / `SEED_ADMIN_PASSWORD`.
+Log in with `SEED_ADMIN_USERNAME` / `SEED_ADMIN_PASSWORD`. Create a project, upload a census, then use the rest of the app.
 
 ---
 
-## 8. Project layout
+## Troubleshooting
 
-```
-ORG-ANALYSIS/
-├── requirements.txt                          # Root pointer to backend deps
-├── CLONING_GUIDE.md                          # This file
-├── scripts/
-│   ├── start-backend.ps1
-│   ├── start-frontend.ps1
-│   └── start-org-chart.ps1
-├── POSTGRES/
-│   └── .env                                  # DB credentials (gitignored)
-├── org_lvl_analysis_backend/
-│   ├── main.py                               # FastAPI entry point
-│   ├── requirements.txt
-│   ├── .env                                  # Secrets (gitignored)
-│   ├── routers/                              # API routes
-│   └── services/                             # Business logic
-└── org_lvl_analysis_frontend/
-    ├── package.json
-    └── src/                                  # React UI
-```
+| Symptom | Fix |
+|---------|-----|
+| Backend exits on startup | Fill `SEED_ADMIN_USERNAME` and `SEED_ADMIN_PASSWORD` |
+| `PGDATABASE must be 'OrgSight_db'` | Database name must be exactly that |
+| Cannot connect to Postgres | Check `POSTGRES/.env` host, user, password, SSL |
+| Frontend cannot reach API | Backend must be on **8601** |
+| Logged out after restart | Keep `JWT_SECRET` unchanged |
+| Chat / rationalisation fails | Fill `AZURE_OPENAI_*` |
 
----
-
-## 9. Optional features
-
-### Org chart standalone app
-
-```powershell
-.\scripts\start-org-chart.ps1
-```
-
-### PPT export with embedded org chart (Windows)
-
-Install [Inkscape](https://inkscape.org/) at:
-
-```
-C:\Program Files\Inkscape\bin\inkscape.exe
-```
-
-Without Inkscape, other export paths (PDF, Excel) still work via ReportLab/svglib.
-
-### SMTP email notifications
-
-Set `SMTP_*` variables in the backend `.env` to enable project-assignment emails.
-
----
-
-## 10. Running tests
-
-Backend unit tests (from the backend directory, with venv active):
-
-```powershell
-cd org_lvl_analysis_backend
-python -m pytest tests/ -v
-```
-
-Integration scripts (require a running backend):
-
-```powershell
-python test_auth.py
-python test_chat_history.py --help
-```
-
----
-
-## 11. Troubleshooting
-
-| Symptom | Likely cause | Fix |
-|---------|--------------|-----|
-| `[WinError 10049]` on backend start | Invalid host, e.g. `127.0.0.0` | Use `--host 127.0.0.1` |
-| Backend exits immediately on startup | Missing admin seed env vars | Set `SEED_ADMIN_USERNAME` and `SEED_ADMIN_PASSWORD` |
-| `PGDATABASE must be 'OrgSight_db'` | Wrong database name in `.env` | Set `PGDATABASE=OrgSight_db` |
-| Frontend cannot reach API | Backend not running or wrong port | Start backend on **8601** |
-| Login works once, fails after restart | `JWT_SECRET` changed | Set a fixed `JWT_SECRET` in `.env` |
-| LLM / chat / rationalisation errors | Azure OpenAI not configured | Fill in `AZURE_OPENAI_*` variables |
-| CORS errors | Frontend not on port 8501 | Use default Vite port 8501 |
-
----
-
-## 12. Quick start checklist
-
-- [ ] Clone repo
-- [ ] Create PostgreSQL database `OrgSight_db`
-- [ ] Copy and fill `POSTGRES/.env`
-- [ ] Copy and fill backend `.env` (admin seed + JWT secret)
-- [ ] `python -m venv .venv` → activate → `pip install -r requirements.txt`
-- [ ] `npm install` in frontend folder
-- [ ] Start backend on port **8601**
-- [ ] Start frontend on port **8501**
-- [ ] Log in at http://localhost:8501
+Do not commit `.env` files. They are gitignored.

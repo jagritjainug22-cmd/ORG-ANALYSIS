@@ -696,15 +696,20 @@ export default function OrgChart({
     return fns;
   }, [index, jobTitleCol, stats]);
 
-  // Hidden ids from search + department + job title + function filters; ranked search matches
-  const { hidden, searchMatches } = useMemo(() => {
+  // Hidden ids from search + department + job title + function filters; ranked search matches.
+  // contextNodes = ancestor nodes that are visible purely for tree-path context (not direct matches).
+  const { hidden, contextNodes, searchMatches } = useMemo(() => {
     const out = new Set();
+    const ctx = new Set();
     const emptyMatches = [];
     if (!records || (!search.trim() && !departmentFilter && !jobTitleFilter && !functionFilter)) {
-      return { hidden: out, searchMatches: emptyMatches };
+      return { hidden: out, contextNodes: ctx, searchMatches: emptyMatches };
     }
 
     const term = search.trim().toLowerCase();
+    // When any dropdown filter is active, only use the explicitly mapped columns — no hardcoded fallbacks.
+    const hasDropdownFilter = !!(departmentFilter || jobTitleFilter || functionFilter);
+
     const matchesEmp = (r) => {
       if (departmentFilter) {
         const dept = r.Division || r.Department || r["Org Unit"] || "";
@@ -734,19 +739,40 @@ export default function OrgChart({
       return true;
     };
 
-    const matched = records.filter(matchesEmp);
+    // Build a fast lookup of broken-ref IDs so we can exclude them when a
+    // dropdown filter is active — broken-ref nodes have no valid ancestor
+    // chain and would appear as isolated matches, which is confusing.
+    const brokenRefSet = hasDropdownFilter
+      ? new Set((index.brokenRefs || []).map(String))
+      : null;
+
+    const matched = records.filter((r) => {
+      if (hasDropdownFilter && brokenRefSet.has(String(idOf(r)))) return false;
+      return matchesEmp(r);
+    });
+    const matchedIds = new Set(matched.map((r) => String(idOf(r))));
     const rankedMatches = term
       ? rankSearchMatches(matched, term, { empCol, jobTitleCol, countryCol })
       : emptyMatches;
 
-    // Visible set = matches + ancestors + descendants of matches
+    // Build a Set of proper org roots for cycle-orphan detection.
+    const rootSet = new Set((index.roots || []).map(String));
+
+    // Visible set = matches + ancestors (for tree path context).
+    // When a dropdown filter is active, we intentionally exclude descendants so only
+    // nodes that actually match are shown — not unrelated reports below a match.
+    // When search-only, include descendants so the user can see the full subtree.
     const visible = new Set();
     matched.forEach((r) => {
       const id = String(idOf(r));
-      visible.add(id);
-      // Ancestors
+
+      // Walk the ancestor chain. For dropdown filters, also check whether the
+      // chain actually reaches a proper root — if not, the node is a cycle-orphan
+      // and we skip it entirely so it doesn't clutter the filter results.
       let cur = id;
       const guard = new Set();
+      const ancestorPath = [];
+      let reachedRoot = rootSet.has(id); // matched node itself could be the root
       while (cur && !guard.has(cur)) {
         guard.add(cur);
         const node = index.byId.get(cur);
@@ -754,17 +780,30 @@ export default function OrgChart({
         const p = parentOf(node);
         const pid = p != null ? String(p) : null;
         if (!pid) break;
-        visible.add(pid);
+        ancestorPath.push(pid);
+        if (rootSet.has(pid)) { reachedRoot = true; }
         cur = pid;
       }
-      // Descendants
-      const queue = [id];
-      while (queue.length) {
-        const x = queue.shift();
-        (index.childrenByParent.get(x) || []).forEach((c) => {
-          visible.add(c);
-          queue.push(c);
-        });
+
+      // Skip cycle-orphans (never reached a root) when a dropdown filter is active
+      if (hasDropdownFilter && !reachedRoot) return;
+
+      visible.add(id);
+      ancestorPath.forEach((pid) => {
+        visible.add(pid);
+        if (!matchedIds.has(pid)) ctx.add(pid);
+      });
+
+      // Descendants — only when no dropdown filter (search-only mode)
+      if (!hasDropdownFilter) {
+        const queue = [id];
+        while (queue.length) {
+          const x = queue.shift();
+          (index.childrenByParent.get(x) || []).forEach((c) => {
+            visible.add(c);
+            queue.push(c);
+          });
+        }
       }
     });
 
@@ -772,7 +811,7 @@ export default function OrgChart({
       const id = String(idOf(r));
       if (!visible.has(id)) out.add(id);
     });
-    return { hidden: out, searchMatches: rankedMatches };
+    return { hidden: out, contextNodes: ctx, searchMatches: rankedMatches };
   }, [records, search, departmentFilter, jobTitleFilter, functionFilter, empCol, jobTitleCol, funcCol, countryCol, idOf, parentOf, index]);
 
   const layout = useMemo(() => {
@@ -811,7 +850,9 @@ export default function OrgChart({
     // Broken manager refs: manager id present but not in dataset. Lay these out
     // as their own subtrees in a data-issues lane below the main tree so they
     // don't scatter across the top of the canvas as fake L1 roots.
-    const brokenRootIds = (index.brokenRefs || []).filter((id) => !reachableFromMain.has(id));
+    // Exclude any node already filtered out by the hidden set — broken-ref nodes
+    // that don't match the active filter should not appear at all.
+    const brokenRootIds = (index.brokenRefs || []).filter((id) => !reachableFromMain.has(id) && !hidden.has(id));
     let issuesBottom = result.height;
 
     if (brokenRootIds.length) {
@@ -1442,11 +1483,14 @@ export default function OrgChart({
   const onWheel = undefined;
 
   // Home button: move camera to root, no selection change.
+  // When a filter is active, use the first root that is actually visible in the
+  // current layout rather than the unfiltered original root (which may be hidden).
   const centerOnRoot = useCallback(() => {
-    const firstRootId = index.roots[0];
-    if (!firstRootId) return;
-    navigateToNode(firstRootId, { zoom: ROOT_ENTRY_ZOOM, mode: "camera" });
-  }, [index.roots, navigateToNode]);
+    const visibleRoot = index.roots.find((id) => layout.nodes.has(id));
+    const targetId = visibleRoot ?? (layout.nodes.size ? layout.nodes.keys().next().value : null);
+    if (!targetId) return;
+    navigateToNode(targetId, { zoom: ROOT_ENTRY_ZOOM, mode: "camera" });
+  }, [index.roots, layout.nodes, navigateToNode]);
 
   // On first load (manual open): camera-only, no highlight, no detail panel.
   useEffect(() => {
@@ -1500,21 +1544,41 @@ export default function OrgChart({
 
     requestAnimationFrame(() => {
       if (!departmentFilter && !jobTitleFilter && !functionFilter) {
-        const firstRootId = index.roots[0];
-        if (firstRootId) cameraToNodeRef.current(firstRootId, { zoom: ROOT_ENTRY_ZOOM });
+        // All filters cleared — go back to the first visible root
+        const visibleRoot = index.roots.find((id) => layout.nodes.has(id));
+        const targetId = visibleRoot ?? (layout.nodes.size ? layout.nodes.keys().next().value : null);
+        if (targetId) cameraToNodeRef.current(targetId, { zoom: ROOT_ENTRY_ZOOM });
       } else {
-        if (!viewportRef.current || !layout.width || !layout.height) return;
-        const vw = viewportRef.current.clientWidth;
-        const vh = viewportRef.current.clientHeight || 600;
-        const z = Math.min((vw - 60) / layout.width, (vh - 60) / layout.height, 1);
-        const newZoom = Math.max(0.05, z);
-        zoomRef.current = newZoom;
-        panRef.current = { x: (vw - layout.width * newZoom) / 2, y: 20 };
-        setZoomLabel(newZoom);
-        applyTransform();
+        // Filter active — find the shallowest (highest-level) node in the current
+        // layout that is NOT a context-only ancestor, then focus on it at a
+        // readable zoom. Fall back to fit-to-view if no non-context node found.
+        let shallowestId = null;
+        let shallowestDepth = Infinity;
+        layout.nodes.forEach((pos, id) => {
+          if (contextNodes.has(id)) return; // skip pure context ancestors
+          if (pos.isDataIssue || pos.depth < 0) return; // skip broken-ref / cycle-orphan nodes
+          if (pos.depth < shallowestDepth) {
+            shallowestDepth = pos.depth;
+            shallowestId = id;
+          }
+        });
+
+        if (shallowestId) {
+          cameraToNodeRef.current(shallowestId, { zoom: FOCUS_ZOOM });
+        } else if (viewportRef.current && layout.width && layout.height) {
+          // Fallback: fit the whole filtered layout but respect a 30% minimum zoom
+          const vw = viewportRef.current.clientWidth;
+          const vh = viewportRef.current.clientHeight || 600;
+          const z = Math.min((vw - 60) / layout.width, (vh - 60) / layout.height, 1);
+          const newZoom = Math.max(0.30, z);
+          zoomRef.current = newZoom;
+          panRef.current = { x: (vw - layout.width * newZoom) / 2, y: 20 };
+          setZoomLabel(newZoom);
+          applyTransform();
+        }
       }
     });
-  }, [departmentFilter, jobTitleFilter, functionFilter, layout, index.roots, applyTransform]);
+  }, [departmentFilter, jobTitleFilter, functionFilter, layout, contextNodes, index.roots, applyTransform]);
 
   // Ctrl+Z keyboard shortcut for undo
   useEffect(() => {
@@ -1534,7 +1598,7 @@ export default function OrgChart({
     const vw = viewportRef.current.clientWidth;
     const vh = viewportRef.current.clientHeight || 600;
     const z = Math.min((vw - 60) / layout.width, (vh - 60) / layout.height, 1);
-    const newZoom = Math.max(0.05, z);
+    const newZoom = Math.max(0.30, z);
     zoomRef.current = newZoom;
     panRef.current = {
       x: (vw - layout.width * newZoom) / 2,
@@ -2766,6 +2830,7 @@ export default function OrgChart({
                   selected={selectedId === id}
                   focused={focusedNodeId === id}
                   isMultiSelected={multiSelectedIds.has(id)}
+                  isContext={contextNodes.has(id)}
                   issues={visibleIssuesMap.get(id) || null}
                   editMode={editMode}
                   empCol={empCol}

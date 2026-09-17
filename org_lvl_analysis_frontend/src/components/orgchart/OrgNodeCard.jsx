@@ -34,6 +34,7 @@ function OrgNodeCardImpl({
   selected,
   focused,
   isMultiSelected,
+  isContext,
   issues,
   editMode,
   jobTitleCol,
@@ -121,7 +122,7 @@ function OrgNodeCardImpl({
     : added
     ? AM.success
     : AM.border;
-  const borderStyle = (isValidTarget || isWarnTarget) ? "dashed" : "solid";
+  const borderStyle = (isValidTarget || isWarnTarget || (isContext && !selected && !focused)) ? "dashed" : "solid";
 
   const portColor = isWarnTarget
     ? "#d97706"
@@ -156,7 +157,7 @@ function OrgNodeCardImpl({
         top: position.y,
         width: CARD_WIDTH,
         height: CARD_HEIGHT,
-        opacity: flagged ? 0.55 : (isSelf && activeDragId) ? 0.4 : 1,
+        opacity: flagged ? 0.55 : (isSelf && activeDragId) ? 0.4 : isContext ? 0.50 : 1,
         cursor: isInvalidTarget
           ? "not-allowed"
           : isWarnTarget

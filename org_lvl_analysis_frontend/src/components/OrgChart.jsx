@@ -698,12 +698,12 @@ export default function OrgChart({
 
   // Hidden ids from search + department + job title + function filters; ranked search matches.
   // contextNodes = ancestor nodes that are visible purely for tree-path context (not direct matches).
-  const { hidden, contextNodes, searchMatches } = useMemo(() => {
+  const { hidden, contextNodes, filterUncollapsed, searchMatches } = useMemo(() => {
     const out = new Set();
     const ctx = new Set();
     const emptyMatches = [];
     if (!records || (!search.trim() && !departmentFilter && !jobTitleFilter && !functionFilter)) {
-      return { hidden: out, contextNodes: ctx, searchMatches: emptyMatches };
+      return { hidden: out, contextNodes: ctx, filterUncollapsed: out, searchMatches: emptyMatches };
     }
 
     const term = search.trim().toLowerCase();
@@ -754,6 +754,15 @@ export default function OrgChart({
     const rankedMatches = term
       ? rankSearchMatches(matched, term, { empCol, jobTitleCol, countryCol })
       : emptyMatches;
+
+    if (hasDropdownFilter) {
+      console.log("[OrgChart filter-memo]",
+        "roots:", (index.roots||[]).length,
+        "brokenRefs:", (index.brokenRefs||[]).length,
+        "matched:", matched.length,
+        "records total:", records.length
+      );
+    }
 
     // Build a Set of proper org roots for cycle-orphan detection.
     const rootSet = new Set((index.roots || []).map(String));
@@ -811,7 +820,13 @@ export default function OrgChart({
       const id = String(idOf(r));
       if (!visible.has(id)) out.add(id);
     });
-    return { hidden: out, contextNodes: ctx, searchMatches: rankedMatches };
+
+    // filterUncollapsed = context ancestor nodes that must be treated as uncollapsed
+    // in the layout so that matched nodes at deeper levels actually appear, even when
+    // the default level cap (L1-L2) would normally keep them collapsed.
+    const filterUncollapsed = hasDropdownFilter ? ctx : new Set();
+
+    return { hidden: out, contextNodes: ctx, filterUncollapsed, searchMatches: rankedMatches };
   }, [records, search, departmentFilter, jobTitleFilter, functionFilter, empCol, jobTitleCol, funcCol, countryCol, idOf, parentOf, index]);
 
   const layout = useMemo(() => {
@@ -821,6 +836,7 @@ export default function OrgChart({
       childrenByParent: index.childrenByParent,
       collapsed,
       hidden,
+      filterUncollapsed,
       maxDepth,
     };
 
@@ -1556,13 +1572,14 @@ export default function OrgChart({
         let shallowestDepth = Infinity;
         layout.nodes.forEach((pos, id) => {
           if (contextNodes.has(id)) return; // skip pure context ancestors
-          if (pos.isDataIssue || pos.depth < 0) return; // skip broken-ref / cycle-orphan nodes
+          if (pos.depth < 0) return; // skip cycle-orphans (depth=-1); broken-ref nodes have real depth and should be included
           if (pos.depth < shallowestDepth) {
             shallowestDepth = pos.depth;
             shallowestId = id;
           }
         });
 
+        // Debug: log what was found so we can diagnose camera issues
         if (shallowestId) {
           cameraToNodeRef.current(shallowestId, { zoom: FOCUS_ZOOM });
         } else if (viewportRef.current && layout.width && layout.height) {

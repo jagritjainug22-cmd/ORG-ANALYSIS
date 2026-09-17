@@ -157,6 +157,7 @@ export function layoutTree({
   childrenByParent,
   collapsed,
   hidden,
+  filterUncollapsed,
   maxDepth,
 }) {
   const nodes = new Map();
@@ -169,7 +170,10 @@ export function layoutTree({
   const levelStep = CARD_HEIGHT + vGap;
 
   function getVisibleChildren(id) {
-    if (collapsed.has(id)) return [];
+    // A node in filterUncollapsed must show its children even if it would
+    // normally be collapsed by the level cap — this lets filter-matched nodes
+    // at deeper levels actually appear in the layout.
+    if (collapsed.has(id) && !(filterUncollapsed && filterUncollapsed.has(id))) return [];
     return (childrenByParent.get(id) || []).filter((c) => !hidden.has(c));
   }
 
